@@ -60,6 +60,7 @@ class GenericWebViewAdapter {
 
         if (title) title.textContent = service.name || 'Game Service';
         if (overlay) overlay.classList.remove('hidden');
+        document.documentElement.classList.add('webview-active');
         document.body.classList.add('webview-active');
 
         if (frame) {
@@ -86,6 +87,7 @@ class GenericWebViewAdapter {
     }
 
     async close() {
+        document.documentElement.classList.remove('webview-active');
         document.body.classList.remove('webview-active');
         if (!this.currentSession?.id) return;
         const workerUrl = this.manager.getWorkerUrl();
@@ -105,6 +107,10 @@ class GenericWebViewAdapter {
 
 class ZeldaNotesAdapter extends GenericWebViewAdapter {
     async launch(service, token, options = {}) {
+        try {
+            localStorage.removeItem('nso_persist_5935781783175168');
+            localStorage.removeItem('nso_persist_4974384874151936');
+        } catch (e) {}
         return super.launch(service, token, options);
     }
 }
