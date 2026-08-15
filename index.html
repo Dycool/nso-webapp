@@ -47,6 +47,22 @@
             </div>
             <h2>Nintendo Switch App</h2>
             <p class="login-console-note">Your Nintendo Account must be linked to a console.</p>
+
+            <div class="rate-limit-banner hidden" id="rateLimitBanner" role="alert">
+                <i class="fa-solid fa-hourglass-half"></i>
+                <span id="rateLimitBannerText">nxapi authentication temporarily rate-limited.</span>
+            </div>
+
+            <div class="remembered-account-section hidden" id="rememberedAccountSection">
+                <button class="btn-resume-remembered" id="resumeRememberedBtn" type="button">
+                    <i class="fa-solid fa-key"></i> Continue with remembered Nintendo Account
+                </button>
+                <button class="btn-forget-remembered" id="forgetRememberedBtn" type="button">
+                    <i class="fa-solid fa-trash-can"></i> Forget remembered account
+                </button>
+                <div class="remembered-divider"><span>or sign in with a different account</span></div>
+            </div>
+
             <button class="btn-app-sign-in" id="beginSignInBtn" type="button">Sign In</button>
             <a class="login-help" href="https://lounge.nintendo.com/redirect/supportlogin" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square"></i> Help</a>
 
@@ -54,7 +70,7 @@
             <div class="nxapi-disclosure">
                 <label>
                     <input type="checkbox" id="nxapiConsentCheckbox">
-                    <span>I understand that my Nintendo Account ID token, Coral token, and Coral API requests/responses will be sent to the third-party <a href="https://github.com/samuelthomas2774/nxapi-znca-api" target="_blank" rel="noopener noreferrer">nxapi ZNCA API</a> to authenticate and process encrypted Nintendo Switch Online requests.</span>
+                    <span>I acknowledge and agree that my Nintendo Account ID token, Coral session token, and encrypted Coral API request/response data are sent to the third-party <a href="https://github.com/samuelthomas2774/nxapi-znca-api" target="_blank" rel="noopener noreferrer">nxapi-znca-api</a> service (operated by Samuel Thomas) to generate Coral attestation tokens and encrypt Nintendo Switch Online requests.</span>
                 </label>
                 <a href="https://github.com/samuelthomas2774/nxapi-znca-api/blob/docs/docs/end-user-help.md" target="_blank" rel="noopener noreferrer">nxapi end-user help</a>
             </div>
@@ -81,6 +97,13 @@
                         <p class="auth-hint" id="authGateHint" aria-live="polite"></p>
                     </div>
                 </div>
+            </div>
+
+            <div class="remember-me-option">
+                <label>
+                    <input type="checkbox" id="rememberMeCheckbox">
+                    <span><strong>Remember my Nintendo Account on this device</strong><br><small>Your Nintendo Account session token is securely encrypted on the server so you can resume your session without signing in each time.</small></span>
+                </label>
             </div>
 
             <button class="btn-submit-gate" id="submitAuthGateBtn">
@@ -447,6 +470,7 @@
             <h2 id="profileViewName">Switch Player</h2>
             <p id="profileViewFriendCode">SW-0000-0000-0000</p>
             <div class="profile-membership"><i class="fa-solid fa-check"></i><span>Nintendo Switch Online account connected</span></div>
+            <button class="profile-forget-remembered hidden" id="profileForgetRememberedBtn" type="button"><i class="fa-solid fa-trash-can"></i> Forget Remembered Account</button>
             <button class="profile-logout" id="logoutBtn" type="button"><i class="fa-solid fa-right-from-bracket"></i> Sign Out</button>
         </div>
     </section>

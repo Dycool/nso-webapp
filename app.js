@@ -1,7 +1,7 @@
 /**
  * Nintendo Switch Online WebApp.
  * Uses nxapi's public ZNCA API for Coral attestation and request encryption.
- * The Worker is only a CORS relay; it never creates or stores user sessions.
+ * The Worker provides CORS relay, reverse-proxied WebView hosting, and encrypted Remember Me storage.
  */
 
 const WORKER_URL = 'https://nso-worker-backend.diogoenes0.workers.dev';
@@ -21,33 +21,152 @@ function zncaUserAgent() {
     return `com.nintendo.znca/${ZNCA_VERSION}(${ZNCA_PLATFORM}/${ZNCA_PLATFORM_VERSION})`;
 }
 
-// App State
+// ---------------------------------------------------------------------------
+// Stage-Specific Typed Diagnostic Errors
+// ---------------------------------------------------------------------------
+
+class AuthStageError extends Error {
+    constructor(stage, message, originalError = null, status = null) {
+        super(message);
+        this.name = 'AuthStageError';
+        this.stage = stage;
+        this.originalError = originalError;
+        this.status = status;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Memory-Only App & nxapi Authentication State
+// ---------------------------------------------------------------------------
+
 let userSession = null;
-let nxapiAccessToken = null;
+let nxapiAuthSession = {
+    accessToken: null,
+    refreshToken: null,
+    expiresAt: 0
+};
+let nxapiTokenPromise = null;
 let nxapiAuthMetadata = null;
 let activeMediaItem = null;
 let currentFriends = [];
 let currentMedia = [];
 
+// Rate Limit & Retry-After Utilities
+function parseRetryAfter(headerValue) {
+    if (!headerValue) return null;
+    const trimmed = String(headerValue).trim();
+    const seconds = Number(trimmed);
+    if (!isNaN(seconds) && seconds >= 0) {
+        return Date.now() + seconds * 1000;
+    }
+    const parsedDate = Date.parse(trimmed);
+    if (!isNaN(parsedDate) && parsedDate > Date.now()) {
+        return parsedDate;
+    }
+    return null;
+}
+
+function getRateLimitUntil() {
+    try {
+        const val = localStorage.getItem('nxapi_rate_limit_until');
+        const num = Number(val);
+        return !isNaN(num) && num > Date.now() ? num : 0;
+    } catch (e) {
+        return 0;
+    }
+}
+
+function setRateLimitUntil(timestamp) {
+    try {
+        if (timestamp > Date.now()) {
+            localStorage.setItem('nxapi_rate_limit_until', String(timestamp));
+        } else {
+            localStorage.removeItem('nxapi_rate_limit_until');
+        }
+        updateRateLimitBanner();
+    } catch (e) {}
+}
+
+let rateLimitTimer = null;
+function updateRateLimitBanner() {
+    const banner = document.getElementById('rateLimitBanner');
+    const bannerText = document.getElementById('rateLimitBannerText');
+    const until = getRateLimitUntil();
+
+    if (rateLimitTimer) {
+        clearTimeout(rateLimitTimer);
+        rateLimitTimer = null;
+    }
+
+    if (until > Date.now()) {
+        if (banner) banner.classList.remove('hidden');
+        const remainingSec = Math.ceil((until - Date.now()) / 1000);
+        const timeStr = new Date(until).toLocaleTimeString();
+        if (bannerText) {
+            bannerText.textContent = `nxapi authentication temporarily rate-limited. Retry after ${timeStr} (${remainingSec}s remaining).`;
+        }
+        rateLimitTimer = setTimeout(() => {
+            updateRateLimitBanner();
+        }, 1000);
+    } else {
+        if (banner) banner.classList.add('hidden');
+        try { localStorage.removeItem('nxapi_rate_limit_until'); } catch (e) {}
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
     initServicesNav();
     initAuthGate();
-    // Check stored session
+    updateRateLimitBanner();
+    checkStartupSession();
+});
+
+function checkStartupSession() {
     const stored = localStorage.getItem('nso_user_session');
     if (stored) {
         try {
-            userSession = JSON.parse(stored);
-            // A saved Coral session must not trigger a third-party API request
-            // until the user has explicitly acknowledged the disclosure below.
-            showLoginGate();
+            const parsed = JSON.parse(stored);
+            const expiresAt = Number(parsed?.nsoWebapp?.coralExpiresAt || 0);
+            const token = parsed?.result?.webApiServerCredential?.accessToken;
+
+            // Only reuse if token exists and expiration derived from Coral is strictly in the future
+            if (token && expiresAt > Date.now() + 60000) {
+                userSession = parsed;
+                showAuthenticatedUI(parsed);
+                return;
+            }
         } catch (e) {
-            showLoginGate();
+            console.warn('[Startup] Invalid cached session structure:', e);
         }
-    } else {
-        showLoginGate();
+        localStorage.removeItem('nso_user_session');
+        userSession = null;
     }
-});
+
+    showLoginGate();
+    updateRememberedUI();
+}
+
+function updateRememberedUI() {
+    const hasRemembered = localStorage.getItem('nso_has_remembered_account') === 'true';
+    const section = document.getElementById('rememberedAccountSection');
+    const profileForgetBtn = document.getElementById('profileForgetRememberedBtn');
+
+    if (section) {
+        if (hasRemembered) {
+            section.classList.remove('hidden');
+        } else {
+            section.classList.add('hidden');
+        }
+    }
+    if (profileForgetBtn) {
+        if (hasRemembered) {
+            profileForgetBtn.classList.remove('hidden');
+        } else {
+            profileForgetBtn.classList.add('hidden');
+        }
+    }
+}
 
 function nxapiClientId() {
     return NXAPI_AUTH_CLIENT_ID.trim();
@@ -59,14 +178,11 @@ function hasNxapiConsent() {
 
 async function prepareNxapi() {
     if (!hasNxapiConsent()) {
-        throw new Error('Acknowledge the nxapi data disclosure before continuing.');
+        throw new AuthStageError('NXAPI_AUTH', 'Please acknowledge the nxapi data disclosure checkbox before continuing.');
     }
     await refreshNxapiConfig();
 }
 
-// The public nxapi services deliberately do not grant browser CORS access.
-// This relay keeps the browser implementation simple without becoming an NSO
-// backend: all Nintendo and nxapi requests are still made with the user's data.
 async function proxyFetch(targetUrl, options = {}) {
     const proxyPayload = {
         targetUrl: targetUrl,
@@ -90,119 +206,113 @@ function nxapiUrl(path) {
     return `${NXAPI_ZNCA_API_URL}/${path.replace(/^\//, '')}`;
 }
 
-function readCachedNxapiToken() {
-    if (window.NXAPI_AUTH_TOKEN) return window.NXAPI_AUTH_TOKEN;
-    const manualToken = localStorage.getItem('nxapi_auth_token');
-    if (manualToken) return manualToken;
-
-    if (!nxapiAccessToken) {
-        try {
-            const raw = localStorage.getItem('nxapi_access_token_cache');
-            if (raw) nxapiAccessToken = JSON.parse(raw);
-        } catch (e) {
-            nxapiAccessToken = null;
-        }
-    }
-    if (nxapiAccessToken?.expiresAt > Date.now()) {
-        return nxapiAccessToken.token;
-    }
-    return null;
-}
-
+/**
+ * Single-flight in-memory nxapi token acquisition adhering strictly to public terms.
+ * Never persists nxapi tokens to storage.
+ */
 async function getNxapiAccessToken() {
-    const cached = readCachedNxapiToken();
-    if (cached) return cached;
-
-    const clientId = nxapiClientId();
-    if (!clientId) {
-        throw new Error('Enter an nxapi-auth public client ID before signing in.');
-    }
-
-    if (!nxapiAuthMetadata) {
-        const apiOrigin = new URL(NXAPI_ZNCA_API_URL).origin;
-        const protectedResourceResp = await proxyFetch(`${apiOrigin}/.well-known/oauth-protected-resource`, {
-            headers: { Accept: 'application/json' }
-        });
-        const protectedResource = await protectedResourceResp.json();
-        if (!protectedResourceResp.ok || !protectedResource.authorization_servers?.[0]) {
-            throw new Error(protectedResource.error_description || 'Could not discover nxapi authentication metadata.');
-        }
-
-        const authorizationServer = new URL(protectedResource.authorization_servers[0]);
-        const authorizationMetadataResp = await proxyFetch(
-            `${authorizationServer.origin}/.well-known/oauth-authorization-server`,
-            { headers: { Accept: 'application/json' } }
+    const rateLimitUntil = getRateLimitUntil();
+    if (rateLimitUntil > Date.now()) {
+        const timeStr = new Date(rateLimitUntil).toLocaleTimeString();
+        const remainingSec = Math.ceil((rateLimitUntil - Date.now()) / 1000);
+        throw new AuthStageError(
+            'NXAPI_AUTH',
+            `nxapi authentication temporarily rate-limited. Retry after ${timeStr} (${remainingSec}s remaining).`
         );
-        nxapiAuthMetadata = await authorizationMetadataResp.json();
-        if (!authorizationMetadataResp.ok || !nxapiAuthMetadata.token_endpoint) {
-            throw new Error(nxapiAuthMetadata.error_description || 'Could not discover the nxapi token endpoint.');
-        }
     }
 
-    let tokenRequest;
-    if (nxapiAccessToken?.refreshToken) {
-        tokenRequest = {
+    // Reuse valid in-memory token (10-second safety margin)
+    if (nxapiAuthSession.accessToken && nxapiAuthSession.expiresAt > Date.now() + 10000) {
+        return nxapiAuthSession.accessToken;
+    }
+
+    // Single-flight deduplication
+    if (nxapiTokenPromise) {
+        return nxapiTokenPromise;
+    }
+
+    nxapiTokenPromise = (async () => {
+        const clientId = nxapiClientId();
+        if (!clientId) {
+            throw new AuthStageError('NXAPI_AUTH', 'Enter an nxapi-auth public client ID before signing in.');
+        }
+
+        if (!nxapiAuthMetadata) {
+            const apiOrigin = new URL(NXAPI_ZNCA_API_URL).origin;
+            const protectedResourceResp = await proxyFetch(`${apiOrigin}/.well-known/oauth-protected-resource`, {
+                headers: { Accept: 'application/json' }
+            });
+            const protectedResource = await protectedResourceResp.json().catch(() => ({}));
+            if (!protectedResourceResp.ok || !protectedResource.authorization_servers?.[0]) {
+                throw new AuthStageError('NXAPI_AUTH', protectedResource.error_description || 'Could not discover nxapi authentication metadata.');
+            }
+
+            const authorizationServer = new URL(protectedResource.authorization_servers[0]);
+            const authorizationMetadataResp = await proxyFetch(
+                `${authorizationServer.origin}/.well-known/oauth-authorization-server`,
+                { headers: { Accept: 'application/json' } }
+            );
+            nxapiAuthMetadata = await authorizationMetadataResp.json().catch(() => ({}));
+            if (!authorizationMetadataResp.ok || !nxapiAuthMetadata.token_endpoint) {
+                throw new AuthStageError('NXAPI_AUTH', nxapiAuthMetadata.error_description || 'Could not discover the nxapi token endpoint.');
+            }
+        }
+
+        const isRefresh = Boolean(nxapiAuthSession.refreshToken);
+        const tokenRequest = isRefresh ? {
             grant_type: 'refresh_token',
             client_id: clientId,
-            refresh_token: nxapiAccessToken.refreshToken
-        };
-    } else {
-        tokenRequest = {
+            refresh_token: nxapiAuthSession.refreshToken
+        } : {
             grant_type: 'client_credentials',
             client_id: clientId,
             scope: NXAPI_AUTH_SCOPE
         };
-    }
 
-    let tokenResp = await proxyFetch(nxapiAuthMetadata.token_endpoint, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            Accept: 'application/json'
-        },
-        body: new URLSearchParams(tokenRequest).toString()
-    });
-    let tokenData = await tokenResp.json();
+        const tokenResp = await proxyFetch(nxapiAuthMetadata.token_endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                Accept: 'application/json'
+            },
+            body: new URLSearchParams(tokenRequest).toString()
+        });
 
-    if (!tokenResp.ok || !tokenData.access_token) {
-        if (tokenRequest.grant_type === 'refresh_token') {
-            nxapiAccessToken = null;
-            localStorage.removeItem('nxapi_access_token_cache');
+        if (tokenResp.status === 429) {
+            const retryAfterHeader = tokenResp.headers.get('Retry-After');
+            const until = parseRetryAfter(retryAfterHeader) || (Date.now() + 60000);
+            setRateLimitUntil(until);
+            const timeStr = new Date(until).toLocaleTimeString();
+            throw new AuthStageError('NXAPI_AUTH', `nxapi authentication rate-limited (HTTP 429). Retry after ${timeStr}.`, null, 429);
+        }
 
-            tokenRequest = {
-                grant_type: 'client_credentials',
-                client_id: clientId,
-                scope: NXAPI_AUTH_SCOPE
-            };
-            tokenResp = await proxyFetch(nxapiAuthMetadata.token_endpoint, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    Accept: 'application/json'
-                },
-                body: new URLSearchParams(tokenRequest).toString()
-            });
+        let tokenData = {};
+        try {
             tokenData = await tokenResp.json();
-        }
-    }
+        } catch (e) {}
 
-    if (!tokenResp.ok || !tokenData.access_token) {
-        const errMsg = tokenData.error_description || tokenData.error || 'nxapi authentication failed.';
-        if (errMsg.toLowerCase().includes('too many attempts')) {
-            throw new Error('Too many attempts to authenticate with nxapi-auth. Please wait 1-2 minutes before trying again.');
+        if (!tokenResp.ok || !tokenData.access_token) {
+            if (isRefresh) {
+                nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 };
+            }
+            const errMsg = tokenData.error_description || tokenData.error || `nxapi authentication failed (HTTP ${tokenResp.status}).`;
+            throw new AuthStageError('NXAPI_AUTH', errMsg, null, tokenResp.status);
         }
-        throw new Error(errMsg);
-    }
 
-    nxapiAccessToken = {
-        token: tokenData.access_token,
-        expiresAt: Date.now() + Math.max(1, Number(tokenData.expires_in || 300)) * 1000,
-        refreshToken: tokenData.refresh_token || null
-    };
+        nxapiAuthSession = {
+            accessToken: tokenData.access_token,
+            expiresAt: Date.now() + Math.max(1, Number(tokenData.expires_in || 300)) * 1000,
+            refreshToken: tokenData.refresh_token || null
+        };
+
+        return nxapiAuthSession.accessToken;
+    })();
+
     try {
-        localStorage.setItem('nxapi_access_token_cache', JSON.stringify(nxapiAccessToken));
-    } catch (e) {}
-    return nxapiAccessToken.token;
+        return await nxapiTokenPromise;
+    } finally {
+        nxapiTokenPromise = null;
+    }
 }
 
 async function nxapiFetch(path, options = {}) {
@@ -217,7 +327,6 @@ async function nxapiFetch(path, options = {}) {
             ...(options.headers || {})
         }
     });
-
 }
 
 async function refreshNxapiConfig() {
@@ -447,13 +556,26 @@ function showAuthenticatedUI(session) {
 function logout() {
     window.webServiceManager?.closeActiveService();
     localStorage.removeItem('nso_user_session');
-    localStorage.removeItem('nxapi_access_token_cache');
-    localStorage.removeItem('nxapi_auth_token');
     localStorage.removeItem('nso_pkce_verifier');
     localStorage.removeItem('nso_auth_state');
     userSession = null;
-    nxapiAccessToken = null;
+    nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 };
     showLoginGate();
+    updateRememberedUI();
+}
+
+async function forgetRememberedAccount() {
+    localStorage.removeItem('nso_has_remembered_account');
+    updateRememberedUI();
+    try {
+        await fetch(`${WORKER_URL}/api/nso/remember/forget`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+    } catch (e) {
+        console.warn('[RememberMe] Failed to delete server-side remember record:', e);
+    }
+    alert('Remembered Nintendo Account has been forgotten on this device.');
 }
 
 function openProfile() {
@@ -499,6 +621,359 @@ function renderNotifications(items) {
     }
 }
 
+let loginInFlight = null;
+
+function setAuthButtonsDisabled(disabled, label = null) {
+    const submitGateBtn = document.getElementById('submitAuthGateBtn');
+    const pasteAuthGateBtn = document.getElementById('pasteAuthGateBtn');
+    const oauthGateBtn = document.getElementById('nintendoOAuthGateBtn');
+    const resumeBtn = document.getElementById('resumeRememberedBtn');
+    const forgetBtn = document.getElementById('forgetRememberedBtn');
+
+    if (submitGateBtn) {
+        submitGateBtn.disabled = disabled;
+        if (label) submitGateBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${label}`;
+        else submitGateBtn.innerHTML = '<i class="fa-solid fa-plug"></i> Authenticate & Enter WebApp';
+    }
+    if (pasteAuthGateBtn) pasteAuthGateBtn.disabled = disabled;
+    if (oauthGateBtn) oauthGateBtn.disabled = disabled;
+    if (resumeBtn) {
+        resumeBtn.disabled = disabled;
+        if (label && disabled) resumeBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${label}`;
+        else resumeBtn.innerHTML = '<i class="fa-solid fa-key"></i> Continue with remembered Nintendo Account';
+    }
+    if (forgetBtn) forgetBtn.disabled = disabled;
+}
+
+function setAuthGateHint(text) {
+    const hint = document.getElementById('authGateHint');
+    if (hint) hint.textContent = text || '';
+}
+
+async function performFullAuthentication(options = {}) {
+    if (loginInFlight) {
+        console.log('[Auth] Authentication already in progress, awaiting active flow.');
+        return loginInFlight;
+    }
+
+    // Immediately disable buttons BEFORE any await
+    setAuthButtonsDisabled(true, 'Preparing authentication...');
+
+    loginInFlight = (async () => {
+        try {
+            await prepareNxapi();
+
+            let idToken = null;
+            let accessToken = null;
+            let longLivedSessionToken = null;
+            const isResume = options.isResume === true;
+
+            if (isResume) {
+                setAuthButtonsDisabled(true, 'Resuming remembered session...');
+                setAuthGateHint('Resuming your saved Nintendo Account session…');
+
+                let resumeResp;
+                try {
+                    resumeResp = await fetch(`${WORKER_URL}/api/nso/remember/resume`, {
+                        method: 'POST',
+                        credentials: 'include'
+                    });
+                } catch (e) {
+                    throw new AuthStageError('REMEMBER_RESUME', `Network error contacting remember service: ${e.message}`, e);
+                }
+
+                if (!resumeResp.ok) {
+                    localStorage.removeItem('nso_has_remembered_account');
+                    updateRememberedUI();
+                    let errMsg = `HTTP ${resumeResp.status}`;
+                    try {
+                        const errData = await resumeResp.json();
+                        errMsg = errData.error || errMsg;
+                    } catch {}
+                    throw new AuthStageError('REMEMBER_RESUME', `Remembered session expired or revoked: ${errMsg}`, null, resumeResp.status);
+                }
+
+                const resumeData = await resumeResp.json();
+                idToken = resumeData.idToken;
+                accessToken = resumeData.accessToken;
+            } else {
+                const input = (options.input || document.getElementById('idTokenGateInput')?.value || '').trim();
+                if (!input) {
+                    throw new Error('Please paste the redirect URL or session_token string.');
+                }
+
+                // Direct JSON Session or AccessToken input support
+                if (input.startsWith('{') && input.endsWith('}')) {
+                    try {
+                        const jsonSession = JSON.parse(input);
+                        const expiresIn = Number(jsonSession?.result?.webApiServerCredential?.expiresIn || 7200);
+                        jsonSession.nsoWebapp = jsonSession.nsoWebapp || {
+                            coralExpiresAt: Date.now() + expiresIn * 1000
+                        };
+                        userSession = jsonSession;
+                        localStorage.setItem('nso_user_session', JSON.stringify(jsonSession));
+                        showAuthenticatedUI(jsonSession);
+                        return;
+                    } catch (e) {}
+                }
+
+                let code = input;
+                let returnedState = null;
+                if (input.includes('session_token_code=')) {
+                    const hashPart = input.split('#')[1] || input.split('?')[1] || input;
+                    const urlParams = new URLSearchParams(hashPart);
+                    code = urlParams.get('session_token_code') || code;
+                    returnedState = urlParams.get('state') || null;
+                }
+
+                const expectedState = localStorage.getItem('nso_auth_state');
+                if (returnedState && expectedState && returnedState !== expectedState) {
+                    throw new AuthStageError(
+                        'NINTENDO_SESSION_TOKEN_EXCHANGE',
+                        'OAuth state mismatch. The sign-in response did not match the expected authentication request. Please click "Open Nintendo Sign In" again.'
+                    );
+                }
+
+                const verifier = localStorage.getItem('nso_pkce_verifier');
+                if (!verifier && (input.includes('session_token_code=') || input.length < 120)) {
+                    throw new AuthStageError(
+                        'NINTENDO_SESSION_TOKEN_EXCHANGE',
+                        'PKCE verifier missing. Please click "Open Nintendo Sign In" again to start a new authentication session.'
+                    );
+                }
+
+                // Step 1: Exchange session_token_code + session_token_code_verifier -> session_token
+                setAuthButtonsDisabled(true, 'Step 1/3: Exchanging Session Code...');
+                setAuthGateHint('Exchanging session authorization code with Nintendo…');
+
+                const formBody = new URLSearchParams({
+                    client_id: '71b963c1b7b6d119',
+                    session_token_code: code,
+                    session_token_code_verifier: verifier || ''
+                });
+
+                const step1Resp = await proxyFetch('https://accounts.nintendo.com/connect/1.0.0/api/session_token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'User-Agent': 'Dalvik/2.1.0 (Linux; U; Android 10; Build/QP1A.190711.020)'
+                    },
+                    body: formBody.toString()
+                });
+                const step1Data = await step1Resp.json().catch(() => ({}));
+
+                if (!step1Resp.ok || !step1Data.session_token) {
+                    throw new AuthStageError(
+                        'NINTENDO_SESSION_TOKEN_EXCHANGE',
+                        `Nintendo session code exchange failed: ${step1Data.error || step1Data.errorMessage || 'Invalid session_token_code'} (HTTP ${step1Resp.status})`,
+                        null,
+                        step1Resp.status
+                    );
+                }
+
+                longLivedSessionToken = step1Data.session_token;
+                localStorage.removeItem('nso_pkce_verifier');
+                localStorage.removeItem('nso_auth_state');
+
+                // Step 2: Exchange session_token -> id_token & access_token (JWT)
+                setAuthButtonsDisabled(true, 'Step 2/3: Fetching ID Token & Profile...');
+                setAuthGateHint('Requesting Nintendo Account tokens…');
+
+                const step2Resp = await proxyFetch('https://accounts.nintendo.com/connect/1.0.0/api/token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'Dalvik/2.1.0 (Linux; U; Android 10; Build/QP1A.190711.020)'
+                    },
+                    body: JSON.stringify({
+                        client_id: '71b963c1b7b6d119',
+                        session_token: longLivedSessionToken,
+                        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer-session-token'
+                    })
+                });
+                const step2Data = await step2Resp.json().catch(() => ({}));
+
+                if (!step2Resp.ok || !step2Data.id_token) {
+                    throw new AuthStageError(
+                        'NINTENDO_ID_TOKEN_EXCHANGE',
+                        `Nintendo token exchange failed: ${step2Data.error_description || step2Data.error || 'Failed to obtain id_token'} (HTTP ${step2Resp.status})`,
+                        null,
+                        step2Resp.status
+                    );
+                }
+
+                idToken = step2Data.id_token;
+                accessToken = step2Data.access_token;
+            }
+
+            // Step 3: Fetch Nintendo User Profile (/2.0.0/users/me with NASDKAPI User-Agent)
+            // Zero fake profile defaults: require id, country, language, birthday
+            setAuthButtonsDisabled(true, 'Fetching Nintendo Profile...');
+            setAuthGateHint('Retrieving authenticated Nintendo Account profile…');
+
+            const userResp = await proxyFetch('https://api.accounts.nintendo.com/2.0.0/users/me', {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Accept-Language': 'en-GB',
+                    'User-Agent': 'NASDKAPI; Android',
+                    'Accept': 'application/json'
+                }
+            });
+
+            if (!userResp.ok) {
+                throw new AuthStageError(
+                    'NINTENDO_PROFILE',
+                    `Failed to retrieve Nintendo Account profile (HTTP ${userResp.status}).`,
+                    null,
+                    userResp.status
+                );
+            }
+
+            const userInfo = await userResp.json().catch(() => ({}));
+            if (!userInfo?.id || !userInfo?.country || !userInfo?.language || !userInfo?.birthday) {
+                throw new AuthStageError(
+                    'NINTENDO_PROFILE',
+                    'Nintendo Account profile is missing required fields (id, country, language, or birthday).'
+                );
+            }
+
+            const naId = userInfo.id;
+            const language = userInfo.language;
+            const naCountry = userInfo.country;
+            const naBirthday = userInfo.birthday;
+
+            // Step 4: Request nxapi method-1 attestation
+            setAuthButtonsDisabled(true, 'Step 3/3: Requesting nxapi attestation...');
+            setAuthGateHint('Generating Coral attestation f-token with nxapi…');
+
+            let attestation;
+            try {
+                attestation = await nxapiGenerateF(1, idToken, { na_id: naId });
+            } catch (err) {
+                if (err instanceof AuthStageError) throw err;
+                throw new AuthStageError('NXAPI_F_METHOD_1', `nxapi attestation failed: ${err.message}`, err);
+            }
+
+            const { f: fToken, timestamp: timestampMs, requestId } = attestation;
+
+            // Step 5: Encrypt Coral Account/Login payload
+            setAuthButtonsDisabled(true, 'Step 3/3: Encrypting Coral login...');
+            setAuthGateHint('Encrypting Coral login request…');
+
+            const coralLoginUrl = 'https://api-lp1.znc.srv.nintendo.net/v4/Account/Login';
+            const coralLoginBody = JSON.stringify({
+                parameter: {
+                    f: fToken,
+                    naIdToken: idToken,
+                    timestamp: timestampMs,
+                    requestId: requestId,
+                    language,
+                    naCountry,
+                    naBirthday
+                }
+            });
+
+            let encryptedLoginBody;
+            try {
+                encryptedLoginBody = await nxapiEncryptRequest(coralLoginUrl, null, coralLoginBody);
+            } catch (err) {
+                if (err instanceof AuthStageError) throw err;
+                throw new AuthStageError('NXAPI_ENCRYPT_ACCOUNT_LOGIN', `nxapi login encryption failed: ${err.message}`, err);
+            }
+
+            // Step 6: Post to Coral /v4/Account/Login
+            setAuthButtonsDisabled(true, 'Logging into Coral Account...');
+            setAuthGateHint('Connecting to Nintendo Switch Online Coral service…');
+
+            const coralResp = await proxyFetch(coralLoginUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/octet-stream',
+                    'Accept': 'application/octet-stream,application/json',
+                    'Accept-Language': 'en-GB',
+                    'Pragma': 'no-cache',
+                    'Cache-Control': 'no-cache',
+                    'X-ProductVersion': ZNCA_VERSION,
+                    'X-Platform': ZNCA_PLATFORM,
+                    'User-Agent': zncaUserAgent()
+                },
+                bodyBase64: encryptedLoginBody
+            });
+
+            let data;
+            try {
+                data = await parseCoralResponse(coralResp);
+            } catch (err) {
+                throw new AuthStageError('NXAPI_DECRYPT_ACCOUNT_LOGIN', `Could not decrypt Coral response: ${err.message}`, err);
+            }
+
+            if (!coralResp.ok || !data?.result) {
+                throw new AuthStageError(
+                    'CORAL_ACCOUNT_LOGIN',
+                    `Coral login failed (${data?.status || 'Error'}): ${data?.errorMessage || data?.error || 'Authentication rejected'} (HTTP ${coralResp.status})`,
+                    null,
+                    coralResp.status
+                );
+            }
+
+            // Authentication succeeded! Derive expiresAt strictly from Coral's webApiServerCredential.expiresIn
+            const expiresInSec = Number(data.result?.webApiServerCredential?.expiresIn || 7200);
+            data.nsoWebapp = {
+                naId,
+                coralExpiresAt: Date.now() + expiresInSec * 1000
+            };
+            userSession = data;
+            localStorage.setItem('nso_user_session', JSON.stringify(data));
+
+            // Persist Remember Me ONLY after complete Coral Account/Login flow succeeds!
+            const rememberCheckbox = document.getElementById('rememberMeCheckbox');
+            const shouldRemember = rememberCheckbox?.checked === true;
+
+            if (shouldRemember && longLivedSessionToken) {
+                try {
+                    setAuthGateHint('Saving encrypted session on server…');
+                    const remResp = await fetch(`${WORKER_URL}/api/nso/remember/save`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ sessionToken: longLivedSessionToken })
+                    });
+                    if (remResp.ok) {
+                        localStorage.setItem('nso_has_remembered_account', 'true');
+                        updateRememberedUI();
+                    } else {
+                        const err = await remResp.json().catch(() => ({}));
+                        console.warn('[RememberMe] Save rejected:', err.error);
+                    }
+                } catch (e) {
+                    console.warn('[RememberMe] Save error:', e);
+                }
+            }
+
+            setAuthGateHint('');
+            showAuthenticatedUI(data);
+        } catch (err) {
+            console.error('[Auth Error]', err);
+            let displayMsg = err.message || 'An unknown error occurred during sign-in.';
+            if (err instanceof AuthStageError) {
+                displayMsg = `[${err.stage}] ${err.message}`;
+            }
+            alert(displayMsg);
+            setAuthGateHint(displayMsg);
+        } finally {
+            loginInFlight = null;
+            setAuthButtonsDisabled(false);
+        }
+    })();
+
+    try {
+        return await loginInFlight;
+    } finally {
+        loginInFlight = null;
+        setAuthButtonsDisabled(false);
+    }
+}
+
 function initAuthGate() {
     const oauthGateBtn = document.getElementById('nintendoOAuthGateBtn');
     const submitGateBtn = document.getElementById('submitAuthGateBtn');
@@ -506,17 +981,22 @@ function initAuthGate() {
     const beginSignInBtn = document.getElementById('beginSignInBtn');
     const loginWorkflow = document.getElementById('loginWorkflow');
     const authInput = document.getElementById('idTokenGateInput');
-    const authHint = document.getElementById('authGateHint');
+    const resumeRememberedBtn = document.getElementById('resumeRememberedBtn');
+    const forgetRememberedBtn = document.getElementById('forgetRememberedBtn');
+    const profileForgetRememberedBtn = document.getElementById('profileForgetRememberedBtn');
 
+    let pasteDebounceTimer = null;
     const continueWithPastedRedirect = () => {
-        const value = authInput?.value.trim() || '';
-        if (!value || !(value.includes('session_token_code=') || value.startsWith('eyJ') || value.startsWith('{'))) return;
-        if (!hasNxapiConsent()) {
-            if (authHint) authHint.textContent = 'Please acknowledge the nxapi disclosure before continuing.';
-            return;
-        }
-        if (authHint) authHint.textContent = 'Redirect received. Continuing securely…';
-        submitGateBtn.click();
+        if (pasteDebounceTimer) clearTimeout(pasteDebounceTimer);
+        pasteDebounceTimer = setTimeout(() => {
+            const value = authInput?.value.trim() || '';
+            if (!value || !(value.includes('session_token_code=') || value.startsWith('eyJ') || value.startsWith('{'))) return;
+            if (!hasNxapiConsent()) {
+                setAuthGateHint('Please acknowledge the nxapi disclosure checkbox before continuing.');
+                return;
+            }
+            performFullAuthentication({ input: value });
+        }, 300);
     };
 
     if (beginSignInBtn) {
@@ -529,7 +1009,7 @@ function initAuthGate() {
     }
 
     if (authInput) {
-        authInput.addEventListener('paste', () => setTimeout(continueWithPastedRedirect, 0));
+        authInput.addEventListener('paste', continueWithPastedRedirect);
     }
 
     if (pasteAuthGateBtn) {
@@ -540,250 +1020,40 @@ function initAuthGate() {
                 authInput.value = clipboardText.trim();
                 continueWithPastedRedirect();
             } catch (e) {
-                if (authHint) authHint.textContent = `${e.message} Paste the link into the box instead.`;
+                setAuthGateHint(`${e.message} Paste the link into the box manually.`);
                 authInput.focus();
             }
         });
     }
-
 
     if (oauthGateBtn) {
         oauthGateBtn.addEventListener('click', openNintendoOAuth);
     }
 
     if (submitGateBtn) {
-        submitGateBtn.addEventListener('click', async () => {
-            let input = document.getElementById('idTokenGateInput').value.trim();
-            if (!input) {
-                alert('Please paste the redirect URL, session_token, or Coral JSON session.');
-                return;
-            }
-
-            try {
-                await prepareNxapi();
-            } catch (e) {
-                alert(e.message);
-                return;
-            }
-
-            submitGateBtn.disabled = true;
-            submitGateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Authenticating...';
-
-            // Direct JSON Session or AccessToken input support
-            if (input.startsWith('{') && input.endsWith('}')) {
-                try {
-                    const jsonSession = JSON.parse(input);
-                    userSession = jsonSession;
-                    localStorage.setItem('nso_user_session', JSON.stringify(jsonSession));
-                    showAuthenticatedUI(jsonSession);
-                    submitGateBtn.disabled = false;
-                    submitGateBtn.innerHTML = '<i class="fa-solid fa-plug"></i> Authenticate & Enter WebApp';
-                    return;
-                } catch (e) {
-                    console.warn('JSON parse fallback:', e);
-                }
-            }
-
-            // Direct Access Token input support
-            if (input.startsWith('eyJ') && input.length > 200 && !input.includes('session_token_code=')) {
-                userSession = {
-                    result: {
-                        webApiServerCredential: {
-                            accessToken: input
-                        },
-                        user: {
-                            nickname: 'Nintendo Player',
-                            imageUri: 'https://cdn-icons-png.flaticon.com/512/808/808439.png'
-                        }
-                    }
-                };
-                localStorage.setItem('nso_user_session', JSON.stringify(userSession));
-                showAuthenticatedUI(userSession);
-                submitGateBtn.disabled = false;
-                submitGateBtn.innerHTML = '<i class="fa-solid fa-plug"></i> Authenticate & Enter WebApp';
-                return;
-            }
-
-            let idToken = input;
-            let accessToken = null;
-            let language = null;
-            let naCountry = null;
-            let naBirthday = null;
-            let naId = null;
-
-            // Full 3-step token exchange directly in browser JS
-            if (input.includes('session_token_code=') || input.length < 120) {
-                let code = input;
-                let returnedState = null;
-                if (input.includes('session_token_code=')) {
-                    const hashPart = input.split('#')[1] || input.split('?')[1] || input;
-                    const urlParams = new URLSearchParams(hashPart);
-                    code = urlParams.get('session_token_code') || code;
-                    returnedState = urlParams.get('state') || null;
-                }
-
-                const expectedState = localStorage.getItem('nso_auth_state');
-                if (returnedState && expectedState && returnedState !== expectedState) {
-                    alert('OAuth state mismatch. The sign-in response did not match the expected authentication request. Please sign in again.');
-                    submitGateBtn.disabled = false;
-                    submitGateBtn.innerHTML = '<i class="fa-solid fa-plug"></i> Authenticate & Enter WebApp';
-                    return;
-                }
-
-                const verifier = localStorage.getItem('nso_pkce_verifier');
-                if (!verifier) {
-                    alert('PKCE verifier missing. Please click "Open Nintendo Sign In" again to generate a new session.');
-                    submitGateBtn.disabled = false;
-                    submitGateBtn.innerHTML = '<i class="fa-solid fa-plug"></i> Authenticate & Enter WebApp';
-                    return;
-                }
-
-                try {
-                    // Step 1: Exchange session_token_code + session_token_code_verifier -> session_token
-                    submitGateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Step 1/3: Exchanging Session Code...';
-                    const formBody = new URLSearchParams({
-                        client_id: '71b963c1b7b6d119',
-                        session_token_code: code,
-                        session_token_code_verifier: verifier
-                    });
-
-                    const step1Resp = await proxyFetch('https://accounts.nintendo.com/connect/1.0.0/api/session_token', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'User-Agent': 'Dalvik/2.1.0 (Linux; U; Android 10; Build/QP1A.190711.020)'
-                        },
-                        body: formBody.toString()
-                    });
-                    const step1Data = await step1Resp.json();
-
-                    if (!step1Data.session_token) {
-                        alert(`OAuth Step 1 Error: ${step1Data.error || step1Data.errorMessage || 'Invalid session_token_code'}`);
-                        submitGateBtn.disabled = false;
-                        submitGateBtn.innerHTML = '<i class="fa-solid fa-plug"></i> Authenticate & Enter WebApp';
-                        return;
-                    }
-
-                    // Clear one-time PKCE verifier and OAuth state after successful use
-                    localStorage.removeItem('nso_pkce_verifier');
-                    localStorage.removeItem('nso_auth_state');
-
-                    // Step 2: Exchange session_token -> id_token & access_token (JWT)
-                    submitGateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Step 2/3: Fetching ID Token & Profile...';
-                    const step2Resp = await proxyFetch('https://accounts.nintendo.com/connect/1.0.0/api/token', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'User-Agent': 'Dalvik/2.1.0 (Linux; U; Android 10; Build/QP1A.190711.020)'
-                        },
-                        body: JSON.stringify({
-                            client_id: '71b963c1b7b6d119',
-                            session_token: step1Data.session_token,
-                            grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer-session-token'
-                        })
-                    });
-                    const step2Data = await step2Resp.json();
-
-                    if (!step2Data.id_token) {
-                        alert(`OAuth Step 2 Error: ${step2Data.error || step2Data.error_description || 'Failed to obtain id_token'}`);
-                        submitGateBtn.disabled = false;
-                        submitGateBtn.innerHTML = '<i class="fa-solid fa-plug"></i> Authenticate & Enter WebApp';
-                        return;
-                    }
-
-                    idToken = step2Data.id_token;
-                    accessToken = step2Data.access_token;
-
-                    // Step 3: Fetch Nintendo User Profile (/2.0.0/users/me with NASDKAPI User-Agent)
-                    try {
-                        const userResp = await proxyFetch('https://api.accounts.nintendo.com/2.0.0/users/me', {
-                            headers: {
-                                'Authorization': `Bearer ${accessToken}`,
-                                'Accept-Language': 'en-GB',
-                                'User-Agent': 'NASDKAPI; Android',
-                                'Accept': 'application/json'
-                            }
-                        });
-                        if (userResp.ok) {
-                            const userInfo = await userResp.json();
-                            naId = userInfo.id || null;
-                            language = userInfo.language || language;
-                            naCountry = userInfo.country || naCountry;
-                            naBirthday = userInfo.birthday || naBirthday;
-                            console.log('[Browser Auth] Authenticated Nintendo Account User Profile:', userInfo);
-                        }
-                    } catch (e) {
-                        console.warn('Profile fetch warning:', e);
-                    }
-
-                } catch (e) {
-                    alert(`OAuth Exchange Error: ${e.message}`);
-                    submitGateBtn.disabled = false;
-                    submitGateBtn.innerHTML = '<i class="fa-solid fa-plug"></i> Authenticate & Enter WebApp';
-                    return;
-                }
-            }
-
-            // Step 4: Ask the signed-in Android app for f, timestamp, and requestId.
-            submitGateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Step 3/3: Requesting nxapi attestation...';
-
-            try {
-                // nxapi creates f, timestamp, and requestId together. Supplying
-                // browser-generated values can fail Coral's time validation.
-                const attestation = await nxapiGenerateF(1, idToken, { na_id: naId });
-                const { f: fToken, timestamp: timestampMs, requestId } = attestation;
-
-                const coralLoginUrl = 'https://api-lp1.znc.srv.nintendo.net/v4/Account/Login';
-                const coralLoginBody = JSON.stringify({
-                    parameter: {
-                        f: fToken,
-                        naIdToken: idToken,
-                        timestamp: timestampMs,
-                        requestId: requestId,
-                        language: language,
-                        naCountry: naCountry,
-                        naBirthday: naBirthday
-                    }
-                });
-
-                submitGateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Step 3/3: Encrypting Coral login...';
-                const encryptedLoginBody = await nxapiEncryptRequest(coralLoginUrl, null, coralLoginBody);
-
-                const coralResp = await proxyFetch(coralLoginUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/octet-stream',
-                        'Accept': 'application/octet-stream,application/json',
-                        'Accept-Language': 'en-GB',
-                        'Pragma': 'no-cache',
-                        'Cache-Control': 'no-cache',
-                        'X-ProductVersion': ZNCA_VERSION,
-                        'X-Platform': ZNCA_PLATFORM,
-                        'User-Agent': zncaUserAgent()
-                    },
-                    bodyBase64: encryptedLoginBody
-                });
-
-                const data = await parseCoralResponse(coralResp);
-                console.log('Coral Login Response:', data);
-
-                if (coralResp.ok && data.result) {
-                    // Keep the Nintendo Account ID required by nxapi method 2
-                    // alongside this browser-local session, never on the relay.
-                    data.nsoWebapp = { naId };
-                    userSession = data;
-                    localStorage.setItem('nso_user_session', JSON.stringify(data));
-                    showAuthenticatedUI(data);
-                } else {
-                    alert(`Coral Login Error (${data.status || 'Error'}): ${data.errorMessage || data.error || 'Failed to authenticate'}`);
-                }
-            } catch (e) {
-                alert(`Connection Error: ${e.message}`);
-            } finally {
-                submitGateBtn.disabled = false;
-                submitGateBtn.innerHTML = '<i class="fa-solid fa-plug"></i> Authenticate & Enter WebApp';
-            }
+        submitGateBtn.addEventListener('click', () => {
+            const input = authInput?.value.trim() || '';
+            performFullAuthentication({ input });
         });
+    }
+
+    if (resumeRememberedBtn) {
+        resumeRememberedBtn.addEventListener('click', () => {
+            if (!hasNxapiConsent()) {
+                setAuthGateHint('Please acknowledge the nxapi disclosure checkbox before continuing.');
+                alert('Please acknowledge the nxapi data disclosure checkbox before continuing.');
+                return;
+            }
+            performFullAuthentication({ isResume: true });
+        });
+    }
+
+    if (forgetRememberedBtn) {
+        forgetRememberedBtn.addEventListener('click', forgetRememberedAccount);
+    }
+
+    if (profileForgetRememberedBtn) {
+        profileForgetRememberedBtn.addEventListener('click', forgetRememberedAccount);
     }
 }
 
