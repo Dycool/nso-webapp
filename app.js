@@ -445,7 +445,12 @@ function showAuthenticatedUI(session) {
 }
 
 function logout() {
+    window.webServiceManager?.closeActiveService();
     localStorage.removeItem('nso_user_session');
+    localStorage.removeItem('nxapi_access_token_cache');
+    localStorage.removeItem('nxapi_auth_token');
+    localStorage.removeItem('nso_pkce_verifier');
+    localStorage.removeItem('nso_auth_state');
     userSession = null;
     nxapiAccessToken = null;
     showLoginGate();
@@ -609,10 +614,20 @@ function initAuthGate() {
             // Full 3-step token exchange directly in browser JS
             if (input.includes('session_token_code=') || input.length < 120) {
                 let code = input;
+                let returnedState = null;
                 if (input.includes('session_token_code=')) {
                     const hashPart = input.split('#')[1] || input.split('?')[1] || input;
                     const urlParams = new URLSearchParams(hashPart);
                     code = urlParams.get('session_token_code') || code;
+                    returnedState = urlParams.get('state') || null;
+                }
+
+                const expectedState = localStorage.getItem('nso_auth_state');
+                if (returnedState && expectedState && returnedState !== expectedState) {
+                    alert('OAuth state mismatch. The sign-in response did not match the expected authentication request. Please sign in again.');
+                    submitGateBtn.disabled = false;
+                    submitGateBtn.innerHTML = '<i class="fa-solid fa-plug"></i> Authenticate & Enter WebApp';
+                    return;
                 }
 
                 const verifier = localStorage.getItem('nso_pkce_verifier');
@@ -648,6 +663,10 @@ function initAuthGate() {
                         submitGateBtn.innerHTML = '<i class="fa-solid fa-plug"></i> Authenticate & Enter WebApp';
                         return;
                     }
+
+                    // Clear one-time PKCE verifier and OAuth state after successful use
+                    localStorage.removeItem('nso_pkce_verifier');
+                    localStorage.removeItem('nso_auth_state');
 
                     // Step 2: Exchange session_token -> id_token & access_token (JWT)
                     submitGateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Step 2/3: Fetching ID Token & Profile...';
@@ -897,7 +916,7 @@ async function loadGameServices() {
             button.type = 'button';
             button.textContent = 'Connect';
             button.setAttribute('aria-label', `Open ${service.name}`);
-            button.addEventListener('click', () => connectGameService(service, button));
+            button.addEventListener('click', () => window.webServiceManager?.launchService(service, button));
             card.append(image, copy, button);
             container.appendChild(card);
         });
@@ -906,93 +925,12 @@ async function loadGameServices() {
     }
 }
 
-async function connectGameService(service, button) {
-    const original = button.textContent;
-    const card = button.closest('.service-launch-card');
-    card?.classList.add('launching-service');
-    button.disabled = true;
-    button.textContent = 'Connecting…';
-    try {
-        const token = coralAccessToken();
-        const naId = userSession?.nsoWebapp?.naId;
-        if (!naId) {
-            throw new Error('This saved session is missing its Nintendo Account ID. Log out and sign in again.');
-        }
-        const attestation = await nxapiGenerateF(2, token, {
-            na_id: naId,
-            coral_user_id: String(userSession?.result?.user?.id || '')
-        });
-        const result = await coralCall('/v4/Game/GetWebServiceToken', {
-            id: service.id,
-            registrationToken: '',
-            f: attestation.f,
-            timestamp: attestation.timestamp,
-            requestId: attestation.requestId
-        });
-        if (!result.accessToken) throw new Error('Nintendo did not return a web-service token.');
-        launchGameWebview(service, result.accessToken);
-    } catch (e) {
-        card?.classList.remove('launching-service');
-        button.disabled = false;
-        button.textContent = original;
-        alert(`Could not connect ${service.name}: ${e.message}`);
-    }
-}
-
-function launchGameWebview(service, token) {
-    const serviceUrl = service?.uri || service?.url;
-    if (!serviceUrl) throw new Error('Nintendo did not provide a URL for this game service.');
-
-    let target;
-    try {
-        target = new URL(serviceUrl);
-    } catch {
-        throw new Error('Nintendo returned an invalid URL for this game service.');
-    }
-    if (target.protocol !== 'https:') throw new Error('The game service URL is not secure.');
-
-    const overlay = document.getElementById('inAppGameWebview');
-    const title = document.getElementById('inAppGameWebviewTitle');
-    if (title) title.textContent = service.name || 'Game Service';
-    if (overlay) overlay.classList.remove('hidden');
-
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = `${WORKER_URL}/api/nso/webview/start`;
-    form.target = 'inAppGameWebviewFrame';
-    form.style.display = 'none';
-
-    const urlInput = document.createElement('input');
-    urlInput.type = 'hidden';
-    urlInput.name = 'serviceUrl';
-    urlInput.value = target.toString();
-
-    const tokenInput = document.createElement('input');
-    tokenInput.type = 'hidden';
-    tokenInput.name = 'token';
-    tokenInput.value = token;
-
-    form.append(urlInput, tokenInput);
-    document.body.append(form);
-    form.submit();
-    setTimeout(() => form.remove(), 1000);
-}
-
 document.getElementById('closeInAppGameWebviewBtn')?.addEventListener('click', () => {
-    document.getElementById('inAppGameWebview')?.classList.add('hidden');
-    const frame = document.getElementById('inAppGameWebviewFrame');
-    if (frame) frame.src = 'about:blank';
+    window.webServiceManager?.closeActiveService();
 });
 
 document.getElementById('reloadInAppGameWebviewBtn')?.addEventListener('click', () => {
-    const frame = document.getElementById('inAppGameWebviewFrame');
-    if (frame) {
-        try {
-            frame.contentWindow?.location.reload();
-        } catch {
-            frame.src = frame.src;
-        }
-    }
+    window.webServiceManager?.reloadActiveService();
 });
 
 let selectedMediaSet = new Set();
