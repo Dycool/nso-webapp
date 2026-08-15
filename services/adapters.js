@@ -22,7 +22,7 @@ class GenericWebViewAdapter {
         const createPayload = {
             serviceId: String(service.id),
             serviceUri: service.uri || service.url,
-            whiteList: Array.isArray(service.whiteList) ? service.whiteList : [],
+            whiteList: Array.isArray(service.whiteList) ? service.whiteList : (Array.isArray(service.whitelist) ? service.whitelist : []),
             token: token,
             language: userLanguage,
             country: userCountry

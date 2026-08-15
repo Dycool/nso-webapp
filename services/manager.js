@@ -64,7 +64,7 @@ class WebServiceManager {
      * Canonical GameWebServiceToken acquisition function.
      * Executes Coral method-2 /f attestation and calls /v4/Game/GetWebServiceToken.
      */
-    async getGameWebServiceToken(serviceId) {
+    async getGameWebServiceToken(serviceId, traceId) {
         const token = coralAccessToken();
         if (!token) throw new Error('No Coral access token available. Please sign in again.');
 
@@ -74,11 +74,16 @@ class WebServiceManager {
         }
 
         const coralUserId = String(userSession?.result?.user?.id || userSession?.user?.id || '');
+
+        const fStart = performance.now();
         const attestation = await nxapiGenerateF(2, token, {
             na_id: naId,
             coral_user_id: coralUserId
         });
+        const fDuration = Math.round(performance.now() - fStart);
+        console.log(`[LaunchTrace:${traceId || 'anon'}] stage=nxapi_f_method_2 durationMs=${fDuration}`);
 
+        const tokenStart = performance.now();
         const result = await coralCall('/v4/Game/GetWebServiceToken', {
             id: Number(serviceId),
             registrationToken: '',
@@ -86,6 +91,8 @@ class WebServiceManager {
             timestamp: attestation.timestamp,
             requestId: attestation.requestId
         });
+        const tokenDuration = Math.round(performance.now() - tokenStart);
+        console.log(`[LaunchTrace:${traceId || 'anon'}] stage=get_web_service_token durationMs=${tokenDuration}`);
 
         if (!result?.accessToken) {
             throw new Error('Nintendo did not return a valid GameWebServiceToken.');
@@ -104,6 +111,9 @@ class WebServiceManager {
         this.activeService = service;
         this.launchingButton = buttonElement;
 
+        const traceId = 'tr_' + Math.random().toString(36).slice(2, 8);
+        const overallStart = performance.now();
+
         let originalText = '';
         const card = buttonElement?.closest('.service-launch-card');
         if (buttonElement) {
@@ -114,16 +124,22 @@ class WebServiceManager {
         }
 
         try {
-            console.log(`[WebServiceManager] Launching ${service.name || 'Game Service'} via ${adapter.constructor.name}`);
-            const token = await this.getGameWebServiceToken(service.id);
+            console.log(`[LaunchTrace:${traceId}] Launching ${service.name || 'Game Service'} via ${adapter.constructor.name}`);
+            const token = await this.getGameWebServiceToken(service.id, traceId);
 
             const userProfile = userSession?.result?.user || userSession?.user;
             const language = userProfile?.language || 'en-GB';
             const country = userProfile?.country || 'GB';
 
+            const sessionStart = performance.now();
             await adapter.launch(service, token, { language, country });
+            const sessionDuration = Math.round(performance.now() - sessionStart);
+            console.log(`[LaunchTrace:${traceId}] stage=webview_session_create durationMs=${sessionDuration}`);
+
+            const totalDuration = Math.round(performance.now() - overallStart);
+            console.log(`[LaunchTrace:${traceId}] stage=total_launch durationMs=${totalDuration}`);
         } catch (e) {
-            console.error('[WebServiceManager] Launch failed:', e);
+            console.error(`[LaunchTrace:${traceId}] Launch failed:`, e);
             alert(`Could not open ${service.name || 'service'}: ${e.message}`);
         } finally {
             if (buttonElement) {
