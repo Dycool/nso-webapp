@@ -317,7 +317,7 @@ async function getNxapiAccessToken() {
 
 async function nxapiFetch(path, options = {}) {
     const token = await getNxapiAccessToken();
-    return proxyFetch(nxapiUrl(path), {
+    const response = await proxyFetch(nxapiUrl(path), {
         ...options,
         headers: {
             'X-znca-Client-Version': NXAPI_CLIENT_VERSION,
@@ -327,6 +327,26 @@ async function nxapiFetch(path, options = {}) {
             ...(options.headers || {})
         }
     });
+
+    if (response.status === 429) {
+        const retryAfterHeader = response.headers.get('Retry-After');
+        const until = parseRetryAfter(retryAfterHeader) || (Date.now() + 60000);
+        setRateLimitUntil(until);
+        const timeStr = new Date(until).toLocaleTimeString();
+        const sec = Math.ceil((until - Date.now()) / 1000);
+        throw new AuthStageError(
+            'NXAPI_AUTH',
+            `nxapi authentication temporarily rate-limited (HTTP 429). Retry after ${timeStr} (${sec}s remaining).`,
+            null,
+            429
+        );
+    }
+
+    if (response.status === 401) {
+        nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 };
+    }
+
+    return response;
 }
 
 async function refreshNxapiConfig() {
@@ -347,9 +367,28 @@ async function nxapiGenerateF(method, token, userData = {}) {
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ hash_method: String(method), token, ...userData })
     });
-    const data = await response.json();
+    let data = {};
+    try {
+        data = await response.json();
+    } catch (e) {}
+
     if (!response.ok || !data.f || !data.request_id || !Number.isFinite(Number(data.timestamp))) {
-        throw new Error(data.error_message || data.error || 'nxapi did not return a complete attestation result.');
+        const errorMsg = data.error_description || data.error_message || data.error || 'nxapi did not return a complete attestation result.';
+        if (response.status === 429 || errorMsg.toLowerCase().includes('too many attempts') || errorMsg.toLowerCase().includes('rate limit')) {
+            const retryAfterHeader = response.headers.get('Retry-After');
+            const until = parseRetryAfter(retryAfterHeader) || (Date.now() + 60000);
+            setRateLimitUntil(until);
+            const timeStr = new Date(until).toLocaleTimeString();
+            const sec = Math.ceil((until - Date.now()) / 1000);
+            throw new AuthStageError(
+                'NXAPI_AUTH',
+                `nxapi authentication temporarily rate-limited. Retry after ${timeStr} (${sec}s remaining).`,
+                null,
+                429
+            );
+        }
+        const stage = method === 1 ? 'NXAPI_F_METHOD_1' : 'NXAPI_F_METHOD_2';
+        throw new AuthStageError(stage, errorMsg, null, response.status);
     }
     return { f: data.f, timestamp: Number(data.timestamp), requestId: data.request_id };
 }
@@ -360,9 +399,27 @@ async function nxapiEncryptRequest(url, bearerToken, body) {
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ url, token: bearerToken || null, data: body })
     });
-    const data = await response.json();
+    let data = {};
+    try {
+        data = await response.json();
+    } catch (e) {}
+
     if (!response.ok || !data.data) {
-        throw new Error(data.error_message || data.error || 'nxapi request encryption failed.');
+        const errorMsg = data.error_description || data.error_message || data.error || 'nxapi request encryption failed.';
+        if (response.status === 429 || errorMsg.toLowerCase().includes('too many attempts') || errorMsg.toLowerCase().includes('rate limit')) {
+            const retryAfterHeader = response.headers.get('Retry-After');
+            const until = parseRetryAfter(retryAfterHeader) || (Date.now() + 60000);
+            setRateLimitUntil(until);
+            const timeStr = new Date(until).toLocaleTimeString();
+            const sec = Math.ceil((until - Date.now()) / 1000);
+            throw new AuthStageError(
+                'NXAPI_AUTH',
+                `nxapi request encryption temporarily rate-limited. Retry after ${timeStr} (${sec}s remaining).`,
+                null,
+                429
+            );
+        }
+        throw new AuthStageError('NXAPI_ENCRYPT_ACCOUNT_LOGIN', errorMsg, null, response.status);
     }
     // The API returns base64url; the existing binary proxy accepts standard base64.
     return data.data.replace(/-/g, '+').replace(/_/g, '/');
@@ -376,8 +433,20 @@ async function nxapiDecryptResponse(encryptedBase64) {
     });
     const data = await response.text();
     if (!response.ok) {
-        throw new Error(data || 'nxapi response decryption failed.');
-    }
+        if (response.status === 429 || data.toLowerCase().includes('too many attempts') || data.toLowerCase().includes('rate limit')) {
+            const retryAfterHeader = response.headers.get('Retry-After');
+            const until = parseRetryAfter(retryAfterHeader) || (Date.now() + 60000);
+            setRateLimitUntil(until);
+            const timeStr = new Date(until).toLocaleTimeString();
+            const sec = Math.ceil((until - Date.now()) / 1000);
+            throw new AuthStageError(
+                'NXAPI_AUTH',
+                `nxapi response decryption temporarily rate-limited. Retry after ${timeStr} (${sec}s remaining).`,
+                null,
+                429
+            );
+        }
+        throw new AuthStageError('NXAPI_DECRYPT_ACCOUNT_LOGIN', data || 'nxapi response decryption failed.', null, response.status);
     return data;
 }
 
