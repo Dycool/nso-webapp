@@ -60,6 +60,7 @@ class GenericWebViewAdapter {
 
         if (title) title.textContent = service.name || 'Game Service';
         if (overlay) overlay.classList.remove('hidden');
+        document.body.classList.add('webview-active');
 
         if (frame) {
             frame.src = sessionData.webviewUrl;
@@ -85,6 +86,7 @@ class GenericWebViewAdapter {
     }
 
     async close() {
+        document.body.classList.remove('webview-active');
         if (!this.currentSession?.id) return;
         const workerUrl = this.manager.getWorkerUrl();
         const sessionId = this.currentSession.id;

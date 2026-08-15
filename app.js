@@ -1831,6 +1831,7 @@ document.getElementById('changeNotifySettingBtn')?.addEventListener('click', () 
 
 // In-App Game Web Service Controls
 document.getElementById('closeInAppGameWebviewBtn')?.addEventListener('click', () => {
+    document.body.classList.remove('webview-active');
     const overlay = document.getElementById('inAppGameWebview');
     const iframe = document.getElementById('inAppGameWebviewFrame');
     if (overlay) overlay.classList.add('hidden');

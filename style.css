@@ -1514,12 +1514,75 @@ body.dark-theme { background: #1b1b1b; }
 .fc-result-code { display: block; color: #dedee0; font-size: 13px; font-weight: 600; margin-bottom: 24px; }
 
 /* In-App Game Web Service Fullscreen Overlay */
-.inapp-game-webview { position: fixed; z-index: 280; inset: 0; background: #000; display: flex; flex-direction: column; }
-.inapp-webview-header { height: 52px; background: #222223; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; color: #fff; z-index: 2; }
-.inapp-webview-header h2 { font: 700 15px var(--font-heading); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0 14px; }
-.webview-back-btn, .webview-reload-btn { border: 0; background: transparent; color: #fff; font-size: 18px; cursor: pointer; padding: 6px; }
-.inapp-webview-frame-wrap { flex: 1; width: 100%; height: calc(100vh - 52px); background: #000; }
-.inapp-webview-frame-wrap iframe { width: 100%; height: 100%; border: 0; }
+body.webview-active {
+    overflow: hidden !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    touch-action: none;
+}
+
+.inapp-game-webview {
+    position: fixed;
+    z-index: 280;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.inapp-webview-header {
+    height: 52px;
+    min-height: 52px;
+    max-height: 52px;
+    background: #222223;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+    color: #fff;
+    z-index: 2;
+    box-sizing: border-box;
+    flex-shrink: 0;
+}
+
+.inapp-webview-header h2 {
+    font: 700 15px var(--font-heading);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin: 0 14px;
+}
+
+.webview-back-btn, .webview-reload-btn {
+    border: 0;
+    background: transparent;
+    color: #fff;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 6px;
+}
+
+.inapp-webview-frame-wrap {
+    flex: 1;
+    width: 100%;
+    height: calc(100vh - 52px);
+    max-height: calc(100vh - 52px);
+    background: #000;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.inapp-webview-frame-wrap iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+}
 
 @keyframes nso-loading-pulse { from { opacity: .72; } to { opacity: 1; } }
 

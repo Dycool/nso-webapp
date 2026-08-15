@@ -186,6 +186,7 @@ class WebServiceManager {
      * Closes the currently active WebView overlay and deletes the session in the DO.
      */
     async closeActiveService() {
+        document.body.classList.remove('webview-active');
         const overlay = document.getElementById('inAppGameWebview');
         const frame = document.getElementById('inAppGameWebviewFrame');
 
