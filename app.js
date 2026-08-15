@@ -1638,9 +1638,10 @@ function renderFriendsInto(container, friends) {
     }
 
     friends.forEach(f => {
-        const presenceState = f.presence?.state || f.state;
+        const presence = f.presence || {};
+        const presenceState = presence.state || f.state;
         const isOnline = ['ONLINE', 'PLAYING'].includes(presenceState) || f.isOnline;
-        const presenceName = f.presence?.game?.name || f.presence?.name || '';
+        const presenceName = presence.game?.name || presence.name || '';
         const card = document.createElement('button');
         card.type = 'button';
         card.className = 'friend-card';
@@ -1648,8 +1649,24 @@ function renderFriendsInto(container, friends) {
         let statusText = 'Offline';
         if (isOnline) {
             statusText = presenceName || 'Online';
-        } else if (f.statusText) {
-            statusText = f.statusText;
+        } else {
+            const rawTs = presence.updatedAt || presence.logoutAt || f.updatedAt || f.logoutAt;
+            if (rawTs) {
+                const tsSec = typeof rawTs === 'number' ? (rawTs > 1e11 ? Math.floor(rawTs / 1000) : rawTs) : Math.floor(Date.parse(rawTs) / 1000);
+                if (!isNaN(tsSec) && tsSec > 0) {
+                    const diffSec = Math.floor(Date.now() / 1000) - tsSec;
+                    if (diffSec > 0) {
+                        if (diffSec < 60) statusText = 'Just now';
+                        else if (diffSec < 3600) statusText = `${Math.floor(diffSec / 60)}m ago`;
+                        else if (diffSec < 86400) statusText = `${Math.floor(diffSec / 3600)}h ago`;
+                        else if (diffSec < 2592000) statusText = `${Math.floor(diffSec / 86400)}d ago`;
+                        else if (diffSec < 31536000) statusText = `${Math.floor(diffSec / 2592000)}mo ago`;
+                    }
+                }
+            }
+            if (statusText === 'Offline' && f.statusText) {
+                statusText = f.statusText;
+            }
         }
 
         card.innerHTML = `

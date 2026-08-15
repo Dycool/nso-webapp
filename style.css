@@ -1224,11 +1224,11 @@ body.dark-theme {
 .nso-section-heading h2 { font-size: 18px; letter-spacing: -.02em; }
 .text-action { border: 0; background: transparent; color: #fff; font: inherit; font-size: 13px; padding: 6px 0; }
 .friends-grid { display: flex; gap: 16px; overflow-x: auto; padding: 4px 2px 12px; grid-template-columns: none; }
-.friend-card { min-width: 76px; background: transparent; border: 0; box-shadow: none; padding: 0; display: block; text-align: center; }
-.friend-avatar-wrap { width: 64px; height: 64px; margin: 0 auto 7px; }
-.friend-avatar-wrap img { border-radius: 50%; border: 2px solid transparent; }
-.friend-name { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.friend-game,.friend-time { display: none; }
+.friends-grid .friend-card { min-width: 76px; background: transparent; border: 0; box-shadow: none; padding: 0; display: block; text-align: center; cursor: pointer; }
+.friends-grid .friend-avatar-wrap { width: 64px; height: 64px; margin: 0 auto 7px; }
+.friends-grid .friend-avatar-wrap img { width: 100%; height: 100%; border-radius: 50%; border: 2px solid transparent; object-fit: cover; }
+.friends-grid .friend-name { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #dedee0; }
+.friends-grid .friend-game, .friends-grid .friend-time { display: none; }
 .services-nav { margin: 16px 0; overflow-x: auto; }
 .service-tab-btn { background: transparent; border: 0; color: var(--text-secondary); border-bottom: 2px solid transparent; border-radius: 0; white-space: nowrap; }
 .service-tab-btn.active { color: #fff; background: transparent; border-bottom-color: var(--nintendo-red); }
@@ -1239,12 +1239,10 @@ body.dark-theme {
 @media (min-width: 760px) {
     body.dark-theme { background: #101011; }
     .navbar { max-width: none; }
-    .main-content { max-width: 1180px; margin: 0 auto; }
-    #page-friends { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, .68fr); column-gap: 28px; align-content: start; }
-    #page-friends .nso-online-banner { grid-column: 1 / -1; }
-    #page-friends .profile-card, #page-friends .nso-section-heading, #page-friends .friends-grid { grid-column: 1; }
-    #page-friends .service-catalog { grid-column: 2; grid-row: 2 / span 3; margin-top: -64px; }
-    #page-games, #page-album { max-width: 1020px; margin: 0 auto; }
+    .main-content { max-width: 100%; width: 100%; margin: 0 auto; padding: 20px clamp(20px, 4vw, 56px) 100px; box-sizing: border-box; }
+    #page-home { width: 100%; max-width: 1400px; margin: 0 auto; }
+    #page-friends { width: 100%; max-width: 100%; margin: 0 auto; display: block; }
+    #page-album { width: 100%; max-width: 100%; margin: 0 auto; }
 }
 
 @media (min-width: 900px) and (orientation: landscape) {
@@ -1369,8 +1367,8 @@ body.dark-theme { background: #1b1b1b; }
 .home-dock button.active .dock-friends-outline,
 .home-dock button.active .dock-album-outline { display: none; }
 
-.native-tab-page { width: min(1120px, 100%); margin: 0 auto; padding: 24px 0 30px; }
-.full-width-album-page { width: 100% !important; max-width: 100% !important; padding: 24px clamp(16px, 3.5vw, 48px) 90px !important; box-sizing: border-box; }
+.native-tab-page { width: 100%; max-width: 100%; margin: 0 auto; padding: 24px 0 30px; box-sizing: border-box; }
+.full-width-album-page, .full-width-friends-page { width: 100% !important; max-width: 100% !important; padding: 24px clamp(20px, 4vw, 56px) 100px !important; box-sizing: border-box; }
 
 .native-page-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; margin-bottom: 24px; }
 .album-toolbar-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 22px; }
@@ -1388,22 +1386,23 @@ body.dark-theme { background: #1b1b1b; }
 .native-page-heading h1 { color: #e1e1e3; font: 700 25px var(--font-heading); }
 .native-page-heading span { color: #99999e; font-size: 13px; }
 .native-page-heading p { flex-basis: 100%; color: #99999e; font-size: 13px; }
-.native-friends-top-bar { position: relative; display: flex; align-items: center; justify-content: center; min-height: 48px; margin-bottom: 20px; }
-.native-friends-top-bar h1 { color: #dedee0; font: 700 17px var(--font-heading); text-align: center; margin: 0; }
-.friends-top-actions { position: absolute; right: 0; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 18px; }
-.native-icon-btn { border: 0; background: transparent; color: #dedee0; font-size: 19px; cursor: pointer; padding: 4px; }
-.native-icon-btn:hover { color: #fff; }
 
-.friends-page-grid { display: flex; flex-wrap: wrap; gap: 14px; }
-.friends-page-grid .friend-card { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 132px; height: 148px; min-width: 132px; padding: 14px 10px; border: 0; border-radius: 9px; background: #303032; text-align: center; cursor: pointer; transition: background .15s; }
-.friends-page-grid .friend-card:hover { background: #38383a; }
-.friends-page-grid .friend-avatar-wrap { width: 78px; height: 78px; margin: 0 auto 8px; position: relative; }
-.friends-page-grid .friend-avatar-wrap img { width: 78px; height: 78px; border-radius: 50%; object-fit: cover; }
-.friends-page-grid .friend-info { display: flex; flex-direction: column; align-items: center; width: 100%; }
-.friends-page-grid .friend-name { color: #dedee0; font: 700 13px var(--font-heading); max-width: 114px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.friends-page-grid .friend-game, .friends-page-grid .friend-time { font-size: 11px; max-width: 114px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.friends-page-grid .friend-game { margin-top: 2px; color: #00b7ef; }
-.friends-page-grid .friend-time { margin-top: 2px; color: #88888c; }
+.native-friends-top-bar { position: relative; display: flex; align-items: center; justify-content: center; min-height: 48px; margin-bottom: 28px; width: 100%; }
+.native-friends-top-bar h1 { color: #dedee0; font: 700 18px var(--font-heading); text-align: center; margin: 0; }
+.friends-top-actions { position: absolute; right: 0; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 20px; }
+.native-icon-btn { border: 0; background: transparent; color: #dedee0; font-size: 20px; cursor: pointer; padding: 6px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; transition: color 0.15s ease, background 0.15s ease; }
+.native-icon-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+
+.friends-page-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 16px; width: 100%; box-sizing: border-box; }
+.friends-page-grid .friend-card { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; min-height: 178px; padding: 20px 14px 16px; border: 0; border-radius: 14px; background: #303032; text-align: center; cursor: pointer; transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease; box-sizing: border-box; }
+.friends-page-grid .friend-card:hover { background: #38383a; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4); }
+.friends-page-grid .friend-avatar-wrap { width: 96px; height: 96px; margin: 0 auto 12px; position: relative; }
+.friends-page-grid .friend-avatar-wrap img { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; display: block; }
+.friends-page-grid .friend-info { display: flex; flex-direction: column; align-items: center; width: 100%; overflow: hidden; }
+.friends-page-grid .friend-name { color: #fff; font: 700 14px var(--font-heading); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+.friends-page-grid .friend-game, .friends-page-grid .friend-time { font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; }
+.friends-page-grid .friend-game { color: #00b7ef; font-weight: 600; }
+.friends-page-grid .friend-time { color: #88888c; }
 
 .album-page-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; width: 100%; box-sizing: border-box; }
 .media-item { position: relative; display: flex; flex-direction: column; width: 100%; border: 2px solid transparent; border-radius: 9px; background: #252528; overflow: hidden; padding: 0; cursor: pointer; text-align: left; transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease; box-sizing: border-box; }
@@ -1605,9 +1604,9 @@ body.dark-theme { background: #1b1b1b; }
     .main-content { min-height: calc(100vh - 60px); padding: 4px 16px 88px; }
     .nso-section-heading { margin-top: 12px; }
     .friends-grid { gap: 12px; }
-    .friend-card { min-width: 62px; width: 62px; }
-    .friend-avatar-wrap { width: 58px; height: 58px; }
-    .friend-name { font-size: 10px; }
+    .friends-grid .friend-card { min-width: 62px; width: 62px; }
+    .friends-grid .friend-avatar-wrap { width: 58px; height: 58px; }
+    .friends-grid .friend-name { font-size: 10px; }
     .friend-loading-tile { flex-basis: 62px; }
     .friend-loading-tile i { width: 58px; height: 58px; }
     .game-services-catalog { gap: 8px; }
@@ -1617,7 +1616,12 @@ body.dark-theme { background: #1b1b1b; }
     .home-content-section .media-item { flex: 0 0 190px; }
     .native-tab-page { padding-top: 16px; }
     .native-page-heading h1 { font-size: 21px; }
-    .friends-page-grid { grid-template-columns: 1fr; }
+    .friends-page-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
+    .friends-page-grid .friend-card { min-height: 130px; padding: 12px 8px 10px; border-radius: 10px; }
+    .friends-page-grid .friend-avatar-wrap { width: 58px; height: 58px; margin-bottom: 8px; }
+    .friends-page-grid .friend-avatar-wrap img { width: 58px; height: 58px; }
+    .friends-page-grid .friend-name { font-size: 11px; }
+    .friends-page-grid .friend-game, .friends-page-grid .friend-time { font-size: 10px; }
     .album-page-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .profile-back { left: 16px; }
     .home-dock { bottom: 12px; height: 58px; padding: 4px 25px; }

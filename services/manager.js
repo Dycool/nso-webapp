@@ -22,6 +22,8 @@ class WebServiceManager {
         this.activeAdapter = null;
         this.activeService = null;
         this.launchingButton = null;
+        this.tokenCache = new Map();
+        this.tokenInFlight = new Map();
 
         this.initPostMessageListener();
     }
@@ -63,42 +65,72 @@ class WebServiceManager {
     /**
      * Canonical GameWebServiceToken acquisition function.
      * Executes Coral method-2 /f attestation and calls /v4/Game/GetWebServiceToken.
+     * Caches valid tokens and deduplicates concurrent in-flight requests.
      */
-    async getGameWebServiceToken(serviceId, traceId) {
-        const token = coralAccessToken();
-        if (!token) throw new Error('No Coral access token available. Please sign in again.');
-
-        const naId = userSession?.nsoWebapp?.naId;
-        if (!naId) {
-            throw new Error('Nintendo Account ID missing in session. Please sign out and sign in again.');
+    async getGameWebServiceToken(serviceId, traceId, forceFresh = false) {
+        const idStr = String(serviceId);
+        if (!forceFresh && this.tokenCache.has(idStr)) {
+            const cached = this.tokenCache.get(idStr);
+            if (cached && cached.expiresAt > Date.now() + 60000) {
+                console.log(`[LaunchTrace:${traceId || 'anon'}] Reusing active GameWebServiceToken for service ${idStr}`);
+                return cached.token;
+            }
         }
 
-        const coralUserId = String(userSession?.result?.user?.id || userSession?.user?.id || '');
-
-        const fStart = performance.now();
-        const attestation = await nxapiGenerateF(2, token, {
-            na_id: naId,
-            coral_user_id: coralUserId
-        });
-        const fDuration = Math.round(performance.now() - fStart);
-        console.log(`[LaunchTrace:${traceId || 'anon'}] stage=nxapi_f_method_2 durationMs=${fDuration}`);
-
-        const tokenStart = performance.now();
-        const result = await coralCall('/v4/Game/GetWebServiceToken', {
-            id: Number(serviceId),
-            registrationToken: '',
-            f: attestation.f,
-            timestamp: attestation.timestamp,
-            requestId: attestation.requestId
-        });
-        const tokenDuration = Math.round(performance.now() - tokenStart);
-        console.log(`[LaunchTrace:${traceId || 'anon'}] stage=get_web_service_token durationMs=${tokenDuration}`);
-
-        if (!result?.accessToken) {
-            throw new Error('Nintendo did not return a valid GameWebServiceToken.');
+        if (this.tokenInFlight.has(idStr)) {
+            console.log(`[LaunchTrace:${traceId || 'anon'}] Deduplicating concurrent token request for service ${idStr}`);
+            return await this.tokenInFlight.get(idStr);
         }
 
-        return result.accessToken;
+        const fetchPromise = (async () => {
+            const token = coralAccessToken();
+            if (!token) throw new Error('No Coral access token available. Please sign in again.');
+
+            const naId = userSession?.nsoWebapp?.naId;
+            if (!naId) {
+                throw new Error('Nintendo Account ID missing in session. Please sign out and sign in again.');
+            }
+
+            const coralUserId = String(userSession?.result?.user?.id || userSession?.user?.id || '');
+
+            const fStart = performance.now();
+            const attestation = await nxapiGenerateF(2, token, {
+                na_id: naId,
+                coral_user_id: coralUserId
+            });
+            const fDuration = Math.round(performance.now() - fStart);
+            console.log(`[LaunchTrace:${traceId || 'anon'}] stage=nxapi_f_method_2 durationMs=${fDuration}`);
+
+            const tokenStart = performance.now();
+            const result = await coralCall('/v4/Game/GetWebServiceToken', {
+                id: Number(serviceId),
+                registrationToken: '',
+                f: attestation.f,
+                timestamp: attestation.timestamp,
+                requestId: attestation.requestId
+            });
+            const tokenDuration = Math.round(performance.now() - tokenStart);
+            console.log(`[LaunchTrace:${traceId || 'anon'}] stage=get_web_service_token durationMs=${tokenDuration}`);
+
+            if (!result?.accessToken) {
+                throw new Error('Nintendo did not return a valid GameWebServiceToken.');
+            }
+
+            const expiresInSec = typeof result.expiresIn === 'number' ? result.expiresIn : 7200;
+            this.tokenCache.set(idStr, {
+                token: result.accessToken,
+                expiresAt: Date.now() + expiresInSec * 1000
+            });
+
+            return result.accessToken;
+        })();
+
+        this.tokenInFlight.set(idStr, fetchPromise);
+        try {
+            return await fetchPromise;
+        } finally {
+            this.tokenInFlight.delete(idStr);
+        }
     }
 
     /**
