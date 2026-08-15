@@ -447,6 +447,7 @@ async function nxapiDecryptResponse(encryptedBase64) {
             );
         }
         throw new AuthStageError('NXAPI_DECRYPT_ACCOUNT_LOGIN', data || 'nxapi response decryption failed.', null, response.status);
+    }
     return data;
 }
 
