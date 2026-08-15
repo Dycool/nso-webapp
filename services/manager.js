@@ -51,7 +51,7 @@ class WebServiceManager {
         if (idStr === this.SPLATNET2_ID || uri.includes('splatoon2.nintendo.net')) {
             return this.splatnet2Adapter;
         }
-        if (idStr === this.SMASHWORLD_ID || uri.includes('smashworld.nintendo.net')) {
+        if (idStr === this.SMASHWORLD_ID || uri.includes('smashbros.nintendo.net') || uri.includes('smashworld.nintendo.net') || uri.includes('aaaba') || name.includes('smash')) {
             return this.smashWorldAdapter;
         }
         if (name.includes('zelda') || uri.includes('zelda')) {
