@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nintendo Switch Online WebApp</title>
+    <meta name="description" content="Modern web application port of Nintendo Switch Online (Coral) featuring Friends List, Game Web Services, and Switch Album Media.">
+    <!-- Google Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css?v=20260815-v7">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body class="dark-theme">
+    <!-- Top Navigation Bar -->
+    <header class="navbar">
+        <div class="nav-container">
+            <div class="brand">
+                <div class="logo-icon" aria-hidden="true"><span class="top-switch-mark"><i></i><i></i></span></div>
+                <span class="brand-title">Nintendo Switch App</span>
+            </div>
+
+            <nav class="nav-tabs hidden" id="mainNavTabs" aria-hidden="true"></nav>
+
+            <div class="user-profile-menu">
+                <button class="btn-login-trigger" id="openAuthModalBtn">
+                    <i class="fa-solid fa-right-to-bracket"></i> Login Account
+                </button>
+                <button class="notification-button hidden" id="notificationBtn" type="button" aria-label="Notifications">
+                    <i class="fa-regular fa-bell"></i><span></span>
+                </button>
+                <button class="avatar-box hidden" id="userAvatarContainer" type="button" aria-label="Open profile">
+                    <img src="" alt="Avatar" id="userAvatar">
+                    <span class="user-name hidden" id="userNickname">Switch Player</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Full-Screen Login Gate for Unauthenticated Users -->
+    <section class="login-gate" id="loginGate">
+        <div class="login-gate-card">
+            <div class="login-logo">
+                <span class="switch-mark" aria-hidden="true"><i></i><i></i></span>
+            </div>
+            <h2>Nintendo Switch App</h2>
+            <p class="login-console-note">Your Nintendo Account must be linked to a console.</p>
+            <button class="btn-app-sign-in" id="beginSignInBtn" type="button">Sign In</button>
+            <a class="login-help" href="https://lounge.nintendo.com/redirect/supportlogin" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square"></i> Help</a>
+
+            <div class="login-workflow hidden" id="loginWorkflow">
+            <div class="nxapi-disclosure">
+                <label>
+                    <input type="checkbox" id="nxapiConsentCheckbox">
+                    <span>I understand that my Nintendo Account ID token, Coral token, and Coral API requests/responses will be sent to the third-party <a href="https://github.com/samuelthomas2774/nxapi-znca-api" target="_blank" rel="noopener noreferrer">nxapi ZNCA API</a> to authenticate and process encrypted Nintendo Switch Online requests.</span>
+                </label>
+                <a href="https://github.com/samuelthomas2774/nxapi-znca-api/blob/docs/docs/end-user-help.md" target="_blank" rel="noopener noreferrer">nxapi end-user help</a>
+            </div>
+
+            <div class="auth-steps">
+                <div class="step-box">
+                    <span>1</span>
+                    <div>
+                        <strong>Sign in on Nintendo Account</strong>
+                        <p>Click below to open Nintendo's official sign-in page:</p>
+                        <button class="btn-nintendo-oauth" id="nintendoOAuthGateBtn">
+                            <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Nintendo Sign In
+                        </button>
+                    </div>
+                </div>
+
+                <div class="step-box">
+                    <span>2</span>
+                    <div>
+                        <strong>Complete Sign In & Paste URL / Token</strong>
+                        <p>After signing in, right-click <strong>Select this person</strong> → <strong>Copy link address</strong>. Paste it below and we will continue automatically.</p>
+                        <textarea id="idTokenGateInput" placeholder="Paste redirect URL (npf71b963c1b7b6d119://auth#...) or session_token string here..."></textarea>
+                        <button type="button" class="btn-paste-token" id="pasteAuthGateBtn"><i class="fa-regular fa-clipboard"></i> Paste from clipboard</button>
+                        <p class="auth-hint" id="authGateHint" aria-live="polite"></p>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn-submit-gate" id="submitAuthGateBtn">
+                <i class="fa-solid fa-plug"></i> Authenticate & Enter WebApp
+            </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main App Container (Hidden until logged in) -->
+    <main class="main-content hidden" id="appContent">
+        <!-- Home -->
+        <section class="tab-page active" id="page-home">
+            <!-- Kept for authenticated profile data used elsewhere in the app. -->
+            <div class="profile-card home-profile-data" aria-hidden="true">
+                <img src="" alt="" class="profile-img" id="myAvatar">
+                <div class="profile-details"><h3 id="myNickname">Switch Player</h3><span id="myFriendCode">SW-0000-0000-0000</span></div>
+            </div>
+
+            <div class="nso-section-heading">
+                <h2>Friends</h2>
+            </div>
+            <div class="friends-grid" id="homeFriendsGrid">
+                <!-- Dynamically Loaded -->
+            </div>
+
+            <section class="home-content-section" aria-labelledby="serviceCatalogTitle">
+                <h2 id="serviceCatalogTitle">Game-Specific Services</h2>
+                <div id="gameServicesCatalog" class="game-services-catalog">
+                    <p class="service-status">Sign in to load your available services.</p>
+                </div>
+            </section>
+
+            <section class="home-content-section" aria-labelledby="uploadedMediaTitle">
+                <h2 id="uploadedMediaTitle">Uploaded Screenshots and Videos</h2>
+                <div class="media-grid" id="homeMediaGrid">
+                    <p class="service-status">Loading Switch album captures…</p>
+                </div>
+            </section>
+        </section>
+
+        <section class="tab-page native-tab-page" id="page-friends" aria-labelledby="friendsPageTitle">
+            <header class="native-friends-top-bar">
+                <h1 id="friendsPageTitle">Friends</h1>
+                <div class="friends-top-actions">
+                    <button class="native-icon-btn" id="openFriendSettingsBtn" type="button" aria-label="Friend Settings"><i class="fa-solid fa-gear"></i></button>
+                    <button class="native-icon-btn" id="openAddFriendBtn" type="button" aria-label="Add Friend"><i class="fa-solid fa-plus"></i></button>
+                </div>
+            </header>
+            <div class="friends-page-grid" id="friendsGrid"></div>
+        </section>
+
+        <section class="tab-page native-tab-page full-width-album-page" id="page-album" aria-labelledby="albumPageTitle">
+            <header class="native-page-heading album-toolbar-header">
+                <div class="album-header-text">
+                    <h1 id="albumPageTitle">Uploaded Screenshots and Videos</h1>
+                    <p>Uploads remain available for a limited time.</p>
+                </div>
+                <div class="album-batch-actions">
+                    <button type="button" class="btn-album-action" id="albumSelectAllBtn" aria-label="Select all items">
+                        <i class="fa-regular fa-square-check"></i> <span id="selectAllBtnText">Select All</span>
+                    </button>
+                    <button type="button" class="btn-album-action btn-album-download" id="albumDownloadZipBtn" disabled aria-label="Download selected as ZIP">
+                        <i class="fa-solid fa-file-zipper"></i> <span id="downloadZipBtnText">Download ZIP</span>
+                        <span class="selected-count-badge hidden" id="selectedCountBadge">0</span>
+                    </button>
+                </div>
+            </header>
+            <div class="album-page-grid" id="mediaGrid"></div>
+        </section>
+
+    </main>
+
+    <!-- Friend Settings Main Menu (Screenshot 2) -->
+    <section class="friend-settings-screen hidden" id="friendSettingsView" aria-label="Friend Settings">
+        <header class="settings-top-header">
+            <button class="settings-back-btn" id="closeFriendSettingsBtn" type="button" aria-label="Back"><i class="fa-solid fa-arrow-left"></i></button>
+            <h2>Friend Settings</h2>
+        </header>
+        <div class="settings-content-panel">
+            <div class="settings-menu-list">
+                <button class="settings-menu-row" id="openNotifySettingBtn" type="button">
+                    <span>Notify When Friends Go Online</span>
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+                <button class="settings-menu-row" id="openRequestsSettingBtn" type="button">
+                    <span>Receiving Friend Requests</span>
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+                <button class="settings-menu-row" id="openBlockedSettingBtn" type="button">
+                    <span>Blocked-User List</span>
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Setting 1: Notify When Friends Go Online (Screenshot 3) -->
+    <section class="friend-settings-screen hidden" id="friendSettingsNotifyView" aria-label="Notify When Friends Go Online">
+        <header class="settings-top-header">
+            <button class="settings-back-btn" id="closeNotifySettingBtn" type="button" aria-label="Back"><i class="fa-solid fa-arrow-left"></i></button>
+            <h2>Notify When Friends Go Online</h2>
+        </header>
+        <div class="settings-content-panel">
+            <p class="settings-subtext">Enable to receive notifications about friend requests, games and more.</p>
+            <div class="settings-section-divider">
+                <span>Current Settings</span>
+            </div>
+            <p class="settings-status-label" id="notifyStatusLabel">Notifications disabled</p>
+            <button class="btn-cyan-action" id="changeNotifySettingBtn" type="button">Change Settings</button>
+        </div>
+    </section>
+
+    <!-- Setting 2: Receiving Friend Requests (Screenshot 4) -->
+    <section class="friend-settings-screen hidden" id="friendSettingsRequestsView" aria-label="Receiving Friend Requests">
+        <header class="settings-top-header">
+            <button class="settings-back-btn" id="closeRequestsSettingBtn" type="button" aria-label="Back"><i class="fa-solid fa-arrow-left"></i></button>
+            <h2>Receiving Friend Requests</h2>
+        </header>
+        <div class="settings-content-panel">
+            <div class="settings-toggle-row">
+                <div class="toggle-row-copy">
+                    <strong>Receive Friend Requests</strong>
+                    <span>This setting is linked to your console.</span>
+                </div>
+                <label class="native-switch">
+                    <input type="checkbox" id="receiveRequestsToggle" checked>
+                    <span class="native-slider"></span>
+                </label>
+            </div>
+        </div>
+    </section>
+
+    <!-- Setting 3: Blocked-User List (Screenshot 5) -->
+    <section class="friend-settings-screen hidden" id="friendSettingsBlockedView" aria-label="Blocked-User List">
+        <header class="settings-top-header">
+            <button class="settings-back-btn" id="closeBlockedSettingBtn" type="button" aria-label="Back"><i class="fa-solid fa-arrow-left"></i></button>
+            <h2>Blocked-User List</h2>
+        </header>
+        <div class="settings-content-panel text-center">
+            <p class="empty-blocked-text" id="blockedUsersEmptyText">Your blocked-user list is empty.</p>
+            <div class="blocked-users-list hidden" id="blockedUsersNativeList"></div>
+        </div>
+    </section>
+
+    <!-- Add Friend Screen (Screenshot 1 & 5) -->
+    <section class="friend-settings-screen hidden" id="addFriendView" aria-label="Add Friend">
+        <header class="settings-top-header">
+            <button class="settings-back-btn" id="closeAddFriendBtn" type="button" aria-label="Back"><i class="fa-solid fa-arrow-left"></i></button>
+            <h2>Add Friend</h2>
+        </header>
+        <div class="settings-content-panel add-friend-panel">
+            <div class="add-friend-top-grid">
+                <button class="add-friend-top-card" id="openSearchByFriendCodeBtn" type="button">
+                    <span class="fc-badge-icon">123</span>
+                    <span>Friend Code</span>
+                </button>
+                <button class="add-friend-top-card" id="openMyCodeQrBtn" type="button">
+                    <i class="fa-solid fa-qrcode" style="font-size:24px;"></i>
+                    <span>QR Code</span>
+                </button>
+            </div>
+            <button class="add-friend-full-card" id="openVoiceChattedFriendsBtn" type="button">
+                <span class="coral-badge-icon">C</span>
+                <span>Users You've Chatted With</span>
+            </button>
+
+            <div class="add-friend-section">
+                <h3>Received Friend Requests</h3>
+                <div id="receivedRequestsContainer">
+                    <p>You have not received any friend requests at this time.</p>
+                </div>
+            </div>
+
+            <div class="add-friend-section">
+                <h3>Sent Friend Requests</h3>
+                <div id="sentRequestsContainer">
+                    <p id="sentRequestsEmptyText">You have not sent any friend requests at this time.</p>
+                    <div class="sent-requests-list hidden" id="sentRequestsList"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Sent Friend Request Detail Screen -->
+    <section class="sent-req-detail-screen hidden" id="sentReqDetailView" aria-label="Friend Request Details">
+        <header class="req-detail-top-header">
+            <button class="req-detail-back-btn" id="closeSentReqDetailBtn" type="button" aria-label="Back"><i class="fa-solid fa-arrow-left"></i></button>
+            <div class="req-detail-menu-wrap">
+                <button class="req-detail-more-btn" id="sentReqMoreBtn" type="button" aria-label="More options"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                <div class="req-detail-dropdown hidden" id="sentReqDropdown">
+                    <button class="dropdown-item-delete" id="deleteSentReqBtn" type="button">Delete</button>
+                </div>
+            </div>
+        </header>
+        <div class="req-detail-panel">
+            <img id="sentReqDetailAvatar" src="" alt="Avatar" class="req-detail-avatar">
+            <h2 id="sentReqDetailName"></h2>
+
+            <div class="req-detail-meta-block">
+                <strong>Source of Friend Request:</strong>
+                <p id="sentReqDetailSource">By exchanging friend codes.</p>
+            </div>
+
+            <div class="req-detail-meta-block">
+                <strong>Date Friend Request Sent:</strong>
+                <p id="sentReqDetailDate"></p>
+            </div>
+
+            <div class="req-detail-activity-block">
+                <h3>Play Activity</h3>
+                <div class="req-detail-activity-list" id="sentReqDetailActivityList">
+                    <!-- Loaded dynamically -->
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Search by Friend Code Screen -->
+    <section class="fc-search-screen hidden" id="searchByFriendCodeView" aria-label="Search by Friend Code">
+        <header class="fc-search-header">
+            <button class="fc-search-close-btn" id="closeSearchByFriendCodeBtn" type="button" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+            <h2>Search by Friend Code</h2>
+        </header>
+        <div class="fc-search-panel">
+            <div class="fc-input-box" id="fcInputBox">
+                <span class="fc-prefix">SW</span>
+                <input class="fc-input" type="text" id="friendCodeInput" placeholder="0123 4567 8900" maxlength="14" autocomplete="off" spellcheck="false" inputmode="numeric">
+            </div>
+            <p class="fc-subtext">You can paste the text including "SW" and hyphens.</p>
+            <button class="btn-cyan-action btn-fc-search disabled" id="searchFriendCodeBtn" type="button" disabled>Search</button>
+        </div>
+
+        <!-- Search Result Card / Bottom Sheet -->
+        <div class="fc-result-sheet hidden" id="fcResultSheet">
+            <div class="fc-sheet-handle"></div>
+            <img id="fcResultAvatar" src="" alt="User Avatar" class="fc-result-avatar">
+            <h3 id="fcResultName" class="fc-result-name"></h3>
+            <span class="fc-result-label">Friend Code</span>
+            <span id="fcResultCode" class="fc-result-code"></span>
+            <button class="btn-cyan-action" id="sendFriendRequestBtn" type="button">Send Friend Request</button>
+        </div>
+    </section>
+
+    <!-- In-App Game Web Service Fullscreen Overlay -->
+    <section class="inapp-game-webview hidden" id="inAppGameWebview" aria-label="Game Specific Service">
+        <header class="inapp-webview-header">
+            <button class="webview-back-btn" id="closeInAppGameWebviewBtn" type="button" aria-label="Back"><i class="fa-solid fa-arrow-left"></i></button>
+            <h2 id="inAppGameWebviewTitle">Game Service</h2>
+            <button class="webview-reload-btn" id="reloadInAppGameWebviewBtn" type="button" aria-label="Reload"><i class="fa-solid fa-rotate-right"></i></button>
+        </header>
+        <div class="inapp-webview-frame-wrap">
+            <iframe id="inAppGameWebviewFrame" name="inAppGameWebviewFrame" title="Nintendo Switch Online Game Service" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"></iframe>
+        </div>
+    </section>
+
+    <nav class="home-dock hidden" id="homeDock" aria-label="App navigation">
+        <button class="active" type="button" data-page="home" aria-label="Home">
+            <svg class="dock-svg-icon dock-home-outline" viewBox="0 0 24 24"><path d="M12 3.2 L20.5 10.4 V20.8 H14.6 V14.4 H9.4 V20.8 H3.5 V10.4 Z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round"/></svg>
+            <svg class="dock-svg-icon dock-home-filled" viewBox="0 0 24 24"><path d="M12 2.8 L21.5 10.4 V21.2 H14.4 V14.6 H9.6 V21.2 H2.5 V10.4 Z" fill="currentColor"/></svg>
+        </button>
+        <button type="button" data-page="friends" aria-label="Friends">
+            <svg class="dock-svg-icon dock-friends-outline" viewBox="0 0 24 24">
+                <rect x="3" y="3" width="18" height="18" rx="5.2" fill="none" stroke="currentColor" stroke-width="2.1"/>
+                <rect x="8.2" y="8.8" width="1.8" height="3" rx="0.9" fill="currentColor"/>
+                <rect x="14" y="8.8" width="1.8" height="3" rx="0.9" fill="currentColor"/>
+                <path d="M8.2 14.2 Q12 17.8 15.8 14.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <svg class="dock-svg-icon dock-friends-filled" viewBox="0 0 24 24">
+                <mask id="friendsCutoutMask">
+                    <rect width="24" height="24" fill="#fff"/>
+                    <rect x="8.2" y="8.8" width="2" height="3.2" rx="1" fill="#000"/>
+                    <rect x="13.8" y="8.8" width="2" height="3.2" rx="1" fill="#000"/>
+                    <path d="M8 14.2 Q12 18 16 14.2" fill="none" stroke="#000" stroke-width="2.2" stroke-linecap="round"/>
+                </mask>
+                <rect x="2.5" y="2.5" width="19" height="19" rx="5.5" fill="currentColor" mask="url(#friendsCutoutMask)"/>
+            </svg>
+        </button>
+        <button type="button" data-page="album" aria-label="Album">
+            <svg class="dock-svg-icon dock-album-outline" viewBox="0 0 24 24">
+                <rect x="2.8" y="4.2" width="18.4" height="15.6" rx="3.2" fill="none" stroke="currentColor" stroke-width="2.1"/>
+                <path d="M4.5 18 C5.6 13.8 8.2 13.5 9.8 15.6 C11.2 13.6 13.6 13.6 15 16.6 C15.6 17.8 16 18.2 17.2 18.2" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
+            </svg>
+            <svg class="dock-svg-icon dock-album-filled" viewBox="0 0 24 24">
+                <mask id="albumCutoutMask">
+                    <rect width="24" height="24" fill="#fff"/>
+                    <path d="M4 21 V16.8 C5.2 13.5 8 13.2 9.8 15.6 C11.2 13.6 13.8 13.6 15.2 16.8 C15.8 18.2 16.2 19 17.5 21 Z" fill="#000"/>
+                </mask>
+                <rect x="2.5" y="3.8" width="19" height="16.4" rx="3.5" fill="currentColor" mask="url(#albumCutoutMask)"/>
+            </svg>
+        </button>
+    </nav>
+
+    <!-- Media Player Modal -->
+    <div class="modal-overlay hidden" id="mediaModal">
+        <div class="modal-card media-preview-card">
+            <header class="media-viewer-header">
+                <button class="modal-close" id="closeMediaModalBtn" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+                <h2 id="mediaModalTitle">Nintendo Switch capture</h2>
+                <div class="media-viewer-actions" aria-label="Capture actions">
+                    <button type="button" id="mediaInfoBtn" aria-label="Information"><i class="fa-solid fa-circle-info"></i></button>
+                    <button type="button" id="mediaShareBtn" aria-label="Share"><i class="fa-solid fa-arrow-up-from-bracket"></i></button>
+                    <button type="button" id="mediaDownloadBtn" aria-label="Download"><i class="fa-solid fa-cloud-arrow-down"></i></button>
+                </div>
+            </header>
+            <div id="mediaModalContent"></div>
+            <div class="media-modal-meta hidden" id="mediaModalMeta"></div>
+        </div>
+    </div>
+
+    <section class="friend-detail-view hidden" id="friendDetailView" aria-label="Friend details">
+        <button class="friend-detail-back" id="closeFriendDetailBtn" type="button" aria-label="Back"><i class="fa-solid fa-arrow-left"></i></button>
+        <button class="friend-detail-more" type="button" aria-label="More friend options" disabled><i class="fa-solid fa-ellipsis-vertical"></i></button>
+        <div class="friend-detail-panel">
+            <img id="friendDetailAvatar" src="" alt="" class="friend-detail-avatar">
+            <h2 id="friendDetailName">Friend</h2>
+            <p class="friend-detail-note"><i class="fa-solid fa-pencil"></i> Add Note</p>
+            <div class="friend-detail-actions">
+                <button type="button" disabled><i class="fa-regular fa-star"></i> Best Friends</button>
+                <button type="button" disabled><i class="fa-regular fa-bell"></i> Notify When Online</button>
+            </div>
+            <p class="friend-detail-presence" id="friendDetailPresence">Offline</p>
+            <section class="friend-detail-activity">
+                <h3>Play Activity</h3>
+                <div id="friendDetailActivity"></div>
+            </section>
+        </div>
+        <nav class="friend-detail-dock" aria-label="Friend navigation">
+            <button id="closeFriendDetailHomeBtn" type="button" aria-label="Home">
+                <svg class="dock-svg-icon" viewBox="0 0 24 24"><path d="M12 3.2 L20.5 10.4 V20.8 H14.6 V14.4 H9.4 V20.8 H3.5 V10.4 Z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round"/></svg>
+            </button>
+            <button type="button" class="active" aria-label="Friends" disabled>
+                <svg class="dock-svg-icon" viewBox="0 0 24 24">
+                    <mask id="friendsDetailMask">
+                        <rect width="24" height="24" fill="#fff"/>
+                        <rect x="8.2" y="8.8" width="2" height="3.2" rx="1" fill="#000"/>
+                        <rect x="13.8" y="8.8" width="2" height="3.2" rx="1" fill="#000"/>
+                        <path d="M8 14.2 Q12 18 16 14.2" fill="none" stroke="#000" stroke-width="2.2" stroke-linecap="round"/>
+                    </mask>
+                    <rect x="2.5" y="2.5" width="19" height="19" rx="5.5" fill="currentColor" mask="url(#friendsDetailMask)"/>
+                </svg>
+            </button>
+            <button type="button" aria-label="Album" disabled>
+                <svg class="dock-svg-icon" viewBox="0 0 24 24">
+                    <rect x="2.8" y="4.2" width="18.4" height="15.6" rx="3.2" fill="none" stroke="currentColor" stroke-width="2.1"/>
+                    <path d="M4.5 18 C5.6 13.8 8.2 13.5 9.8 15.6 C11.2 13.6 13.6 13.6 15 16.6 C15.6 17.8 16 18.2 17.2 18.2" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
+                </svg>
+            </button>
+        </nav>
+    </section>
+
+    <section class="notification-view hidden" id="notificationView" aria-label="Notifications">
+        <button class="notification-back" id="closeNotificationBtn" type="button" aria-label="Back"><i class="fa-solid fa-arrow-left"></i></button>
+        <div class="notification-panel">
+            <h2>Notifications</h2>
+            <div class="notification-list" id="notificationList"></div>
+        </div>
+    </section>
+
+    <section class="profile-view hidden" id="profileView" aria-label="Your profile">
+        <button class="profile-back" id="closeProfileBtn" type="button" aria-label="Back"><i class="fa-solid fa-arrow-left"></i></button>
+        <div class="profile-panel">
+            <img id="profileViewAvatar" src="" alt="Your Nintendo Switch profile image">
+            <h2 id="profileViewName">Switch Player</h2>
+            <p id="profileViewFriendCode">SW-0000-0000-0000</p>
+            <div class="profile-membership"><i class="fa-solid fa-check"></i><span>Nintendo Switch Online account connected</span></div>
+            <button class="profile-logout" id="logoutBtn" type="button"><i class="fa-solid fa-right-from-bracket"></i> Sign Out</button>
+        </div>
+    </section>
+
+    <script src="app.js?v=20260815-v7"></script>
+</body>
+</html>
