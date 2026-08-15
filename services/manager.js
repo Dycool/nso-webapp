@@ -308,6 +308,20 @@ class WebServiceManager {
                 }
                 return;
             }
+
+            // 7. Send Message (NookLink B_SHOW_SUCCESS, B_SHOW_ERROR, B_SET_INDEX)
+            if (data.type === 'NSO_SEND_MESSAGE' && data.data) {
+                try {
+                    const parsed = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
+                    console.log('[WebServiceManager:sendMessage]', parsed?.type, parsed?.message);
+                    if (parsed?.type === 'B_SHOW_SUCCESS' && parsed?.message) {
+                        console.info('[NookLink:Success]', parsed.message);
+                    } else if (parsed?.type === 'B_SHOW_ERROR' && parsed?.message) {
+                        console.warn('[NookLink:Error]', parsed.message);
+                    }
+                } catch (e) {}
+                return;
+            }
         });
     }
 }
