@@ -3566,3 +3566,109 @@ body.op-light-theme .game-sheet {
 }
 body.op-light-theme .game-sheet-handle { background: #c6c6ca; }
 body.op-light-theme .game-sheet-name { color: #222225; }
+
+
+/* ========================================================================== 
+   Unified Nintendo app bar + repo-logo geometry + light album viewer
+   ========================================================================== */
+/* Both themes use the same full-width Nintendo-red app chrome. */
+.navbar,
+body.dark-theme .navbar,
+body.op-light-theme .navbar {
+    background: #e60012 !important;
+    border-bottom-color: transparent !important;
+}
+.brand {
+    background: transparent !important;
+}
+.brand-title,
+.navbar .notification-button,
+body.dark-theme .brand-title,
+body.dark-theme .navbar .notification-button,
+body.op-light-theme .brand-title,
+body.op-light-theme .navbar .notification-button {
+    color: #fff !important;
+}
+.notification-button span,
+body.dark-theme .notification-button span,
+body.op-light-theme .notification-button span {
+    border-color: #e60012 !important;
+}
+
+/* Use the cleaner Switch mark geometry already carried by the repo favicon
+   instead of approximating the Joy-Con shapes with CSS borders. */
+.logo-icon {
+    width: 24px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    color: #fff;
+}
+.switch-logo-svg {
+    display: block;
+    color: inherit;
+    flex: 0 0 auto;
+}
+.switch-logo-svg-top {
+    width: 24px;
+    height: 28px;
+}
+.switch-logo-svg-login {
+    width: 104px;
+    height: 104px;
+    color: #fff;
+}
+.login-logo {
+    display: grid;
+    place-items: center;
+}
+@media (max-width: 720px) {
+    .logo-icon,
+    .switch-logo-svg-top {
+        width: 22px;
+        height: 26px;
+    }
+}
+
+/* Album image/video viewer follows the selected light theme rather than
+   retaining the older dark-only fullscreen viewer chrome. */
+body.op-light-theme #mediaModal {
+    background: #f3f3f5 !important;
+    color-scheme: light;
+}
+body.op-light-theme .media-preview-card {
+    background: #f3f3f5 !important;
+}
+body.op-light-theme .media-viewer-header {
+    background: #fff !important;
+    border-bottom: 1px solid rgba(0,0,0,.09);
+}
+body.op-light-theme .media-viewer-header h2,
+body.op-light-theme .media-viewer-header .modal-close,
+body.op-light-theme .media-viewer-actions button {
+    color: #222225 !important;
+}
+body.op-light-theme .media-viewer-header .modal-close:hover,
+body.op-light-theme .media-viewer-actions button:hover:not(:disabled) {
+    background: rgba(0,0,0,.055) !important;
+    color: #111114 !important;
+}
+body.op-light-theme #mediaModalContent {
+    background: #ececee;
+}
+body.op-light-theme .media-preview-card img,
+body.op-light-theme .media-preview-card video {
+    background: #e4e4e7;
+    color-scheme: light;
+}
+body.op-light-theme .media-modal-meta {
+    background: rgba(255,255,255,.97) !important;
+    border: 1px solid rgba(0,0,0,.09);
+    box-shadow: 0 12px 34px rgba(0,0,0,.18);
+}
+body.op-light-theme .media-modal-meta p {
+    color: #5f5f66 !important;
+}
+body.op-light-theme .media-modal-meta strong {
+    color: #202023 !important;
+}
