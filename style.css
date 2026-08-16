@@ -1602,6 +1602,14 @@ body.webview-active {
     pointer-events: none;
 }
 
+/* Users You've Chatted With view */
+.chatted-users-view { position: fixed; z-index: 225; inset: 0; overflow-y: auto; background: #1b1b1b; color: #dedee0; }
+.chatted-users-header { position: fixed; z-index: 1; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 14px; height: 56px; padding: 0 20px; background: #1b1b1b; }
+.chatted-users-back { border: 0; background: transparent; color: #eee; font-size: 20px; cursor: pointer; padding: 4px; }
+.chatted-users-header h2 { margin: 0; color: #e8e8ea; font: 700 17px var(--font-heading); }
+.chatted-users-body { width: min(700px, calc(100vw - 40px)); margin: 80px auto 100px; }
+.chatted-users-empty { text-align: center; color: #85858b; font-size: 14px; }
+
 /* Read-only friend detail, based on the native app's centered desktop screen. */
 .friend-detail-view { position: fixed; z-index: 220; inset: 0; overflow-y: auto; background: #1b1b1b; color: #d8d8da; }
 .friend-detail-back, .friend-detail-more { position: fixed; top: 17px; border: 0; background: transparent; color: #e4e4e5; font-size: 22px; cursor: pointer; }
