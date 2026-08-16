@@ -3571,26 +3571,34 @@ body.op-light-theme .game-sheet-name { color: #222225; }
 /* ========================================================================== 
    Unified Nintendo app bar + repo-logo geometry + light album viewer
    ========================================================================== */
-/* Both themes use the same full-width Nintendo-red app chrome. */
-.navbar,
-body.dark-theme .navbar,
+/* Restore the original split app bar in dark mode: dark chrome with only the
+   Nintendo Switch App brand block in red. Light mode keeps the native-style
+   full-width Nintendo-red bar. */
+body.dark-theme .navbar {
+    background: #1b1b1b !important;
+    border-bottom-color: var(--border-color) !important;
+}
+body.dark-theme .brand {
+    background: #e60012 !important;
+}
+body.dark-theme .brand-title,
+body.dark-theme .navbar .notification-button {
+    color: #fff !important;
+}
+body.dark-theme .notification-button span {
+    border-color: #1b1b1b !important;
+}
 body.op-light-theme .navbar {
     background: #e60012 !important;
     border-bottom-color: transparent !important;
 }
-.brand {
+body.op-light-theme .brand {
     background: transparent !important;
 }
-.brand-title,
-.navbar .notification-button,
-body.dark-theme .brand-title,
-body.dark-theme .navbar .notification-button,
 body.op-light-theme .brand-title,
 body.op-light-theme .navbar .notification-button {
     color: #fff !important;
 }
-.notification-button span,
-body.dark-theme .notification-button span,
 body.op-light-theme .notification-button span {
     border-color: #e60012 !important;
 }
