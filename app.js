@@ -688,26 +688,58 @@ const navTabStacks = {
 
 let activeFriendDetailData = null;
 
+// --- Slide transition helpers ---
+function slideViewIn(el) {
+    if (!el) return;
+    el.classList.remove('hidden', 'view-slide-out');
+    el.classList.add('view-slide-in');
+    el.addEventListener('animationend', () => {
+        el.classList.remove('view-slide-in');
+    }, { once: true });
+}
+
+function slideViewOut(el, cb) {
+    if (!el) return;
+    el.classList.remove('view-slide-in');
+    el.classList.add('view-slide-out');
+    el.addEventListener('animationend', () => {
+        el.classList.remove('view-slide-out');
+        el.classList.add('hidden');
+        if (cb) cb();
+    }, { once: true });
+}
+
+function hideViewInstant(el) {
+    if (!el) return;
+    el.classList.remove('view-slide-in', 'view-slide-out');
+    el.classList.add('hidden');
+}
+
+function showViewInstant(el) {
+    if (!el) return;
+    el.classList.remove('hidden', 'view-slide-in', 'view-slide-out');
+}
+
 function applyTabViewState(tabName = 'home') {
-    // Hide all base tab pages and overlay views first
+    // Hide all base tab pages and overlay views instantly (tab switches don't animate)
     document.querySelectorAll('.tab-page').forEach(page => page.classList.remove('active'));
-    document.getElementById('profileView')?.classList.add('hidden');
-    document.getElementById('notificationView')?.classList.add('hidden');
-    document.getElementById('friendDetailView')?.classList.add('hidden');
+    hideViewInstant(document.getElementById('profileView'));
+    hideViewInstant(document.getElementById('notificationView'));
+    hideViewInstant(document.getElementById('friendDetailView'));
 
     if (tabName === 'home') {
         const homeState = navTabStacks.home;
         if (homeState === 'profile') {
-            document.getElementById('profileView')?.classList.remove('hidden');
+            showViewInstant(document.getElementById('profileView'));
         } else if (homeState === 'notifications') {
-            document.getElementById('notificationView')?.classList.remove('hidden');
+            showViewInstant(document.getElementById('notificationView'));
         } else {
             document.getElementById('page-home')?.classList.add('active');
         }
     } else if (tabName === 'friends') {
         const friendsState = navTabStacks.friends;
         if (friendsState === 'detail' && activeFriendDetailData) {
-            document.getElementById('friendDetailView')?.classList.remove('hidden');
+            showViewInstant(document.getElementById('friendDetailView'));
         } else {
             navTabStacks.friends = 'list';
             document.getElementById('page-friends')?.classList.add('active');
@@ -823,12 +855,12 @@ async function forgetRememberedAccount() {
 
 function openProfile() {
     navTabStacks.home = 'profile';
-    showAppPage('home');
+    slideViewIn(document.getElementById('profileView'));
 }
 
 async function openNotifications() {
     navTabStacks.home = 'notifications';
-    showAppPage('home');
+    slideViewIn(document.getElementById('notificationView'));
     const list = document.getElementById('notificationList');
     list.innerHTML = '<div class="notification-item"><div></div><div><strong>Loading notifications…</strong></div></div>';
     try {
@@ -1912,7 +1944,7 @@ async function openFriendDetail(friend) {
 
     const activity = document.getElementById('friendDetailActivity');
     activity.innerHTML = '<div style="color:#aaaab0;font-size:13px;padding:12px 0">Loading play activity…</div>';
-    showAppPage('friends');
+    slideViewIn(document.getElementById('friendDetailView'));
 
     try {
         if (!friend.nsaId) {
@@ -2006,17 +2038,19 @@ document.getElementById('mediaDownloadBtn').addEventListener('click', downloadAc
 document.getElementById('closeFriendDetailBtn')?.addEventListener('click', () => {
     navTabStacks.friends = 'list';
     activeFriendDetailData = null;
-    applyTabViewState('friends');
+    slideViewOut(document.getElementById('friendDetailView'), () => {
+        document.getElementById('page-friends')?.classList.add('active');
+    });
 });
 
 document.getElementById('closeNotificationBtn')?.addEventListener('click', () => {
     navTabStacks.home = 'home';
-    applyTabViewState('home');
+    slideViewOut(document.getElementById('notificationView'));
 });
 
 document.getElementById('closeProfileBtn')?.addEventListener('click', () => {
     navTabStacks.home = 'home';
-    applyTabViewState('home');
+    slideViewOut(document.getElementById('profileView'));
 });
 
 // Friend Settings Screen Navigation (Screenshots 2, 3, 4, 5)
