@@ -687,6 +687,7 @@ const navTabStacks = {
 };
 
 let activeFriendDetailData = null;
+let friendDetailOriginTab = 'friends';
 
 // --- Slide transition helpers ---
 function slideViewIn(el) {
@@ -1924,6 +1925,8 @@ function formatBecameFriendsDate(timestamp) {
 async function openFriendDetail(friend) {
     activeFriendDetailData = friend;
     navTabStacks.friends = 'detail';
+    const activePageEl = document.querySelector('.tab-page.active');
+    friendDetailOriginTab = activePageEl?.id === 'page-home' ? 'home' : 'friends';
 
     const isOnline = ['ONLINE', 'PLAYING'].includes(friend.presence?.state || friend.state) || friend.isOnline;
     const presence = friend.presence?.name || friend.presence?.game?.name || '';
@@ -2080,8 +2083,9 @@ document.getElementById('mediaDownloadBtn').addEventListener('click', downloadAc
 document.getElementById('closeFriendDetailBtn')?.addEventListener('click', () => {
     navTabStacks.friends = 'list';
     activeFriendDetailData = null;
+    const originTab = friendDetailOriginTab || 'friends';
     slideViewOut(document.getElementById('friendDetailView'), () => {
-        document.getElementById('page-friends')?.classList.add('active');
+        applyTabViewState(originTab);
     });
 });
 
