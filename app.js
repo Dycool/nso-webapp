@@ -2101,35 +2101,35 @@ document.getElementById('closeProfileBtn')?.addEventListener('click', () => {
 
 // Friend Settings Screen Navigation (Screenshots 2, 3, 4, 5)
 document.getElementById('openFriendSettingsBtn')?.addEventListener('click', () => {
-    document.getElementById('friendSettingsView')?.classList.remove('hidden');
+    slideViewIn(document.getElementById('friendSettingsView'));
 });
 
 document.getElementById('closeFriendSettingsBtn')?.addEventListener('click', () => {
-    document.getElementById('friendSettingsView')?.classList.add('hidden');
+    slideViewOut(document.getElementById('friendSettingsView'));
 });
 
 document.getElementById('openNotifySettingBtn')?.addEventListener('click', () => {
-    document.getElementById('friendSettingsNotifyView')?.classList.remove('hidden');
+    slideViewIn(document.getElementById('friendSettingsNotifyView'));
 });
 
 document.getElementById('closeNotifySettingBtn')?.addEventListener('click', () => {
-    document.getElementById('friendSettingsNotifyView')?.classList.add('hidden');
+    slideViewOut(document.getElementById('friendSettingsNotifyView'));
 });
 
 document.getElementById('openRequestsSettingBtn')?.addEventListener('click', () => {
-    document.getElementById('friendSettingsRequestsView')?.classList.remove('hidden');
+    slideViewIn(document.getElementById('friendSettingsRequestsView'));
 });
 
 document.getElementById('closeRequestsSettingBtn')?.addEventListener('click', () => {
-    document.getElementById('friendSettingsRequestsView')?.classList.add('hidden');
+    slideViewOut(document.getElementById('friendSettingsRequestsView'));
 });
 
 document.getElementById('openBlockedSettingBtn')?.addEventListener('click', () => {
-    document.getElementById('friendSettingsBlockedView')?.classList.remove('hidden');
+    slideViewIn(document.getElementById('friendSettingsBlockedView'));
 });
 
 document.getElementById('closeBlockedSettingBtn')?.addEventListener('click', () => {
-    document.getElementById('friendSettingsBlockedView')?.classList.add('hidden');
+    slideViewOut(document.getElementById('friendSettingsBlockedView'));
 });
 
 document.getElementById('changeNotifySettingBtn')?.addEventListener('click', () => {
@@ -2163,15 +2163,15 @@ document.getElementById('reloadInAppGameWebviewBtn')?.addEventListener('click', 
 
 // Add Friend Menu (Screenshot 1 & 5)
 document.getElementById('openAddFriendBtn')?.addEventListener('click', () => {
-    document.getElementById('addFriendView')?.classList.remove('hidden');
+    slideViewIn(document.getElementById('addFriendView'));
 });
 
 document.getElementById('closeAddFriendBtn')?.addEventListener('click', () => {
-    document.getElementById('addFriendView')?.classList.add('hidden');
+    slideViewOut(document.getElementById('addFriendView'));
 });
 
 document.getElementById('openSearchByFriendCodeBtn')?.addEventListener('click', () => {
-    document.getElementById('searchByFriendCodeView')?.classList.remove('hidden');
+    slideViewIn(document.getElementById('searchByFriendCodeView'));
     const input = document.getElementById('friendCodeInput');
     if (input) {
         input.focus();
@@ -2179,7 +2179,7 @@ document.getElementById('openSearchByFriendCodeBtn')?.addEventListener('click', 
 });
 
 document.getElementById('closeSearchByFriendCodeBtn')?.addEventListener('click', () => {
-    document.getElementById('searchByFriendCodeView')?.classList.add('hidden');
+    slideViewOut(document.getElementById('searchByFriendCodeView'));
     document.getElementById('fcResultSheet')?.classList.add('hidden');
 });
 
@@ -2334,7 +2334,7 @@ async function openSentRequestDetail(req) {
     const activityList = document.getElementById('sentReqDetailActivityList');
     if (!activityList) return;
     activityList.innerHTML = '<div style="padding:16px;color:#88888c;font-size:13px">Loading play activity…</div>';
-    document.getElementById('sentReqDetailView')?.classList.remove('hidden');
+    slideViewIn(document.getElementById('sentReqDetailView'));
 
     try {
         let playLogs = [];
@@ -2369,7 +2369,7 @@ async function openSentRequestDetail(req) {
 }
 
 document.getElementById('closeSentReqDetailBtn')?.addEventListener('click', () => {
-    document.getElementById('sentReqDetailView')?.classList.add('hidden');
+    slideViewOut(document.getElementById('sentReqDetailView'));
     document.getElementById('sentReqDropdown')?.classList.add('hidden');
     activeSentRequest = null;
 });
@@ -2432,7 +2432,6 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
     window.__nsoFriendsFunctionalLoaded = true;
 
     const state = {
-        activeFriend: null,
         receivedRequests: [],
         sentRequests: [],
         blockedUsers: [],
@@ -2556,243 +2555,6 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             return typeof activeSentRequest !== 'undefined' ? activeSentRequest : null;
         } catch {
             return null;
-        }
-    }
-
-    function updateFriendDetailControls(friend) {
-        const note = $('friendsNoteButton');
-        if (note) {
-            const value = String(friend?.note || '').trim();
-            note.innerHTML = `<i class="fa-solid fa-pencil"></i> ${escapeHtml(value || 'Add Note')}`;
-            note.title = value ? `Friend note: ${value}` : 'Add a note';
-        }
-
-        const favourite = $('friendsFavouriteButton');
-        if (favourite) {
-            const enabled = Boolean(friend?.isFavoriteFriend);
-            favourite.disabled = false;
-            favourite.dataset.enabled = enabled ? 'true' : 'false';
-            favourite.innerHTML = `<i class="${enabled ? 'fa-solid' : 'fa-regular'} fa-star"></i> ${enabled ? 'Best Friend' : 'Best Friends'}`;
-        }
-
-        const notify = $('friendsNotifyButton');
-        if (notify) {
-            const enabled = Boolean(friend?.isOnlineNotificationEnabled);
-            notify.disabled = false;
-            notify.dataset.enabled = enabled ? 'true' : 'false';
-            notify.innerHTML = `<i class="${enabled ? 'fa-solid' : 'fa-regular'} fa-bell"></i> ${enabled ? 'Online Alerts On' : 'Notify When Online'}`;
-        }
-    }
-
-    function installFriendDetailActions() {
-        const view = $('friendDetailView');
-        if (!view) return;
-
-        const note = view.querySelector('.friend-detail-note');
-        if (note) {
-            note.id = 'friendsNoteButton';
-            note.setAttribute('role', 'button');
-            note.setAttribute('tabindex', '0');
-
-            const editNote = async () => {
-                const friend = state.activeFriend;
-                if (!friend?.nsaId) return;
-                const current = String(friend.note || '');
-                const next = prompt('Friend note (maximum 20 characters):', current);
-                if (next == null) return;
-                if (next.length > 20) {
-                    alert('Friend notes can be at most 20 characters.');
-                    return;
-                }
-
-                try {
-                    await coral('/v4/Friend/Note/Update', {
-                        friendNsaId: friend.nsaId,
-                        note: next
-                    });
-                    friend.note = next;
-                    updateFriendDetailControls(friend);
-                    showToast('Friend note updated.');
-                } catch (error) {
-                    alert(`Could not update friend note: ${error.message}`);
-                }
-            };
-
-            note.addEventListener('click', editNote);
-            note.addEventListener('keydown', (event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    editNote();
-                }
-            });
-        }
-
-        const actionButtons = [...view.querySelectorAll('.friend-detail-actions button')];
-        const favourite = actionButtons[0];
-        const notify = actionButtons[1];
-
-        if (favourite) {
-            favourite.id = 'friendsFavouriteButton';
-            favourite.disabled = false;
-            favourite.addEventListener('click', async () => {
-                const friend = state.activeFriend;
-                if (!friend?.nsaId) return;
-                const wasFavourite = Boolean(friend.isFavoriteFriend);
-                const path = wasFavourite
-                    ? '/v3/Friend/Favorite/Delete'
-                    : '/v3/Friend/Favorite/Create';
-
-                try {
-                    await runButton(
-                        favourite,
-                        () => coral(path, { nsaId: friend.nsaId }),
-                        wasFavourite ? 'Removed from Best Friends.' : 'Added to Best Friends.'
-                    );
-                    friend.isFavoriteFriend = !wasFavourite;
-                    updateFriendDetailControls(friend);
-                    refreshFriends();
-                } catch (error) {
-                    alert(`Could not update Best Friend status: ${error.message}`);
-                }
-            });
-        }
-
-        if (notify) {
-            notify.id = 'friendsNotifyButton';
-            notify.disabled = false;
-            notify.addEventListener('click', async () => {
-                const friend = state.activeFriend;
-                if (!friend?.nsaId) return;
-                const wasEnabled = Boolean(friend.isOnlineNotificationEnabled);
-
-                try {
-                    await runButton(
-                        notify,
-                        () => coral('/v5/PushNotification/Settings/Update', [
-                            {
-                                type: 'friendOnline',
-                                value: !wasEnabled,
-                                friendId: friend.nsaId
-                            }
-                        ]),
-                        !wasEnabled ? 'Online notifications enabled.' : 'Online notifications disabled.'
-                    );
-                    friend.isOnlineNotificationEnabled = !wasEnabled;
-                    updateFriendDetailControls(friend);
-                    updateNotifySettingsSummary();
-                } catch (error) {
-                    alert(`Could not update online notifications: ${error.message}`);
-                }
-            });
-        }
-
-        const more = view.querySelector('.friend-detail-more');
-        if (more) {
-            more.id = 'friendsMoreButton';
-            more.disabled = false;
-
-            const menu = document.createElement('div');
-            menu.id = 'friendsMoreMenu';
-            menu.className = 'friends-functional-menu hidden';
-            menu.innerHTML = `
-                <button type="button" id="friendsRemoveFriend"><i class="fa-solid fa-user-minus"></i> Remove Friend</button>
-                <button type="button" id="friendsBlockFriend" class="danger"><i class="fa-solid fa-ban"></i> Block User</button>`;
-            view.appendChild(menu);
-
-            more.addEventListener('click', (event) => {
-                event.stopPropagation();
-                menu.classList.toggle('hidden');
-            });
-
-            document.addEventListener('click', (event) => {
-                if (!event.target.closest('#friendsMoreMenu') && !event.target.closest('#friendsMoreButton')) {
-                    menu.classList.add('hidden');
-                }
-            });
-
-            $('friendsRemoveFriend')?.addEventListener('click', async () => {
-                const friend = state.activeFriend;
-                if (!friend?.nsaId) return;
-                if (!confirm(`Remove ${friend.name || 'this user'} from your friends list?`)) return;
-
-                try {
-                    await runButton(
-                        $('friendsRemoveFriend'),
-                        () => coral('/v3/Friend/Delete', { nsaId: friend.nsaId }),
-                        'Friend removed.'
-                    );
-                    menu.classList.add('hidden');
-                    view.classList.add('hidden');
-                    state.activeFriend = null;
-                    refreshFriends();
-                } catch (error) {
-                    alert(`Could not remove friend: ${error.message}`);
-                }
-            });
-
-            $('friendsBlockFriend')?.addEventListener('click', async () => {
-                const friend = state.activeFriend;
-                if (!friend?.nsaId) return;
-                if (!confirm(`Block ${friend.name || 'this user'}?`)) return;
-
-                try {
-                    await runButton(
-                        $('friendsBlockFriend'),
-                        () => coral('/v3/User/Block/Create', { nsaId: friend.nsaId }),
-                        'User blocked.'
-                    );
-                    menu.classList.add('hidden');
-                    view.classList.add('hidden');
-                    state.activeFriend = null;
-                    refreshFriends();
-                    loadBlockedUsers().catch(() => {});
-                } catch (error) {
-                    alert(`Could not block user: ${error.message}`);
-                }
-            });
-        }
-
-        if (typeof openFriendDetail === 'function') {
-            const originalOpenFriendDetail = openFriendDetail;
-            const wrappedOpenFriendDetail = function(friend) {
-                state.activeFriend = friend || null;
-                updateFriendDetailControls(friend);
-
-                const originalResult = originalOpenFriendDetail(friend);
-
-                if (friend?.nsaId) {
-                    coral('/v4/Friend/Show', { nsaId: friend.nsaId })
-                        .then((full) => {
-                            state.activeFriend = { ...friend, ...(full || {}) };
-                            updateFriendDetailControls(state.activeFriend);
-                            if (typeof formatBecameFriendsRoute === 'function') {
-                                const howEl = $('friendDetailHowBecame');
-                                if (howEl) howEl.textContent = formatBecameFriendsRoute(state.activeFriend.route);
-                            }
-                            if (typeof formatBecameFriendsDate === 'function') {
-                                const whenEl = $('friendDetailWhenBecame');
-                                if (whenEl) whenEl.textContent = formatBecameFriendsDate(state.activeFriend.friendCreatedAt);
-                            }
-                        })
-                        .catch((error) => {
-                            console.debug('[FriendsFunctional] Friend/Show unavailable; using Friend/List data.', error);
-                        });
-
-                    if (friend.isNew) {
-                        coral('/v4/Friend/IsNew/Delete', { friendNsaId: friend.nsaId })
-                            .then(() => { friend.isNew = false; })
-                            .catch(() => {});
-                    }
-                }
-
-                return originalResult;
-            };
-
-            try {
-                openFriendDetail = wrappedOpenFriendDetail;
-            } catch (error) {
-                console.warn('[FriendsFunctional] Could not wrap openFriendDetail', error);
-            }
         }
     }
 
@@ -3394,7 +3156,6 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
     }
 
     function init() {
-        installFriendDetailActions();
         installReceiveRequestsSetting();
         installNotifySettingsNavigation();
         installCorrectSendFriendRequest();
@@ -3437,6 +3198,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         activeChat: null,
         activeFriend: null,
         activeChatCandidate: null,
+        friendOnlineReturnTarget: 'opPushPage',
         announcements: [],
         loginFactor: null,
         screensReady: false,
@@ -3453,12 +3215,12 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         permissionsWrite: { path: '/v4/User/Permissions/UpdateSelf' },
         friends:          { path: '/v4/Friend/List', platform: true },
         friendShow:       { path: '/v4/Friend/Show' },
+        friendIsNewDelete:{ path: '/v4/Friend/IsNew/Delete' },
         favoriteAdd:      { path: '/v3/Friend/Favorite/Create', platform: true },
         favoriteDelete:   { path: '/v3/Friend/Favorite/Delete', platform: true },
         friendNote:       { path: '/v4/Friend/Note/Update' },
         friendDelete:     { path: '/v3/Friend/Delete' },
         friendBlock:      { path: '/v3/User/Block/Create' },
-        friendChatSelect: { path: '/v5/Chat/SelectedList/Update' },
         friendOnlinePush: { path: '/v5/PushNotification/Settings/Update' },
         friendPlayLog:    { path: '/v4/User/PlayLog/Show' },
         chatCandidates:   { path: '/v5/Chat/FriendCandidate/List' },
@@ -3627,27 +3389,49 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
     function setBusy(button, busy, busyText = '') {
         if (!button) return;
         if (busy) {
-            button.dataset.oldHtml = button.innerHTML;
+            if (button.dataset.opBusy === 'true') return;
+            button.dataset.opBusy = 'true';
+            button.dataset.opWasDisabled = button.disabled ? 'true' : 'false';
             button.disabled = true;
-            if (busyText) button.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${escapeHtml(busyText)}`;
-        } else {
-            button.disabled = false;
-            if (button.dataset.oldHtml != null) {
-                button.innerHTML = button.dataset.oldHtml;
-                delete button.dataset.oldHtml;
+            button.setAttribute('aria-busy', 'true');
+            button.style.opacity = '0.68';
+
+            // Only snapshot/replace the label when a temporary busy label is requested.
+            // This prevents stateful buttons (Best Friends / Notify When Online) from
+            // reverting to stale HTML after their successful state update.
+            if (busyText) {
+                button.dataset.opBusyHtml = button.innerHTML;
+                button.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${escapeHtml(busyText)}`;
             }
+        } else {
+            button.disabled = button.dataset.opWasDisabled === 'true';
+            button.removeAttribute('aria-busy');
+            button.style.removeProperty('opacity');
+
+            if (button.dataset.opBusyHtml != null) {
+                button.innerHTML = button.dataset.opBusyHtml;
+            }
+
+            delete button.dataset.opBusy;
+            delete button.dataset.opWasDisabled;
+            delete button.dataset.opBusyHtml;
         }
     }
 
     function closeParityScreens(except = null) {
         document.querySelectorAll('.op-screen').forEach((screen) => {
-            if (screen.id !== except) screen.classList.add('hidden');
+            if (screen.id === except) return;
+            if (typeof hideViewInstant === 'function') hideViewInstant(screen);
+            else screen.classList.add('hidden');
         });
     }
 
     function openScreen(id) {
+        const screen = $(id);
+        if (!screen) return;
         closeParityScreens(id);
-        $(id)?.classList.remove('hidden');
+        if (typeof slideViewIn === 'function') slideViewIn(screen);
+        else screen.classList.remove('hidden');
         window.scrollTo({ top: 0, behavior: 'auto' });
     }
 
@@ -3708,7 +3492,6 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         screenShell('opChatDetailPage', 'GameChat', `<div id="opChatDetailBody"></div>`);
         screenShell('opChatCandidatePage', "Users You've Chatted With", `<div id="opChatCandidateBody"></div>`);
         screenShell('opFriendNotePage', 'Add Note', `<div id="opFriendNoteBody"></div>`);
-        screenShell('opFriendActionsPage', 'Friend', `<div id="opFriendActionsBody"></div>`);
         screenShell('opAlbumAboutPage', 'About the Upload Feature', `
             <div class="op-copy-page">
                 <p>Screenshots and videos uploaded from your Nintendo Switch 2 will be displayed here.</p>
@@ -3731,7 +3514,6 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         const parents = {
             opVisibilityPage: 'opUserPage',
             opPushPage: 'opUserPage',
-            opFriendOnlinePage: 'opPushPage',
             opSettingsPage: 'opUserPage',
             opDarkModePage: 'opSettingsPage',
             opMobileDataPage: 'opSettingsPage',
@@ -3742,16 +3524,58 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             opAnnouncementDetailPage: 'opAnnouncementPage',
             opChatDetailPage: 'opChatPage',
             opChatCandidatePage: 'chattedUsersView',
-            opFriendNotePage: 'friendDetailView',
-            opFriendActionsPage: 'friendDetailView'
+            opFriendNotePage: 'friendDetailView'
         };
         for (const [child, parent] of Object.entries(parents)) {
             const back = $(child)?.querySelector('.op-back');
             if (!back) continue;
             replaceNodeListener(back, () => {
-                $(child)?.classList.add('hidden');
-                if (parent.startsWith('op')) openScreen(parent);
-                else $(parent)?.classList.remove('hidden');
+                const childView = $(child);
+                const revealParent = () => {
+                    if (parent.startsWith('op')) {
+                        openScreen(parent);
+                        return;
+                    }
+                    const parentView = $(parent);
+                    if (parentView?.classList.contains('hidden')) {
+                        if (typeof slideViewIn === 'function') slideViewIn(parentView);
+                        else parentView.classList.remove('hidden');
+                    }
+                };
+
+                if (childView && typeof slideViewOut === 'function') {
+                    slideViewOut(childView, revealParent);
+                } else {
+                    childView?.classList.add('hidden');
+                    revealParent();
+                }
+            });
+        }
+
+        const friendOnlineBack = $('opFriendOnlinePage')?.querySelector('.op-back');
+        if (friendOnlineBack) {
+            replaceNodeListener(friendOnlineBack, () => {
+                const childView = $('opFriendOnlinePage');
+                const revealParent = () => {
+                    const parent = state.friendOnlineReturnTarget || 'opPushPage';
+                    if (parent.startsWith('op')) {
+                        openScreen(parent);
+                        return;
+                    }
+
+                    const parentView = $(parent);
+                    if (parentView?.classList.contains('hidden')) {
+                        if (typeof slideViewIn === 'function') slideViewIn(parentView);
+                        else parentView.classList.remove('hidden');
+                    }
+                };
+
+                if (childView && typeof slideViewOut === 'function') {
+                    slideViewOut(childView, revealParent);
+                } else {
+                    childView?.classList.add('hidden');
+                    revealParent();
+                }
             });
         }
     }
@@ -3949,7 +3773,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         };
         bindToggle('opPushFriendRequest', 'friendRequest');
         bindToggle('opPushChatInvitation', 'chatInvitation');
-        $('opPushFriendOnline')?.addEventListener('click', openFriendOnlineSettings);
+        $('opPushFriendOnline')?.addEventListener('click', () => openFriendOnlineSettings('opPushPage'));
 
         $('opPlayInviteRadios')?.querySelectorAll('input').forEach((input) => {
             input.addEventListener('change', async () => {
@@ -3987,8 +3811,9 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         });
     }
 
-    async function openFriendOnlineSettings() {
+    async function openFriendOnlineSettings(returnTarget = 'opPushPage') {
         ensureScreens();
+        state.friendOnlineReturnTarget = returnTarget || 'opPushPage';
         openScreen('opFriendOnlinePage');
         const list = $('opFriendOnlineList');
         let friends = getCurrentFriends();
@@ -4651,13 +4476,12 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         const oldOpen = $('openNotifySettingBtn');
         if (oldOpen) {
             const btn = replaceControl('openNotifySettingBtn', async () => {
-                $('friendSettingsView')?.classList.add('hidden');
-                await openFriendOnlineSettings();
+                await openFriendOnlineSettings('friendSettingsView');
             });
             btn?.querySelector('span') && (btn.querySelector('span').textContent = 'Notify When Friends Come Online');
         }
         // Remove the earlier capture-phase redirect by replacing the button node.
-        replaceControl('changeNotifySettingBtn', openFriendOnlineSettings);
+        replaceControl('changeNotifySettingBtn', () => openFriendOnlineSettings('friendSettingsView'));
         const notice = $('friendSettingsNotifyView')?.querySelector('.settings-subtext');
         if (notice) notice.textContent = "You'll get online-status notifications for friends (max of once per 30 mins. for each friend).";
     }
@@ -4691,21 +4515,58 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
     }
 
     function installFriendDetailParity() {
-        if (typeof openFriendDetail === 'function') {
+        if (typeof openFriendDetail === 'function' && !openFriendDetail.__opFriendDetailWrapped) {
             const previous = openFriendDetail;
-            openFriendDetail = function(friend) {
+            const wrapped = function(friend) {
                 state.activeFriend = friend || null;
+                closeFriendMoreMenu(true);
+
+                const requestedNsaId = friend?.nsaId || null;
                 const result = previous(friend);
-                queueMicrotask(() => enhanceFriendDetail(friend));
-                if (friend?.nsaId) {
-                    coralExact('friendShow', { nsaId: friend.nsaId }).then((full) => {
+
+                queueMicrotask(() => {
+                    if (!requestedNsaId || state.activeFriend?.nsaId === requestedNsaId) {
+                        enhanceFriendDetail(friend);
+                    }
+                });
+
+                if (requestedNsaId) {
+                    coralExact('friendShow', { nsaId: requestedNsaId }).then((full) => {
+                        // Do not let a slow Friend/Show response overwrite a newer detail view.
+                        if (state.activeFriend?.nsaId !== requestedNsaId) return;
+
                         state.activeFriend = { ...friend, ...(full || {}) };
+                        try { activeFriendDetailData = state.activeFriend; } catch {}
+
+                        const howEl = $('friendDetailHowBecame');
+                        if (howEl && typeof formatBecameFriendsRoute === 'function') {
+                            howEl.textContent = formatBecameFriendsRoute(state.activeFriend.route || state.activeFriend.howBecameFriend);
+                        }
+                        const whenEl = $('friendDetailWhenBecame');
+                        if (whenEl && typeof formatBecameFriendsDate === 'function') {
+                            whenEl.textContent = formatBecameFriendsDate(
+                                state.activeFriend.friendCreatedAt ||
+                                state.activeFriend.becameFriendAt ||
+                                state.activeFriend.createdAt
+                            );
+                        }
+
                         enhanceFriendDetail(state.activeFriend);
                     }).catch(() => {});
+
+                    if (friend?.isNew) {
+                        coralExact('friendIsNewDelete', { friendNsaId: requestedNsaId })
+                            .then(() => { friend.isNew = false; })
+                            .catch(() => {});
+                    }
                 }
+
                 return result;
             };
+            wrapped.__opFriendDetailWrapped = true;
+            openFriendDetail = wrapped;
         }
+
         enhanceFriendDetail(state.activeFriend);
     }
 
@@ -4736,21 +4597,62 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         const more = $('friendsMoreButton') || view.querySelector('.friend-detail-more');
         if (more && more.dataset.opBound !== 'true') {
             $('friendsMoreMenu')?.remove();
-            const clone = more.cloneNode(true); clone.id = 'friendsMoreButton'; clone.dataset.opBound = 'true'; clone.disabled = false; more.replaceWith(clone);
-            clone.addEventListener('click', openFriendActions);
+            const clone = more.cloneNode(true);
+            clone.id = 'friendsMoreButton';
+            clone.dataset.opBound = 'true';
+            clone.disabled = false;
+            clone.setAttribute('aria-haspopup', 'menu');
+            clone.setAttribute('aria-expanded', 'false');
+            more.replaceWith(clone);
+            clone.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleFriendMoreMenu();
+            });
         }
+
+        ensureFriendMoreMenu();
         updateFriendDetailLabels(friend || state.activeFriend);
+    }
+
+    function animateFriendControl(button, html, enabled) {
+        if (!button) return;
+        button.dataset.enabled = enabled ? 'true' : 'false';
+        if (button.innerHTML === html) return;
+
+        button.innerHTML = html;
+        if (typeof button.animate === 'function') {
+            button.animate(
+                [
+                    { opacity: 0.55, transform: 'scale(0.985)' },
+                    { opacity: 1, transform: 'scale(1)' }
+                ],
+                { duration: 150, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }
+            );
+        }
     }
 
     function updateFriendDetailLabels(friend) {
         if (!friend) return;
+
         const note = $('friendsNoteButton');
         const noteText = String(friend.note || '').trim();
-        if (note) note.innerHTML = `<i class="fa-solid fa-pencil"></i> ${escapeHtml(noteText || 'Add Note')}`;
-        const fav = $('friendsFavouriteButton');
-        if (fav) fav.innerHTML = `<i class="${friend.isFavoriteFriend ? 'fa-solid' : 'fa-regular'} fa-star"></i> Best Friends`;
-        const notify = $('friendsNotifyButton');
-        if (notify) notify.innerHTML = `<i class="${friend.isOnlineNotificationEnabled ? 'fa-solid' : 'fa-regular'} fa-bell"></i> Notify When This Friend Comes Online`;
+        if (note) {
+            const next = `<i class="fa-solid fa-pencil"></i> ${escapeHtml(noteText || 'Add Note')}`;
+            if (note.innerHTML !== next) note.innerHTML = next;
+        }
+
+        animateFriendControl(
+            $('friendsFavouriteButton'),
+            `<i class="${friend.isFavoriteFriend ? 'fa-solid' : 'fa-regular'} fa-star"></i> Best Friends`,
+            Boolean(friend.isFavoriteFriend)
+        );
+
+        animateFriendControl(
+            $('friendsNotifyButton'),
+            `<i class="${friend.isOnlineNotificationEnabled ? 'fa-solid' : 'fa-regular'} fa-bell"></i> Notify When Online`,
+            Boolean(friend.isOnlineNotificationEnabled)
+        );
     }
 
     function openFriendNoteEditor() {
@@ -4773,8 +4675,14 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             const button = $('opFriendNoteSave'); setBusy(button, true, 'Saving…');
             try {
                 await coralExact('friendNote', { friendNsaId: friend.nsaId, note: value });
-                friend.note = value; state.activeFriend.note = value; updateFriendDetailLabels(friend);
-                $('opFriendNotePage').classList.add('hidden'); $('friendDetailView')?.classList.remove('hidden'); toast('Saved.');
+                friend.note = value;
+                state.activeFriend.note = value;
+                updateFriendDetailLabels(friend);
+                toast('Saved.');
+
+                const notePage = $('opFriendNotePage');
+                if (notePage && typeof slideViewOut === 'function') slideViewOut(notePage);
+                else notePage?.classList.add('hidden');
             } catch (error) { alert(`Could not update note: ${error.message}`); }
             finally { setBusy(button, false); }
         });
@@ -4807,62 +4715,174 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         finally { setBusy(button, false); }
     }
 
-    function openFriendActions() {
-        ensureScreens();
-        const friend = state.activeFriend;
-        if (!friend?.nsaId) return;
-        $('opFriendActionsPage').querySelector('h2').textContent = friend.name || 'Friend';
-        $('opFriendActionsBody').innerHTML = `
-            <div class="op-action-list">
-                <button id="opFriendAllowChat"><span><b>Allow for GameChat</b><small>This friend will be allowed for GameChat.</small></span><i class="fa-solid fa-chevron-right"></i></button>
-                <button id="opFriendRejectChat"><span><b>Don't Allow for GameChat</b><small>This friend won't be allowed for GameChat.</small></span><i class="fa-solid fa-chevron-right"></i></button>
-                <button id="opFriendDelete" class="danger"><span><b>Delete Friend</b></span><i class="fa-solid fa-chevron-right"></i></button>
-                <button id="opFriendBlock" class="danger"><span><b>Block</b></span><i class="fa-solid fa-chevron-right"></i></button>
-            </div>`;
-        openScreen('opFriendActionsPage');
-        $('opFriendAllowChat')?.addEventListener('click', () => setFriendChatSelection(true));
-        $('opFriendRejectChat')?.addEventListener('click', () => setFriendChatSelection(false));
-        $('opFriendDelete')?.addEventListener('click', deleteActiveFriend);
-        $('opFriendBlock')?.addEventListener('click', blockActiveFriend);
+    let friendMoreMenuOutsideBound = false;
+
+    function ensureFriendMoreMenu() {
+        let menu = $('friendsMoreMenu');
+        if (menu) return menu;
+
+        const view = $('friendDetailView');
+        if (!view) return null;
+
+        menu = document.createElement('div');
+        menu.id = 'friendsMoreMenu';
+        menu.className = 'friends-functional-menu hidden';
+        menu.setAttribute('role', 'menu');
+        menu.setAttribute('aria-label', 'Friend actions');
+        menu.innerHTML = `
+            <button type="button" id="friendsDeleteFriend" class="danger" role="menuitem">
+                <i class="fa-solid fa-user-minus"></i> Delete Friend
+            </button>
+            <button type="button" id="friendsBlockFriend" class="danger" role="menuitem">
+                <i class="fa-solid fa-ban"></i> Block
+            </button>`;
+        view.appendChild(menu);
+
+        $('friendsDeleteFriend')?.addEventListener('click', async (event) => {
+            event.stopPropagation();
+            closeFriendMoreMenu();
+            await deleteActiveFriend();
+        });
+        $('friendsBlockFriend')?.addEventListener('click', async (event) => {
+            event.stopPropagation();
+            closeFriendMoreMenu();
+            await blockActiveFriend();
+        });
+
+        if (!friendMoreMenuOutsideBound) {
+            friendMoreMenuOutsideBound = true;
+
+            document.addEventListener('click', (event) => {
+                if (!event.target.closest('#friendsMoreMenu') && !event.target.closest('#friendsMoreButton')) {
+                    closeFriendMoreMenu();
+                }
+            });
+
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') closeFriendMoreMenu();
+            });
+        }
+
+        return menu;
     }
 
-    async function setFriendChatSelection(isSelected) {
-        const friend = state.activeFriend;
-        if (!friend?.nsaId) return;
-        if (!isSelected) {
-            const ok = await confirmSheet("Don't Allow for GameChat", 'If you choose not to allow a user for GameChat, you will no longer be able to use GameChat with them. You can change your selection later. Whether you choose to approve a friend or not, that information will not be shared with them.', "Don't Allow");
-            if (!ok) return;
+    function setFriendMoreMenuOpen(open, immediate = false) {
+        const menu = ensureFriendMoreMenu();
+        const more = $('friendsMoreButton');
+        if (!menu) return;
+
+        more?.setAttribute('aria-expanded', open ? 'true' : 'false');
+        menu.getAnimations?.().forEach((animation) => animation.cancel());
+
+        if (open) {
+            menu.classList.remove('hidden');
+            if (!immediate && typeof menu.animate === 'function') {
+                menu.animate(
+                    [
+                        { opacity: 0, transform: 'translateY(-7px) scale(0.97)' },
+                        { opacity: 1, transform: 'translateY(0) scale(1)' }
+                    ],
+                    { duration: 160, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }
+                );
+            }
+            return;
         }
+
+        if (menu.classList.contains('hidden')) return;
+        if (immediate || typeof menu.animate !== 'function') {
+            menu.classList.add('hidden');
+            return;
+        }
+
+        const animation = menu.animate(
+            [
+                { opacity: 1, transform: 'translateY(0) scale(1)' },
+                { opacity: 0, transform: 'translateY(-5px) scale(0.98)' }
+            ],
+            { duration: 120, easing: 'cubic-bezier(0.4, 0, 1, 1)' }
+        );
+        animation.finished.catch(() => {}).finally(() => menu.classList.add('hidden'));
+    }
+
+    function toggleFriendMoreMenu() {
+        const menu = ensureFriendMoreMenu();
+        if (!menu) return;
+        setFriendMoreMenuOpen(menu.classList.contains('hidden'));
+    }
+
+    function closeFriendMoreMenu(immediate = false) {
+        const menu = $('friendsMoreMenu');
+        $('friendsMoreButton')?.setAttribute('aria-expanded', 'false');
+        if (!menu) return;
+        setFriendMoreMenuOpen(false, immediate);
+    }
+
+    function leaveFriendDetailAfterRemoval() {
+        closeFriendMoreMenu(true);
+        state.activeFriend = null;
+
         try {
-            // APK serializer: NintendoServiceAccountId + boolean isSelected.
-            await coralExact('friendChatSelect', { nsaId: friend.nsaId, isSelected });
-            toast(isSelected ? 'This friend will be allowed for GameChat.' : "This friend won't be allowed for GameChat.");
-            $('opFriendActionsPage').classList.add('hidden'); $('friendDetailView')?.classList.remove('hidden');
-        } catch (error) { alert(`Could not update GameChat setting: ${error.message}`); }
+            navTabStacks.friends = 'list';
+            activeFriendDetailData = null;
+        } catch {}
+
+        const view = $('friendDetailView');
+        const originTab = (() => {
+            try { return friendDetailOriginTab || 'friends'; } catch { return 'friends'; }
+        })();
+
+        const finish = () => {
+            if (typeof applyTabViewState === 'function') applyTabViewState(originTab);
+        };
+
+        if (view && typeof slideViewOut === 'function' && !view.classList.contains('hidden')) {
+            slideViewOut(view, finish);
+        } else {
+            view?.classList.add('hidden');
+            finish();
+        }
     }
 
     async function deleteActiveFriend() {
         const friend = state.activeFriend;
-        const ok = await confirmSheet('Delete Friend', 'Delete this friend?', 'Delete Friend');
-        if (!ok || !friend?.nsaId) return;
+        if (!friend?.nsaId) return;
+
+        const ok = await confirmSheet(
+            'Delete Friend',
+            `Delete ${friend.name || 'this friend'} from your friend list?`,
+            'Delete Friend'
+        );
+        if (!ok) return;
+
         try {
             await coralExact('friendDelete', { nsaId: friend.nsaId });
             toast('Friend deleted.');
-            $('opFriendActionsPage').classList.add('hidden'); $('friendDetailView')?.classList.add('hidden');
+            leaveFriendDetailAfterRemoval();
             if (typeof loadLiveFriendsList === 'function') loadLiveFriendsList().catch(() => {});
-        } catch (error) { alert(`Could not delete friend: ${error.message}`); }
+        } catch (error) {
+            alert(`Could not delete friend: ${error.message}`);
+        }
     }
 
     async function blockActiveFriend() {
         const friend = state.activeFriend;
-        const ok = await confirmSheet('Block', "You won't get friend requests sent by blocked users, and you won't encounter those users during online play. (This may not apply to all games or game modes.)", 'Block');
-        if (!ok || !friend?.nsaId) return;
+        if (!friend?.nsaId) return;
+
+        const ok = await confirmSheet(
+            'Block',
+            "You won't get friend requests sent by blocked users, and you won't encounter those users during online play. (This may not apply to all games or game modes.)",
+            'Block'
+        );
+        if (!ok) return;
+
         try {
             await coralExact('friendBlock', { nsaId: friend.nsaId });
             toast('Blocked.');
-            $('opFriendActionsPage').classList.add('hidden'); $('friendDetailView')?.classList.add('hidden');
+            leaveFriendDetailAfterRemoval();
             if (typeof loadLiveFriendsList === 'function') loadLiveFriendsList().catch(() => {});
-        } catch (error) { alert(`Could not block user: ${error.message}`); }
+        } catch (error) {
+            alert(`Could not block user: ${error.message}`);
+        }
     }
 
     function confirmSheet(title, message, primary = 'OK') {
@@ -4881,7 +4901,48 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
                     <div class="op-dialog-actions"><button id="opDialogCancel">Cancel</button><button id="opDialogOk" class="primary">${escapeHtml(primary)}</button></div>
                 </div>`;
             overlay.classList.remove('hidden');
-            const finish = (value) => { overlay.classList.add('hidden'); resolve(value); };
+            const dialog = overlay.querySelector('.op-dialog');
+
+            overlay.getAnimations?.().forEach((animation) => animation.cancel());
+            dialog?.getAnimations?.().forEach((animation) => animation.cancel());
+
+            overlay.animate?.(
+                [{ opacity: 0 }, { opacity: 1 }],
+                { duration: 140, easing: 'ease-out' }
+            );
+            dialog?.animate?.(
+                [
+                    { opacity: 0, transform: 'translateY(18px) scale(0.98)' },
+                    { opacity: 1, transform: 'translateY(0) scale(1)' }
+                ],
+                { duration: 180, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }
+            );
+
+            let settled = false;
+            const finish = (value) => {
+                if (settled) return;
+                settled = true;
+
+                const close = () => {
+                    overlay.classList.add('hidden');
+                    resolve(value);
+                };
+
+                if (typeof dialog?.animate !== 'function') {
+                    close();
+                    return;
+                }
+
+                const animation = dialog.animate(
+                    [
+                        { opacity: 1, transform: 'translateY(0) scale(1)' },
+                        { opacity: 0, transform: 'translateY(10px) scale(0.985)' }
+                    ],
+                    { duration: 120, easing: 'cubic-bezier(0.4, 0, 1, 1)' }
+                );
+                animation.finished.catch(() => {}).finally(close);
+            };
+
             $('opDialogCancel').onclick = () => finish(false);
             $('opDialogOk').onclick = () => finish(true);
             overlay.onclick = (event) => { if (event.target === overlay) finish(false); };
