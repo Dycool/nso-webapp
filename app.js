@@ -3463,6 +3463,9 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         blockedUsers: [],
         permissions: null,
         qrLibraryPromise: null,
+        friendCodeQrResult: null,
+        friendCodeQrPromise: null,
+        friendCodeQrFetchedAt: 0,
         chatCandidates: []
     };
 
@@ -3980,77 +3983,108 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         return state.qrLibraryPromise;
     }
 
+    function knownFriendCode() {
+        const candidates = [
+            document.getElementById('opFriendCode')?.textContent,
+            document.getElementById('profileViewFriendCode')?.textContent,
+            document.getElementById('myFriendCode')?.textContent
+        ];
+        const raw = candidates.map((value) => String(value || '').trim()).find((value) => /^SW-\d{4}-\d{4}-\d{4}$/i.test(value));
+        return raw || '';
+    }
+
+    function getFriendCodeQrResult() {
+        const maxAgeMs = 10 * 60_000;
+        if (state.friendCodeQrResult && Date.now() - state.friendCodeQrFetchedAt < maxAgeMs) {
+            return Promise.resolve(state.friendCodeQrResult);
+        }
+        if (state.friendCodeQrPromise) return state.friendCodeQrPromise;
+
+        state.friendCodeQrPromise = coral('/v3/Friend/CreateFriendCodeUrl', {}, { body: {} })
+            .then((result) => {
+                state.friendCodeQrResult = result || {};
+                state.friendCodeQrFetchedAt = Date.now();
+                return state.friendCodeQrResult;
+            })
+            .finally(() => { state.friendCodeQrPromise = null; });
+        return state.friendCodeQrPromise;
+    }
+
     async function showMyFriendCode() {
-        const button = $('openMyCodeQrBtn');
-        if (!button) return;
+        // Open immediately from already-cached profile data. The Nintendo share URL
+        // and QR renderer finish asynchronously after the sheet is already visible.
+        const modal = ensureFriendCodeModal();
+        const body = $('friendCodeQrBody');
+        if (!modal || !body) return;
 
-        const oldHtml = button.innerHTML;
-        button.disabled = true;
+        let displayFriendCode = knownFriendCode() || 'Friend Code unavailable';
+        body.innerHTML = `
+            <div id="friendCodeQrCanvas" class="friends-functional-qr-canvas">
+                <div class="friends-functional-qr-loading"><i class="fa-solid fa-spinner fa-spin"></i><span>Loading QR code…</span></div>
+            </div>
+            <p class="friends-functional-qr-label">Your Friend Code</p>
+            <strong id="friendCodeQrValue" class="friends-functional-friend-code">${escapeHtml(displayFriendCode)}</strong>
+            <div class="friends-functional-qr-actions">
+                <button type="button" id="copyFriendCodeBtn" ${displayFriendCode === 'Friend Code unavailable' ? 'disabled' : ''}>Copy Friend Code</button>
+                <button type="button" id="copyFriendLinkBtn" disabled>Copy Friend Link</button>
+            </div>`;
+
+        modal.classList.remove('hidden');
+
+        $('copyFriendCodeBtn')?.addEventListener('click', async () => {
+            const value = $('friendCodeQrValue')?.textContent || displayFriendCode;
+            try {
+                await navigator.clipboard.writeText(value);
+                showToast('Friend Code copied.');
+            } catch {
+                prompt('Copy your Friend Code:', value);
+            }
+        });
+
         try {
-            // nxapi marks this call as NoParameter, so the request body is exactly {}.
-            const result = await coral('/v3/Friend/CreateFriendCodeUrl', {}, { body: {} });
-            const modal = ensureFriendCodeModal();
-            const body = $('friendCodeQrBody');
-            if (!body) return;
+            const [result, Qr] = await Promise.all([
+                getFriendCodeQrResult(),
+                loadQrLibrary()
+            ]);
 
-            const rawFriendCode = String(result?.friendCode || '');
-            const displayFriendCode = rawFriendCode
-                ? (rawFriendCode.startsWith('SW-') ? rawFriendCode : `SW-${rawFriendCode}`)
-                : 'Friend Code unavailable';
+            const rawFriendCode = String(result?.friendCode || '').trim();
+            if (rawFriendCode) {
+                displayFriendCode = rawFriendCode.startsWith('SW-') ? rawFriendCode : `SW-${rawFriendCode}`;
+                const value = $('friendCodeQrValue');
+                if (value) value.textContent = displayFriendCode;
+                const copyCode = $('copyFriendCodeBtn');
+                if (copyCode) copyCode.disabled = false;
+            }
 
-            body.innerHTML = `
-                <div id="friendCodeQrCanvas" class="friends-functional-qr-canvas"></div>
-                <p class="friends-functional-qr-label">Your Friend Code</p>
-                <strong class="friends-functional-friend-code">${escapeHtml(displayFriendCode)}</strong>
-                <div class="friends-functional-qr-actions">
-                    <button type="button" id="copyFriendCodeBtn">Copy Friend Code</button>
-                    <button type="button" id="copyFriendLinkBtn" ${result?.url ? '' : 'disabled'}>Copy Friend Link</button>
-                </div>`;
-
-            $('copyFriendCodeBtn')?.addEventListener('click', async () => {
-                try {
-                    await navigator.clipboard.writeText(displayFriendCode);
-                    showToast('Friend Code copied.');
-                } catch {
-                    prompt('Copy your Friend Code:', displayFriendCode);
-                }
-            });
-
-            $('copyFriendLinkBtn')?.addEventListener('click', async () => {
-                if (!result?.url) return;
-                try {
-                    await navigator.clipboard.writeText(result.url);
-                    showToast('Friend link copied.');
-                } catch {
-                    prompt('Copy your friend link:', result.url);
-                }
-            });
-
-            modal.classList.remove('hidden');
-
-            if (result?.url) {
-                try {
-                    const Qr = await loadQrLibrary();
-                    const host = $('friendCodeQrCanvas');
-                    if (host) {
-                        host.innerHTML = '';
-                        new Qr(host, {
-                            text: result.url,
-                            width: 190,
-                            height: 190,
-                            correctLevel: Qr.CorrectLevel?.M
-                        });
+            const copyLink = $('copyFriendLinkBtn');
+            if (copyLink) {
+                copyLink.disabled = !result?.url;
+                copyLink.onclick = async () => {
+                    if (!result?.url) return;
+                    try {
+                        await navigator.clipboard.writeText(result.url);
+                        showToast('Friend link copied.');
+                    } catch {
+                        prompt('Copy your friend link:', result.url);
                     }
-                } catch (error) {
-                    const host = $('friendCodeQrCanvas');
-                    if (host) host.innerHTML = `<p class="service-status">${escapeHtml(error.message)} The Friend Code and link are still available below.</p>`;
-                }
+                };
+            }
+
+            const host = $('friendCodeQrCanvas');
+            if (host && result?.url) {
+                host.innerHTML = '';
+                new Qr(host, {
+                    text: result.url,
+                    width: 190,
+                    height: 190,
+                    correctLevel: Qr.CorrectLevel?.M
+                });
+            } else if (host) {
+                host.innerHTML = '<p class="service-status">Friend link unavailable.</p>';
             }
         } catch (error) {
-            alert(`Could not create your Friend Code QR link: ${error.message}`);
-        } finally {
-            button.disabled = false;
-            button.innerHTML = oldHtml;
+            const host = $('friendCodeQrCanvas');
+            if (host) host.innerHTML = `<p class="service-status">${escapeHtml(error.message)} The Friend Code is still available below.</p>`;
         }
     }
 
@@ -4242,6 +4276,121 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         mobileObserver: null
     };
 
+    // Locales declared by Nintendo Switch App 3.4.1 in res/xml/locales_config.xml.
+    // The web port follows the Nintendo Account locale by default.
+    const APP_SUPPORTED_LOCALES = Object.freeze([
+        'de-DE', 'en-GB', 'en-US', 'es-ES', 'es-MX', 'fr-CA', 'fr-FR',
+        'it-IT', 'ja-JP', 'ko-KR', 'nl-NL', 'pt-PT', 'ru-RU', 'zh-CN', 'zh-TW'
+    ]);
+    const APP_I18N_KEYS = new Set(["Settings","User Page","Nintendo Account","Profile","Friend Code","Online Status","Play Activity","Nintendo Account Website","Notifications","Push Notifications","System","Language","Dark Mode","Mobile Data","Storage","Clear cached images and data.","About Sending Usage Data","Other","Feedback","About This App","Nintendo Account User Agreement","Nintendo Privacy Policy","Intellectual Property Notices","Nintendo Support","Support Code","Version","Sign Out","Browser Notifications","Show Nintendo Switch App notifications in this browser while this web app is open. They follow your Nintendo notification settings. Nintendo and nxapi credentials are not stored for browser notifications.","Friend Requests","You'll get notifications when receiving friend requests and when other users accept your friend requests.","GameChat Invites","You'll get GameChat-invite notifications.","Notify When Friends Come Online","Choose individual friends.","Online Play Invitations","You'll get play-invite notifications.","All Friends","Best Friends","Don't Notify","Game-Specific Services","You'll get game-related notifications.","Device Settings","On","Off","Standard","Low Data","Don't Allow","Allow","Allow Sending Usage Data","Use your Nintendo Account language by default. You can choose another language for this web app; the choice is saved on this device.","Nintendo Account language","Change","Add Friend","Friends","Uploaded Screenshots and Videos","Select All","Download ZIP","Sign In","Help","Your Nintendo Account must be linked to a console.","Third-party service disclosure","Learn more about nxapi","I understand and agree to send this data to nxapi.","Sign in on Nintendo Account","Open Nintendo Sign In","Complete Sign In & Paste URL / Token","Paste from clipboard","Remember my Nintendo Account on this device","Loading play activity…","Offline","QR Code","Your Friend Code","Copy Friend Code","Copy Friend Link","Loading QR code…","Web-port note: this preference is saved only in this browser. This web port does not send Nintendo analytics data that the project does not implement.","If set to Device Settings, the app display will change to match the settings on the device you're using.","If set to Low Data, videos won't play automatically. If set to Don't Allow, videos won't load.","Features will not be restricted when using a Wi-Fi connection.","No One","Everyone"]);
+    const APP_TRANSLATIONS = {"de-DE":{"Settings":"Einstellungen","User Page":"Benutzerseite","Nintendo Account":"Nintendo-Account","Profile":"Profil","Friend Code":"Freundescode","Online Status":"Online-Status","Play Activity":"Spielaktivitäten","Nintendo Account Website":"Nintendo-Account-Website","Notifications":"Benachrichtigungen","Push Notifications":"Push-Benachrichtigungen","System":"System","Language":"Sprache","Dark Mode":"Dunkler Modus","Mobile Data":"Mobile Daten","Storage":"Speicher","Clear cached images and data.":"Zwischengespeicherte Bilder und Daten löschen.","About Sending Usage Data":"Über das Senden von Nutzungsdaten","Other":"Sonstiges","Feedback":"Feedback","About This App":"Über diese App","Nintendo Account User Agreement":"Nutzungsvereinbarung für Nintendo-Accounts","Nintendo Privacy Policy":"Nintendo-Datenschutzrichtlinie","Intellectual Property Notices":"Hinweise zum geistigen Eigentum","Nintendo Support":"Nintendo-Support","Support Code":"Support-Code","Version":"Version","Sign Out":"Abmelden","Browser Notifications":"Browser-Benachrichtigungen","Show Nintendo Switch App notifications in this browser while this web app is open. They follow your Nintendo notification settings. Nintendo and nxapi credentials are not stored for browser notifications.":"Nintendo Switch App-Benachrichtigungen in diesem Browser anzeigen, solange die Web-App geöffnet ist. Sie folgen deinen Nintendo-Benachrichtigungseinstellungen. Nintendo- und nxapi-Anmeldedaten werden dafür nicht gespeichert.","Friend Requests":"Freundesanfragen","You'll get notifications when receiving friend requests and when other users accept your friend requests.":"Du erhältst Benachrichtigungen bei Freundesanfragen und wenn andere Nutzer deine Freundesanfragen annehmen.","GameChat Invites":"GameChat-Einladungen","You'll get GameChat-invite notifications.":"Du erhältst Benachrichtigungen über GameChat-Einladungen.","Notify When Friends Come Online":"Benachrichtigen, wenn Freunde online gehen","Choose individual friends.":"Einzelne Freunde auswählen.","Online Play Invitations":"Einladungen zum Online-Spiel","You'll get play-invite notifications.":"Du erhältst Benachrichtigungen über Spieleinladungen.","All Friends":"Alle Freunde","Best Friends":"Beste Freunde","Don't Notify":"Nicht benachrichtigen","Game-Specific Services":"Spielspezifische Services","You'll get game-related notifications.":"Du erhältst spielbezogene Benachrichtigungen.","Device Settings":"Geräteeinstellungen","On":"Ein","Off":"Aus","Standard":"Standard","Low Data":"Datensparmodus","Don't Allow":"Nicht erlauben","Allow":"Erlauben","Allow Sending Usage Data":"Senden von Nutzungsdaten erlauben","Use your Nintendo Account language by default. You can choose another language for this web app; the choice is saved on this device.":"Standardmäßig wird die Sprache deines Nintendo-Accounts verwendet. Du kannst für diese Web-App eine andere Sprache wählen; die Auswahl wird auf diesem Gerät gespeichert.","Nintendo Account language":"Sprache des Nintendo-Accounts","Change":"Ändern","Add Friend":"Freund hinzufügen","Friends":"Freunde","Uploaded Screenshots and Videos":"Hochgeladene Screenshots und Videos","Select All":"Alle auswählen","Download ZIP":"ZIP herunterladen","Sign In":"Anmelden","Help":"Hilfe","Your Nintendo Account must be linked to a console.":"Dein Nintendo-Account muss mit einer Konsole verknüpft sein.","Third-party service disclosure":"Hinweis zum Drittanbieterdienst","Learn more about nxapi":"Mehr über nxapi erfahren","I understand and agree to send this data to nxapi.":"Ich verstehe und stimme zu, diese Daten an nxapi zu senden.","Sign in on Nintendo Account":"Beim Nintendo-Account anmelden","Open Nintendo Sign In":"Nintendo-Anmeldung öffnen","Complete Sign In & Paste URL / Token":"Anmeldung abschließen und URL / Token einfügen","Paste from clipboard":"Aus Zwischenablage einfügen","Remember my Nintendo Account on this device":"Meinen Nintendo-Account auf diesem Gerät merken","Loading play activity…":"Spielaktivitäten werden geladen…","Offline":"Offline","QR Code":"QR-Code","Your Friend Code":"Dein Freundescode","Copy Friend Code":"Freundescode kopieren","Copy Friend Link":"Freundeslink kopieren","Loading QR code…":"QR-Code wird geladen…","Web-port note: this preference is saved only in this browser. This web port does not send Nintendo analytics data that the project does not implement.":"Hinweis zur Web-Version: Diese Einstellung wird nur in diesem Browser gespeichert. Die Web-Version sendet keine Nintendo-Analysedaten, die in diesem Projekt nicht implementiert sind.","If set to Device Settings, the app display will change to match the settings on the device you're using.":"Bei „Geräteeinstellungen“ passt sich die Darstellung den Einstellungen des verwendeten Geräts an.","If set to Low Data, videos won't play automatically. If set to Don't Allow, videos won't load.":"Im Datensparmodus werden Videos nicht automatisch abgespielt. Bei „Nicht erlauben“ werden Videos nicht geladen.","Features will not be restricted when using a Wi-Fi connection.":"Bei einer WLAN-Verbindung werden Funktionen nicht eingeschränkt.","No One":"Niemand","Everyone":"Alle"},"es-ES":{"Settings":"Ajustes","User Page":"Página de usuario","Nintendo Account":"Cuenta Nintendo","Profile":"Perfil","Friend Code":"Código de amigo","Online Status":"Estado en línea","Play Activity":"Actividad de juego","Nintendo Account Website":"Sitio web de la cuenta Nintendo","Notifications":"Notificaciones","Push Notifications":"Notificaciones push","System":"Sistema","Language":"Idioma","Dark Mode":"Modo oscuro","Mobile Data":"Datos móviles","Storage":"Almacenamiento","Clear cached images and data.":"Borrar imágenes y datos en caché.","About Sending Usage Data":"Acerca del envío de datos de uso","Other":"Otros","Feedback":"Comentarios","About This App":"Acerca de esta aplicación","Nintendo Account User Agreement":"Acuerdo de usuario de la cuenta Nintendo","Nintendo Privacy Policy":"Política de privacidad de Nintendo","Intellectual Property Notices":"Avisos de propiedad intelectual","Nintendo Support":"Asistencia de Nintendo","Support Code":"Código de asistencia","Version":"Versión","Sign Out":"Cerrar sesión","Browser Notifications":"Notificaciones del navegador","Show Nintendo Switch App notifications in this browser while this web app is open. They follow your Nintendo notification settings. Nintendo and nxapi credentials are not stored for browser notifications.":"Muestra notificaciones de Nintendo Switch App en este navegador mientras la aplicación web esté abierta. Siguen tus ajustes de notificaciones de Nintendo. No se guardan credenciales de Nintendo ni de nxapi para estas notificaciones.","Friend Requests":"Solicitudes de amistad","You'll get notifications when receiving friend requests and when other users accept your friend requests.":"Recibirás notificaciones al recibir solicitudes de amistad y cuando otros usuarios acepten las tuyas.","GameChat Invites":"Invitaciones de GameChat","You'll get GameChat-invite notifications.":"Recibirás notificaciones de invitaciones de GameChat.","Notify When Friends Come Online":"Avisar cuando tus amigos se conecten","Choose individual friends.":"Elige amigos concretos.","Online Play Invitations":"Invitaciones para jugar en línea","You'll get play-invite notifications.":"Recibirás notificaciones de invitaciones para jugar.","All Friends":"Todos los amigos","Best Friends":"Mejores amigos","Don't Notify":"No notificar","Game-Specific Services":"Servicios específicos de juegos","You'll get game-related notifications.":"Recibirás notificaciones relacionadas con juegos.","Device Settings":"Ajustes del dispositivo","On":"Activado","Off":"Desactivado","Standard":"Estándar","Low Data":"Ahorro de datos","Don't Allow":"No permitir","Allow":"Permitir","Allow Sending Usage Data":"Permitir el envío de datos de uso","Use your Nintendo Account language by default. You can choose another language for this web app; the choice is saved on this device.":"De forma predeterminada se usa el idioma de tu cuenta Nintendo. Puedes elegir otro idioma para esta aplicación web; la elección se guarda en este dispositivo.","Nintendo Account language":"Idioma de la cuenta Nintendo","Change":"Cambiar","Add Friend":"Añadir amigo","Friends":"Amigos","Uploaded Screenshots and Videos":"Capturas y vídeos subidos","Select All":"Seleccionar todo","Download ZIP":"Descargar ZIP","Sign In":"Iniciar sesión","Help":"Ayuda","Your Nintendo Account must be linked to a console.":"Tu cuenta Nintendo debe estar vinculada a una consola.","Third-party service disclosure":"Información sobre servicio de terceros","Learn more about nxapi":"Más información sobre nxapi","I understand and agree to send this data to nxapi.":"Entiendo y acepto enviar estos datos a nxapi.","Sign in on Nintendo Account":"Inicia sesión en tu cuenta Nintendo","Open Nintendo Sign In":"Abrir inicio de sesión de Nintendo","Complete Sign In & Paste URL / Token":"Completa el inicio de sesión y pega la URL / token","Paste from clipboard":"Pegar desde el portapapeles","Remember my Nintendo Account on this device":"Recordar mi cuenta Nintendo en este dispositivo","Loading play activity…":"Cargando actividad de juego…","Offline":"Desconectado","QR Code":"Código QR","Your Friend Code":"Tu código de amigo","Copy Friend Code":"Copiar código de amigo","Copy Friend Link":"Copiar enlace de amigo","Loading QR code…":"Cargando código QR…","Web-port note: this preference is saved only in this browser. This web port does not send Nintendo analytics data that the project does not implement.":"Nota de la versión web: esta preferencia solo se guarda en este navegador. La versión web no envía datos analíticos de Nintendo que no estén implementados en este proyecto.","If set to Device Settings, the app display will change to match the settings on the device you're using.":"Con Ajustes del dispositivo, la apariencia cambiará para coincidir con la configuración del dispositivo que uses.","If set to Low Data, videos won't play automatically. If set to Don't Allow, videos won't load.":"Con Ahorro de datos, los vídeos no se reproducirán automáticamente. Con No permitir, no se cargarán.","Features will not be restricted when using a Wi-Fi connection.":"Las funciones no se limitarán al usar una conexión Wi-Fi.","No One":"Nadie","Everyone":"Todos"},"fr-FR":{"Settings":"Paramètres","User Page":"Page utilisateur","Nintendo Account":"Compte Nintendo","Profile":"Profil","Friend Code":"Code ami","Online Status":"Statut en ligne","Play Activity":"Activité de jeu","Nintendo Account Website":"Site du compte Nintendo","Notifications":"Notifications","Push Notifications":"Notifications push","System":"Système","Language":"Langue","Dark Mode":"Mode sombre","Mobile Data":"Données mobiles","Storage":"Stockage","Clear cached images and data.":"Effacer les images et données en cache.","About Sending Usage Data":"À propos de l’envoi des données d’utilisation","Other":"Autres","Feedback":"Commentaires","About This App":"À propos de cette application","Nintendo Account User Agreement":"Contrat d’utilisation du compte Nintendo","Nintendo Privacy Policy":"Politique de confidentialité de Nintendo","Intellectual Property Notices":"Mentions de propriété intellectuelle","Nintendo Support":"Assistance Nintendo","Support Code":"Code d’assistance","Version":"Version","Sign Out":"Se déconnecter","Browser Notifications":"Notifications du navigateur","Show Nintendo Switch App notifications in this browser while this web app is open. They follow your Nintendo notification settings. Nintendo and nxapi credentials are not stored for browser notifications.":"Affiche les notifications de Nintendo Switch App dans ce navigateur tant que l’application web est ouverte. Elles suivent vos paramètres de notification Nintendo. Aucun identifiant Nintendo ou nxapi n’est stocké pour ces notifications.","Friend Requests":"Demandes d’ami","You'll get notifications when receiving friend requests and when other users accept your friend requests.":"Vous recevrez des notifications lors de nouvelles demandes d’ami et quand d’autres utilisateurs acceptent les vôtres.","GameChat Invites":"Invitations GameChat","You'll get GameChat-invite notifications.":"Vous recevrez des notifications d’invitation GameChat.","Notify When Friends Come Online":"Notifier quand des amis se connectent","Choose individual friends.":"Choisissez des amis individuellement.","Online Play Invitations":"Invitations au jeu en ligne","You'll get play-invite notifications.":"Vous recevrez des notifications d’invitation à jouer.","All Friends":"Tous les amis","Best Friends":"Meilleurs amis","Don't Notify":"Ne pas notifier","Game-Specific Services":"Services spécifiques aux jeux","You'll get game-related notifications.":"Vous recevrez des notifications liées aux jeux.","Device Settings":"Paramètres de l’appareil","On":"Activé","Off":"Désactivé","Standard":"Standard","Low Data":"Économie de données","Don't Allow":"Ne pas autoriser","Allow":"Autoriser","Allow Sending Usage Data":"Autoriser l’envoi des données d’utilisation","Use your Nintendo Account language by default. You can choose another language for this web app; the choice is saved on this device.":"La langue de votre compte Nintendo est utilisée par défaut. Vous pouvez choisir une autre langue pour cette application web ; votre choix est enregistré sur cet appareil.","Nintendo Account language":"Langue du compte Nintendo","Change":"Modifier","Add Friend":"Ajouter un ami","Friends":"Amis","Uploaded Screenshots and Videos":"Captures d’écran et vidéos envoyées","Select All":"Tout sélectionner","Download ZIP":"Télécharger le ZIP","Sign In":"Se connecter","Help":"Aide","Your Nintendo Account must be linked to a console.":"Votre compte Nintendo doit être associé à une console.","Third-party service disclosure":"Information sur le service tiers","Learn more about nxapi":"En savoir plus sur nxapi","I understand and agree to send this data to nxapi.":"Je comprends et j’accepte d’envoyer ces données à nxapi.","Sign in on Nintendo Account":"Se connecter au compte Nintendo","Open Nintendo Sign In":"Ouvrir la connexion Nintendo","Complete Sign In & Paste URL / Token":"Terminer la connexion et coller l’URL / le jeton","Paste from clipboard":"Coller depuis le presse-papiers","Remember my Nintendo Account on this device":"Mémoriser mon compte Nintendo sur cet appareil","Loading play activity…":"Chargement de l’activité de jeu…","Offline":"Hors ligne","QR Code":"Code QR","Your Friend Code":"Votre code ami","Copy Friend Code":"Copier le code ami","Copy Friend Link":"Copier le lien d’ami","Loading QR code…":"Chargement du code QR…","Web-port note: this preference is saved only in this browser. This web port does not send Nintendo analytics data that the project does not implement.":"Note sur la version web : cette préférence est enregistrée uniquement dans ce navigateur. La version web n’envoie pas de données d’analyse Nintendo qui ne sont pas implémentées dans ce projet.","If set to Device Settings, the app display will change to match the settings on the device you're using.":"Avec Paramètres de l’appareil, l’affichage s’adapte aux réglages de l’appareil utilisé.","If set to Low Data, videos won't play automatically. If set to Don't Allow, videos won't load.":"Avec Économie de données, les vidéos ne sont pas lues automatiquement. Avec Ne pas autoriser, elles ne sont pas chargées.","Features will not be restricted when using a Wi-Fi connection.":"Les fonctionnalités ne sont pas limitées avec une connexion Wi-Fi.","No One":"Personne","Everyone":"Tout le monde"},"it-IT":{"Settings":"Impostazioni","User Page":"Pagina utente","Nintendo Account":"Account Nintendo","Profile":"Profilo","Friend Code":"Codice amico","Online Status":"Stato online","Play Activity":"Attività di gioco","Nintendo Account Website":"Sito dell’account Nintendo","Notifications":"Notifiche","Push Notifications":"Notifiche push","System":"Sistema","Language":"Lingua","Dark Mode":"Modalità scura","Mobile Data":"Dati mobili","Storage":"Archiviazione","Clear cached images and data.":"Cancella immagini e dati memorizzati nella cache.","About Sending Usage Data":"Informazioni sull’invio dei dati di utilizzo","Other":"Altro","Feedback":"Feedback","About This App":"Informazioni sull’app","Nintendo Account User Agreement":"Accordo per l’account Nintendo","Nintendo Privacy Policy":"Informativa sulla privacy di Nintendo","Intellectual Property Notices":"Note sulla proprietà intellettuale","Nintendo Support":"Assistenza Nintendo","Support Code":"Codice assistenza","Version":"Versione","Sign Out":"Esci","Browser Notifications":"Notifiche del browser","Show Nintendo Switch App notifications in this browser while this web app is open. They follow your Nintendo notification settings. Nintendo and nxapi credentials are not stored for browser notifications.":"Mostra le notifiche di Nintendo Switch App in questo browser mentre l’app web è aperta. Seguono le impostazioni delle notifiche Nintendo. Le credenziali Nintendo e nxapi non vengono memorizzate per queste notifiche.","Friend Requests":"Richieste di amicizia","You'll get notifications when receiving friend requests and when other users accept your friend requests.":"Riceverai notifiche quando arrivano richieste di amicizia e quando altri utenti accettano le tue.","GameChat Invites":"Inviti GameChat","You'll get GameChat-invite notifications.":"Riceverai notifiche per gli inviti GameChat.","Notify When Friends Come Online":"Avvisa quando gli amici sono online","Choose individual friends.":"Scegli singoli amici.","Online Play Invitations":"Inviti al gioco online","You'll get play-invite notifications.":"Riceverai notifiche per gli inviti a giocare.","All Friends":"Tutti gli amici","Best Friends":"Migliori amici","Don't Notify":"Non notificare","Game-Specific Services":"Servizi specifici dei giochi","You'll get game-related notifications.":"Riceverai notifiche relative ai giochi.","Device Settings":"Impostazioni dispositivo","On":"Attivo","Off":"Disattivo","Standard":"Standard","Low Data":"Risparmio dati","Don't Allow":"Non consentire","Allow":"Consenti","Allow Sending Usage Data":"Consenti l’invio dei dati di utilizzo","Use your Nintendo Account language by default. You can choose another language for this web app; the choice is saved on this device.":"Per impostazione predefinita viene usata la lingua del tuo account Nintendo. Puoi scegliere un’altra lingua per questa app web; la scelta viene salvata su questo dispositivo.","Nintendo Account language":"Lingua dell’account Nintendo","Change":"Modifica","Add Friend":"Aggiungi amico","Friends":"Amici","Uploaded Screenshots and Videos":"Screenshot e video caricati","Select All":"Seleziona tutto","Download ZIP":"Scarica ZIP","Sign In":"Accedi","Help":"Aiuto","Your Nintendo Account must be linked to a console.":"Il tuo account Nintendo deve essere collegato a una console.","Third-party service disclosure":"Informativa sul servizio di terze parti","Learn more about nxapi":"Scopri di più su nxapi","I understand and agree to send this data to nxapi.":"Comprendo e accetto di inviare questi dati a nxapi.","Sign in on Nintendo Account":"Accedi all’account Nintendo","Open Nintendo Sign In":"Apri accesso Nintendo","Complete Sign In & Paste URL / Token":"Completa l’accesso e incolla URL / token","Paste from clipboard":"Incolla dagli appunti","Remember my Nintendo Account on this device":"Ricorda il mio account Nintendo su questo dispositivo","Loading play activity…":"Caricamento attività di gioco…","Offline":"Offline","QR Code":"Codice QR","Your Friend Code":"Il tuo codice amico","Copy Friend Code":"Copia codice amico","Copy Friend Link":"Copia link amico","Loading QR code…":"Caricamento codice QR…","Web-port note: this preference is saved only in this browser. This web port does not send Nintendo analytics data that the project does not implement.":"Nota sulla versione web: questa preferenza viene salvata solo in questo browser. La versione web non invia dati analitici Nintendo non implementati nel progetto.","If set to Device Settings, the app display will change to match the settings on the device you're using.":"Con Impostazioni dispositivo, l’aspetto dell’app segue le impostazioni del dispositivo in uso.","If set to Low Data, videos won't play automatically. If set to Don't Allow, videos won't load.":"Con Risparmio dati, i video non vengono riprodotti automaticamente. Con Non consentire, i video non vengono caricati.","Features will not be restricted when using a Wi-Fi connection.":"Le funzioni non saranno limitate quando usi una connessione Wi-Fi.","No One":"Nessuno","Everyone":"Tutti"},"nl-NL":{"Settings":"Instellingen","User Page":"Gebruikerspagina","Nintendo Account":"Nintendo-account","Profile":"Profiel","Friend Code":"Vriendcode","Online Status":"Onlinestatus","Play Activity":"Speelactiviteit","Nintendo Account Website":"Nintendo-accountwebsite","Notifications":"Meldingen","Push Notifications":"Pushmeldingen","System":"Systeem","Language":"Taal","Dark Mode":"Donkere modus","Mobile Data":"Mobiele data","Storage":"Opslag","Clear cached images and data.":"Afbeeldingen en gegevens in de cache wissen.","About Sending Usage Data":"Over het verzenden van gebruiksgegevens","Other":"Overig","Feedback":"Feedback","About This App":"Over deze app","Nintendo Account User Agreement":"Gebruikersovereenkomst Nintendo-account","Nintendo Privacy Policy":"Privacybeleid van Nintendo","Intellectual Property Notices":"Kennisgevingen intellectueel eigendom","Nintendo Support":"Nintendo-support","Support Code":"Supportcode","Version":"Versie","Sign Out":"Uitloggen","Browser Notifications":"Browsermeldingen","Show Nintendo Switch App notifications in this browser while this web app is open. They follow your Nintendo notification settings. Nintendo and nxapi credentials are not stored for browser notifications.":"Toon meldingen van de Nintendo Switch App in deze browser zolang de webapp open is. Ze volgen je Nintendo-meldingsinstellingen. Nintendo- en nxapi-inloggegevens worden hiervoor niet opgeslagen.","Friend Requests":"Vriendschapsverzoeken","You'll get notifications when receiving friend requests and when other users accept your friend requests.":"Je krijgt meldingen bij vriendschapsverzoeken en wanneer andere gebruikers jouw verzoek accepteren.","GameChat Invites":"GameChat-uitnodigingen","You'll get GameChat-invite notifications.":"Je krijgt meldingen voor GameChat-uitnodigingen.","Notify When Friends Come Online":"Melden wanneer vrienden online komen","Choose individual friends.":"Kies afzonderlijke vrienden.","Online Play Invitations":"Uitnodigingen voor online spelen","You'll get play-invite notifications.":"Je krijgt meldingen voor speluitnodigingen.","All Friends":"Alle vrienden","Best Friends":"Beste vrienden","Don't Notify":"Niet melden","Game-Specific Services":"Gamespecifieke diensten","You'll get game-related notifications.":"Je krijgt gamegerelateerde meldingen.","Device Settings":"Apparaatinstellingen","On":"Aan","Off":"Uit","Standard":"Standaard","Low Data":"Databesparing","Don't Allow":"Niet toestaan","Allow":"Toestaan","Allow Sending Usage Data":"Verzenden van gebruiksgegevens toestaan","Use your Nintendo Account language by default. You can choose another language for this web app; the choice is saved on this device.":"Standaard wordt de taal van je Nintendo-account gebruikt. Je kunt voor deze webapp een andere taal kiezen; je keuze wordt op dit apparaat opgeslagen.","Nintendo Account language":"Taal van Nintendo-account","Change":"Wijzigen","Add Friend":"Vriend toevoegen","Friends":"Vrienden","Uploaded Screenshots and Videos":"Geüploade screenshots en video’s","Select All":"Alles selecteren","Download ZIP":"ZIP downloaden","Sign In":"Inloggen","Help":"Help","Your Nintendo Account must be linked to a console.":"Je Nintendo-account moet aan een console zijn gekoppeld.","Third-party service disclosure":"Informatie over dienst van derden","Learn more about nxapi":"Meer informatie over nxapi","I understand and agree to send this data to nxapi.":"Ik begrijp en ga ermee akkoord deze gegevens naar nxapi te sturen.","Sign in on Nintendo Account":"Inloggen bij Nintendo-account","Open Nintendo Sign In":"Nintendo-login openen","Complete Sign In & Paste URL / Token":"Voltooi login en plak URL / token","Paste from clipboard":"Plakken vanaf klembord","Remember my Nintendo Account on this device":"Mijn Nintendo-account op dit apparaat onthouden","Loading play activity…":"Speelactiviteit laden…","Offline":"Offline","QR Code":"QR-code","Your Friend Code":"Jouw vriendcode","Copy Friend Code":"Vriendcode kopiëren","Copy Friend Link":"Vriendlink kopiëren","Loading QR code…":"QR-code laden…","Web-port note: this preference is saved only in this browser. This web port does not send Nintendo analytics data that the project does not implement.":"Opmerking webversie: deze voorkeur wordt alleen in deze browser opgeslagen. De webversie verzendt geen Nintendo-analysegegevens die niet in dit project zijn geïmplementeerd.","If set to Device Settings, the app display will change to match the settings on the device you're using.":"Bij Apparaatinstellingen past de weergave zich aan de instellingen van het gebruikte apparaat aan.","If set to Low Data, videos won't play automatically. If set to Don't Allow, videos won't load.":"Met Databesparing worden video’s niet automatisch afgespeeld. Met Niet toestaan worden video’s niet geladen.","Features will not be restricted when using a Wi-Fi connection.":"Functies worden niet beperkt bij gebruik van wifi.","No One":"Niemand","Everyone":"Iedereen"},"pt-PT":{"Settings":"Definições","User Page":"Página de utilizador","Nintendo Account":"Conta Nintendo","Profile":"Perfil","Friend Code":"Código de amigo","Online Status":"Estado online","Play Activity":"Atividade de jogo","Nintendo Account Website":"Site da Conta Nintendo","Notifications":"Notificações","Push Notifications":"Notificações push","System":"Sistema","Language":"Idioma","Dark Mode":"Modo escuro","Mobile Data":"Dados móveis","Storage":"Armazenamento","Clear cached images and data.":"Limpar imagens e dados em cache.","About Sending Usage Data":"Sobre o envio de dados de utilização","Other":"Outros","Feedback":"Comentários","About This App":"Sobre esta aplicação","Nintendo Account User Agreement":"Acordo de Utilizador da Conta Nintendo","Nintendo Privacy Policy":"Política de Privacidade da Nintendo","Intellectual Property Notices":"Avisos de propriedade intelectual","Nintendo Support":"Assistência Nintendo","Support Code":"Código de assistência","Version":"Versão","Sign Out":"Terminar sessão","Browser Notifications":"Notificações do navegador","Show Nintendo Switch App notifications in this browser while this web app is open. They follow your Nintendo notification settings. Nintendo and nxapi credentials are not stored for browser notifications.":"Mostrar notificações da Nintendo Switch App neste navegador enquanto a aplicação web estiver aberta. Seguem as tuas definições de notificações Nintendo. As credenciais Nintendo e nxapi não são guardadas para estas notificações.","Friend Requests":"Pedidos de amizade","You'll get notifications when receiving friend requests and when other users accept your friend requests.":"Receberás notificações ao receber pedidos de amizade e quando outros utilizadores aceitarem os teus pedidos.","GameChat Invites":"Convites GameChat","You'll get GameChat-invite notifications.":"Receberás notificações de convites GameChat.","Notify When Friends Come Online":"Notificar quando os amigos ficam online","Choose individual friends.":"Escolhe amigos individualmente.","Online Play Invitations":"Convites para jogar online","You'll get play-invite notifications.":"Receberás notificações de convites para jogar.","All Friends":"Todos os amigos","Best Friends":"Melhores amigos","Don't Notify":"Não notificar","Game-Specific Services":"Serviços específicos de jogos","You'll get game-related notifications.":"Receberás notificações relacionadas com jogos.","Device Settings":"Definições do dispositivo","On":"Ligado","Off":"Desligado","Standard":"Padrão","Low Data":"Poupar dados","Don't Allow":"Não permitir","Allow":"Permitir","Allow Sending Usage Data":"Permitir envio de dados de utilização","Use your Nintendo Account language by default. You can choose another language for this web app; the choice is saved on this device.":"Por predefinição, é utilizado o idioma da tua Conta Nintendo. Podes escolher outro idioma para esta aplicação web; a escolha fica guardada neste dispositivo.","Nintendo Account language":"Idioma da Conta Nintendo","Change":"Alterar","Add Friend":"Adicionar amigo","Friends":"Amigos","Uploaded Screenshots and Videos":"Capturas de ecrã e vídeos enviados","Select All":"Selecionar tudo","Download ZIP":"Transferir ZIP","Sign In":"Iniciar sessão","Help":"Ajuda","Your Nintendo Account must be linked to a console.":"A tua Conta Nintendo tem de estar associada a uma consola.","Third-party service disclosure":"Informação sobre serviço de terceiros","Learn more about nxapi":"Saber mais sobre o nxapi","I understand and agree to send this data to nxapi.":"Compreendo e aceito enviar estes dados para o nxapi.","Sign in on Nintendo Account":"Iniciar sessão na Conta Nintendo","Open Nintendo Sign In":"Abrir início de sessão Nintendo","Complete Sign In & Paste URL / Token":"Concluir sessão e colar URL / token","Paste from clipboard":"Colar da área de transferência","Remember my Nintendo Account on this device":"Memorizar a minha Conta Nintendo neste dispositivo","Loading play activity…":"A carregar atividade de jogo…","Offline":"Offline","QR Code":"Código QR","Your Friend Code":"O teu código de amigo","Copy Friend Code":"Copiar código de amigo","Copy Friend Link":"Copiar ligação de amigo","Loading QR code…":"A carregar código QR…","Web-port note: this preference is saved only in this browser. This web port does not send Nintendo analytics data that the project does not implement.":"Nota da versão web: esta preferência é guardada apenas neste navegador. A versão web não envia dados de análise Nintendo que não estejam implementados neste projeto.","If set to Device Settings, the app display will change to match the settings on the device you're using.":"Com Definições do dispositivo, o aspeto da aplicação acompanha as definições do dispositivo que estás a utilizar.","If set to Low Data, videos won't play automatically. If set to Don't Allow, videos won't load.":"Com Poupar dados, os vídeos não são reproduzidos automaticamente. Com Não permitir, os vídeos não são carregados.","Features will not be restricted when using a Wi-Fi connection.":"As funcionalidades não serão limitadas ao utilizar uma ligação Wi-Fi.","No One":"Ninguém","Everyone":"Todos"},"ru-RU":{"Settings":"Настройки","User Page":"Страница пользователя","Nintendo Account":"Учётная запись Nintendo","Profile":"Профиль","Friend Code":"Код друга","Online Status":"Сетевой статус","Play Activity":"Игровая активность","Nintendo Account Website":"Сайт учётной записи Nintendo","Notifications":"Уведомления","Push Notifications":"Push-уведомления","System":"Система","Language":"Язык","Dark Mode":"Тёмная тема","Mobile Data":"Мобильные данные","Storage":"Хранилище","Clear cached images and data.":"Очистить кэшированные изображения и данные.","About Sending Usage Data":"Об отправке данных об использовании","Other":"Другое","Feedback":"Отзыв","About This App":"Об этом приложении","Nintendo Account User Agreement":"Пользовательское соглашение учётной записи Nintendo","Nintendo Privacy Policy":"Политика конфиденциальности Nintendo","Intellectual Property Notices":"Уведомления об интеллектуальной собственности","Nintendo Support":"Поддержка Nintendo","Support Code":"Код поддержки","Version":"Версия","Sign Out":"Выйти","Browser Notifications":"Уведомления браузера","Show Nintendo Switch App notifications in this browser while this web app is open. They follow your Nintendo notification settings. Nintendo and nxapi credentials are not stored for browser notifications.":"Показывать уведомления Nintendo Switch App в этом браузере, пока веб-приложение открыто. Они используют ваши настройки уведомлений Nintendo. Учётные данные Nintendo и nxapi для этих уведомлений не сохраняются.","Friend Requests":"Запросы в друзья","You'll get notifications when receiving friend requests and when other users accept your friend requests.":"Вы будете получать уведомления о запросах в друзья и о принятии ваших запросов другими пользователями.","GameChat Invites":"Приглашения GameChat","You'll get GameChat-invite notifications.":"Вы будете получать уведомления о приглашениях GameChat.","Notify When Friends Come Online":"Уведомлять, когда друзья появляются в сети","Choose individual friends.":"Выберите отдельных друзей.","Online Play Invitations":"Приглашения в онлайн-игру","You'll get play-invite notifications.":"Вы будете получать уведомления о приглашениях в игру.","All Friends":"Все друзья","Best Friends":"Лучшие друзья","Don't Notify":"Не уведомлять","Game-Specific Services":"Сервисы для отдельных игр","You'll get game-related notifications.":"Вы будете получать уведомления, связанные с играми.","Device Settings":"Настройки устройства","On":"Вкл.","Off":"Выкл.","Standard":"Стандартно","Low Data":"Экономия данных","Don't Allow":"Не разрешать","Allow":"Разрешить","Allow Sending Usage Data":"Разрешить отправку данных об использовании","Use your Nintendo Account language by default. You can choose another language for this web app; the choice is saved on this device.":"По умолчанию используется язык вашей учётной записи Nintendo. Для этого веб-приложения можно выбрать другой язык; выбор сохраняется на этом устройстве.","Nintendo Account language":"Язык учётной записи Nintendo","Change":"Изменить","Add Friend":"Добавить друга","Friends":"Друзья","Uploaded Screenshots and Videos":"Загруженные снимки экрана и видео","Select All":"Выбрать всё","Download ZIP":"Скачать ZIP","Sign In":"Войти","Help":"Справка","Your Nintendo Account must be linked to a console.":"Ваша учётная запись Nintendo должна быть связана с консолью.","Third-party service disclosure":"Сведения о стороннем сервисе","Learn more about nxapi":"Подробнее о nxapi","I understand and agree to send this data to nxapi.":"Я понимаю и согласен отправлять эти данные в nxapi.","Sign in on Nintendo Account":"Войти в учётную запись Nintendo","Open Nintendo Sign In":"Открыть вход Nintendo","Complete Sign In & Paste URL / Token":"Завершите вход и вставьте URL / токен","Paste from clipboard":"Вставить из буфера обмена","Remember my Nintendo Account on this device":"Запомнить мою учётную запись Nintendo на этом устройстве","Loading play activity…":"Загрузка игровой активности…","Offline":"Не в сети","QR Code":"QR-код","Your Friend Code":"Ваш код друга","Copy Friend Code":"Копировать код друга","Copy Friend Link":"Копировать ссылку друга","Loading QR code…":"Загрузка QR-кода…","Web-port note: this preference is saved only in this browser. This web port does not send Nintendo analytics data that the project does not implement.":"Примечание веб-версии: эта настройка сохраняется только в этом браузере. Веб-версия не отправляет аналитические данные Nintendo, которые не реализованы в проекте.","If set to Device Settings, the app display will change to match the settings on the device you're using.":"При выборе «Настройки устройства» оформление приложения будет соответствовать настройкам используемого устройства.","If set to Low Data, videos won't play automatically. If set to Don't Allow, videos won't load.":"В режиме экономии данных видео не воспроизводится автоматически. При выборе «Не разрешать» видео не загружается.","Features will not be restricted when using a Wi-Fi connection.":"При подключении по Wi-Fi функции не ограничиваются.","No One":"Никто","Everyone":"Все"},"ja-JP":{"Settings":"設定","User Page":"ユーザーページ","Nintendo Account":"ニンテンドーアカウント","Profile":"プロフィール","Friend Code":"フレンドコード","Online Status":"オンライン状況","Play Activity":"プレイ記録","Nintendo Account Website":"ニンテンドーアカウントのウェブサイト","Notifications":"お知らせ","Push Notifications":"プッシュ通知","System":"システム","Language":"言語","Dark Mode":"ダークモード","Mobile Data":"モバイルデータ","Storage":"ストレージ","Clear cached images and data.":"キャッシュされた画像とデータを削除します。","About Sending Usage Data":"利用状況データの送信について","Other":"その他","Feedback":"ご意見","About This App":"このアプリについて","Nintendo Account User Agreement":"ニンテンドーアカウント利用規約","Nintendo Privacy Policy":"任天堂プライバシーポリシー","Intellectual Property Notices":"知的財産権に関する表示","Nintendo Support":"任天堂サポート","Support Code":"サポートコード","Version":"バージョン","Sign Out":"ログアウト","Browser Notifications":"ブラウザー通知","Show Nintendo Switch App notifications in this browser while this web app is open. They follow your Nintendo notification settings. Nintendo and nxapi credentials are not stored for browser notifications.":"このWebアプリを開いている間、Nintendo Switch Appの通知をこのブラウザーに表示します。Nintendoの通知設定に従います。ブラウザー通知のためにNintendoやnxapiの認証情報は保存されません。","Friend Requests":"フレンド申請","You'll get notifications when receiving friend requests and when other users accept your friend requests.":"フレンド申請を受け取ったときや、相手があなたの申請を承認したときに通知します。","GameChat Invites":"GameChatの招待","You'll get GameChat-invite notifications.":"GameChatの招待を通知します。","Notify When Friends Come Online":"フレンドがオンラインになったら通知","Choose individual friends.":"フレンドを個別に選びます。","Online Play Invitations":"オンラインプレイの招待","You'll get play-invite notifications.":"プレイの招待を通知します。","All Friends":"すべてのフレンド","Best Friends":"お気に入りのフレンド","Don't Notify":"通知しない","Game-Specific Services":"ゲーム連携サービス","You'll get game-related notifications.":"ゲームに関する通知を受け取ります。","Device Settings":"端末の設定","On":"オン","Off":"オフ","Standard":"標準","Low Data":"データ節約","Don't Allow":"許可しない","Allow":"許可する","Allow Sending Usage Data":"利用状況データの送信を許可","Use your Nintendo Account language by default. You can choose another language for this web app; the choice is saved on this device.":"初期設定ではニンテンドーアカウントの言語を使用します。このWebアプリでは別の言語を選択でき、選択内容はこの端末に保存されます。","Nintendo Account language":"ニンテンドーアカウントの言語","Change":"変更","Add Friend":"フレンド追加","Friends":"フレンド","Uploaded Screenshots and Videos":"アップロードした画面写真と動画","Select All":"すべて選択","Download ZIP":"ZIPをダウンロード","Sign In":"ログイン","Help":"ヘルプ","Your Nintendo Account must be linked to a console.":"ニンテンドーアカウントをゲーム機と連携してください。","Third-party service disclosure":"外部サービスに関するご案内","Learn more about nxapi":"nxapiについて詳しく見る","I understand and agree to send this data to nxapi.":"内容を理解し、このデータをnxapiへ送信することに同意します。","Sign in on Nintendo Account":"ニンテンドーアカウントにログイン","Open Nintendo Sign In":"Nintendoのログインを開く","Complete Sign In & Paste URL / Token":"ログインを完了してURL / トークンを貼り付け","Paste from clipboard":"クリップボードから貼り付け","Remember my Nintendo Account on this device":"この端末でニンテンドーアカウントを記憶する","Loading play activity…":"プレイ記録を読み込み中…","Offline":"オフライン","QR Code":"QRコード","Your Friend Code":"あなたのフレンドコード","Copy Friend Code":"フレンドコードをコピー","Copy Friend Link":"フレンドリンクをコピー","Loading QR code…":"QRコードを読み込み中…","Web-port note: this preference is saved only in this browser. This web port does not send Nintendo analytics data that the project does not implement.":"Web版について：この設定はこのブラウザーにのみ保存されます。このプロジェクトに実装されていないNintendoの分析データ送信は行いません。","If set to Device Settings, the app display will change to match the settings on the device you're using.":"「端末の設定」にすると、使用中の端末設定に合わせて表示が切り替わります。","If set to Low Data, videos won't play automatically. If set to Don't Allow, videos won't load.":"「データ節約」では動画を自動再生しません。「許可しない」では動画を読み込みません。","Features will not be restricted when using a Wi-Fi connection.":"Wi-Fi接続中は機能が制限されません。","No One":"誰にも見せない","Everyone":"すべてのユーザー"},"ko-KR":{"Settings":"설정","User Page":"사용자 페이지","Nintendo Account":"닌텐도 어카운트","Profile":"프로필","Friend Code":"친구 코드","Online Status":"온라인 상태","Play Activity":"플레이 기록","Nintendo Account Website":"닌텐도 어카운트 웹사이트","Notifications":"알림","Push Notifications":"푸시 알림","System":"시스템","Language":"언어","Dark Mode":"다크 모드","Mobile Data":"모바일 데이터","Storage":"저장 공간","Clear cached images and data.":"캐시된 이미지와 데이터를 삭제합니다.","About Sending Usage Data":"이용 데이터 전송에 대해","Other":"기타","Feedback":"의견 보내기","About This App":"이 앱 정보","Nintendo Account User Agreement":"닌텐도 어카운트 이용 약관","Nintendo Privacy Policy":"Nintendo 개인정보처리방침","Intellectual Property Notices":"지식 재산권 고지","Nintendo Support":"Nintendo 고객지원","Support Code":"지원 코드","Version":"버전","Sign Out":"로그아웃","Browser Notifications":"브라우저 알림","Show Nintendo Switch App notifications in this browser while this web app is open. They follow your Nintendo notification settings. Nintendo and nxapi credentials are not stored for browser notifications.":"이 웹 앱이 열려 있는 동안 이 브라우저에 Nintendo Switch App 알림을 표시합니다. Nintendo 알림 설정을 따르며 브라우저 알림을 위해 Nintendo 또는 nxapi 인증 정보를 저장하지 않습니다.","Friend Requests":"친구 요청","You'll get notifications when receiving friend requests and when other users accept your friend requests.":"친구 요청을 받거나 다른 사용자가 내 친구 요청을 수락하면 알림을 받습니다.","GameChat Invites":"GameChat 초대","You'll get GameChat-invite notifications.":"GameChat 초대 알림을 받습니다.","Notify When Friends Come Online":"친구가 온라인이 되면 알림","Choose individual friends.":"친구를 개별적으로 선택합니다.","Online Play Invitations":"온라인 플레이 초대","You'll get play-invite notifications.":"플레이 초대 알림을 받습니다.","All Friends":"모든 친구","Best Friends":"즐겨찾기 친구","Don't Notify":"알림 안 함","Game-Specific Services":"게임별 서비스","You'll get game-related notifications.":"게임 관련 알림을 받습니다.","Device Settings":"기기 설정","On":"켜기","Off":"끄기","Standard":"표준","Low Data":"데이터 절약","Don't Allow":"허용 안 함","Allow":"허용","Allow Sending Usage Data":"이용 데이터 전송 허용","Use your Nintendo Account language by default. You can choose another language for this web app; the choice is saved on this device.":"기본적으로 닌텐도 어카운트의 언어를 사용합니다. 이 웹 앱에서는 다른 언어를 선택할 수 있으며 선택 내용은 이 기기에 저장됩니다.","Nintendo Account language":"닌텐도 어카운트 언어","Change":"변경","Add Friend":"친구 추가","Friends":"친구","Uploaded Screenshots and Videos":"업로드된 스크린샷 및 동영상","Select All":"모두 선택","Download ZIP":"ZIP 다운로드","Sign In":"로그인","Help":"도움말","Your Nintendo Account must be linked to a console.":"닌텐도 어카운트가 본체와 연동되어 있어야 합니다.","Third-party service disclosure":"타사 서비스 안내","Learn more about nxapi":"nxapi 자세히 알아보기","I understand and agree to send this data to nxapi.":"내용을 이해했으며 이 데이터를 nxapi로 전송하는 데 동의합니다.","Sign in on Nintendo Account":"닌텐도 어카운트에 로그인","Open Nintendo Sign In":"Nintendo 로그인 열기","Complete Sign In & Paste URL / Token":"로그인을 완료하고 URL / 토큰 붙여넣기","Paste from clipboard":"클립보드에서 붙여넣기","Remember my Nintendo Account on this device":"이 기기에서 닌텐도 어카운트 기억하기","Loading play activity…":"플레이 기록 불러오는 중…","Offline":"오프라인","QR Code":"QR 코드","Your Friend Code":"내 친구 코드","Copy Friend Code":"친구 코드 복사","Copy Friend Link":"친구 링크 복사","Loading QR code…":"QR 코드 불러오는 중…","Web-port note: this preference is saved only in this browser. This web port does not send Nintendo analytics data that the project does not implement.":"웹 버전 안내: 이 설정은 이 브라우저에만 저장됩니다. 이 프로젝트에 구현되지 않은 Nintendo 분석 데이터 전송은 하지 않습니다.","If set to Device Settings, the app display will change to match the settings on the device you're using.":"기기 설정을 선택하면 사용 중인 기기의 설정에 맞춰 앱 표시가 변경됩니다.","If set to Low Data, videos won't play automatically. If set to Don't Allow, videos won't load.":"데이터 절약에서는 동영상이 자동 재생되지 않습니다. 허용 안 함에서는 동영상이 로드되지 않습니다.","Features will not be restricted when using a Wi-Fi connection.":"Wi-Fi 연결에서는 기능이 제한되지 않습니다.","No One":"아무도 안 함","Everyone":"모든 사용자"},"zh-CN":{"Settings":"设置","User Page":"用户页面","Nintendo Account":"Nintendo Account","Profile":"个人资料","Friend Code":"好友编号","Online Status":"在线状态","Play Activity":"游玩记录","Nintendo Account Website":"Nintendo Account 网站","Notifications":"通知","Push Notifications":"推送通知","System":"系统","Language":"语言","Dark Mode":"深色模式","Mobile Data":"移动数据","Storage":"存储空间","Clear cached images and data.":"清除缓存的图片和数据。","About Sending Usage Data":"关于发送使用数据","Other":"其他","Feedback":"反馈","About This App":"关于本应用","Nintendo Account User Agreement":"Nintendo Account 用户协议","Nintendo Privacy Policy":"Nintendo 隐私政策","Intellectual Property Notices":"知识产权声明","Nintendo Support":"Nintendo 支持","Support Code":"支持代码","Version":"版本","Sign Out":"退出登录","Browser Notifications":"浏览器通知","Show Nintendo Switch App notifications in this browser while this web app is open. They follow your Nintendo notification settings. Nintendo and nxapi credentials are not stored for browser notifications.":"在此 Web 应用打开时，在本浏览器中显示 Nintendo Switch App 通知。通知会遵循你的 Nintendo 通知设置。浏览器通知不会保存 Nintendo 或 nxapi 凭据。","Friend Requests":"好友申请","You'll get notifications when receiving friend requests and when other users accept your friend requests.":"收到好友申请以及其他用户接受你的好友申请时会收到通知。","GameChat Invites":"GameChat 邀请","You'll get GameChat-invite notifications.":"你会收到 GameChat 邀请通知。","Notify When Friends Come Online":"好友上线时通知","Choose individual friends.":"选择指定好友。","Online Play Invitations":"在线游玩邀请","You'll get play-invite notifications.":"你会收到游玩邀请通知。","All Friends":"所有好友","Best Friends":"挚友","Don't Notify":"不通知","Game-Specific Services":"游戏专用服务","You'll get game-related notifications.":"你会收到与游戏相关的通知。","Device Settings":"设备设置","On":"开启","Off":"关闭","Standard":"标准","Low Data":"节省流量","Don't Allow":"不允许","Allow":"允许","Allow Sending Usage Data":"允许发送使用数据","Use your Nintendo Account language by default. You can choose another language for this web app; the choice is saved on this device.":"默认使用 Nintendo Account 的语言。你也可以为此 Web 应用选择其他语言；选择会保存在此设备上。","Nintendo Account language":"Nintendo Account 语言","Change":"更改","Add Friend":"添加好友","Friends":"好友","Uploaded Screenshots and Videos":"已上传的截图和视频","Select All":"全选","Download ZIP":"下载 ZIP","Sign In":"登录","Help":"帮助","Your Nintendo Account must be linked to a console.":"你的 Nintendo Account 必须与主机关联。","Third-party service disclosure":"第三方服务说明","Learn more about nxapi":"了解更多 nxapi 信息","I understand and agree to send this data to nxapi.":"我理解并同意将这些数据发送给 nxapi。","Sign in on Nintendo Account":"登录 Nintendo Account","Open Nintendo Sign In":"打开 Nintendo 登录","Complete Sign In & Paste URL / Token":"完成登录并粘贴 URL / 令牌","Paste from clipboard":"从剪贴板粘贴","Remember my Nintendo Account on this device":"在此设备上记住我的 Nintendo Account","Loading play activity…":"正在加载游玩记录…","Offline":"离线","QR Code":"二维码","Your Friend Code":"你的好友编号","Copy Friend Code":"复制好友编号","Copy Friend Link":"复制好友链接","Loading QR code…":"正在加载二维码…","Web-port note: this preference is saved only in this browser. This web port does not send Nintendo analytics data that the project does not implement.":"Web 版说明：此偏好设置仅保存在本浏览器中。Web 版不会发送本项目未实现的 Nintendo 分析数据。","If set to Device Settings, the app display will change to match the settings on the device you're using.":"设为“设备设置”后，应用显示会跟随当前设备的设置。","If set to Low Data, videos won't play automatically. If set to Don't Allow, videos won't load.":"设为“节省流量”时，视频不会自动播放。设为“不允许”时，视频不会加载。","Features will not be restricted when using a Wi-Fi connection.":"使用 Wi-Fi 连接时不会限制功能。","No One":"无人","Everyone":"所有用户"},"zh-TW":{"Settings":"設定","User Page":"使用者頁面","Nintendo Account":"Nintendo Account","Profile":"個人資料","Friend Code":"好友編號","Online Status":"上線狀態","Play Activity":"遊玩紀錄","Nintendo Account Website":"Nintendo Account 網站","Notifications":"通知","Push Notifications":"推播通知","System":"系統","Language":"語言","Dark Mode":"深色模式","Mobile Data":"行動數據","Storage":"儲存空間","Clear cached images and data.":"清除快取的圖片與資料。","About Sending Usage Data":"關於傳送使用資料","Other":"其他","Feedback":"意見回饋","About This App":"關於本應用程式","Nintendo Account User Agreement":"Nintendo Account 使用者協議","Nintendo Privacy Policy":"Nintendo 隱私權政策","Intellectual Property Notices":"智慧財產權聲明","Nintendo Support":"Nintendo 支援","Support Code":"支援代碼","Version":"版本","Sign Out":"登出","Browser Notifications":"瀏覽器通知","Show Nintendo Switch App notifications in this browser while this web app is open. They follow your Nintendo notification settings. Nintendo and nxapi credentials are not stored for browser notifications.":"此 Web 應用程式開啟時，在本瀏覽器顯示 Nintendo Switch App 通知。通知會依照你的 Nintendo 通知設定。瀏覽器通知不會儲存 Nintendo 或 nxapi 憑證。","Friend Requests":"好友申請","You'll get notifications when receiving friend requests and when other users accept your friend requests.":"收到好友申請以及其他使用者接受你的好友申請時會收到通知。","GameChat Invites":"GameChat 邀請","You'll get GameChat-invite notifications.":"你會收到 GameChat 邀請通知。","Notify When Friends Come Online":"好友上線時通知","Choose individual friends.":"選擇指定好友。","Online Play Invitations":"線上遊玩邀請","You'll get play-invite notifications.":"你會收到遊玩邀請通知。","All Friends":"所有好友","Best Friends":"摯友","Don't Notify":"不通知","Game-Specific Services":"遊戲專用服務","You'll get game-related notifications.":"你會收到與遊戲相關的通知。","Device Settings":"裝置設定","On":"開啟","Off":"關閉","Standard":"標準","Low Data":"節省數據","Don't Allow":"不允許","Allow":"允許","Allow Sending Usage Data":"允許傳送使用資料","Use your Nintendo Account language by default. You can choose another language for this web app; the choice is saved on this device.":"預設使用 Nintendo Account 的語言。你也可以為此 Web 應用程式選擇其他語言；選擇會儲存在此裝置上。","Nintendo Account language":"Nintendo Account 語言","Change":"變更","Add Friend":"新增好友","Friends":"好友","Uploaded Screenshots and Videos":"已上傳的畫面截圖和影片","Select All":"全選","Download ZIP":"下載 ZIP","Sign In":"登入","Help":"說明","Your Nintendo Account must be linked to a console.":"你的 Nintendo Account 必須與主機連結。","Third-party service disclosure":"第三方服務說明","Learn more about nxapi":"進一步了解 nxapi","I understand and agree to send this data to nxapi.":"我了解並同意將這些資料傳送給 nxapi。","Sign in on Nintendo Account":"登入 Nintendo Account","Open Nintendo Sign In":"開啟 Nintendo 登入","Complete Sign In & Paste URL / Token":"完成登入並貼上 URL / 權杖","Paste from clipboard":"從剪貼簿貼上","Remember my Nintendo Account on this device":"在此裝置記住我的 Nintendo Account","Loading play activity…":"正在載入遊玩紀錄…","Offline":"離線","QR Code":"QR Code","Your Friend Code":"你的好友編號","Copy Friend Code":"複製好友編號","Copy Friend Link":"複製好友連結","Loading QR code…":"正在載入 QR Code…","Web-port note: this preference is saved only in this browser. This web port does not send Nintendo analytics data that the project does not implement.":"Web 版說明：此偏好設定只會儲存在本瀏覽器。Web 版不會傳送本專案未實作的 Nintendo 分析資料。","If set to Device Settings, the app display will change to match the settings on the device you're using.":"設為「裝置設定」後，應用程式顯示會跟隨目前裝置的設定。","If set to Low Data, videos won't play automatically. If set to Don't Allow, videos won't load.":"設為「節省數據」時，影片不會自動播放。設為「不允許」時，影片不會載入。","Features will not be restricted when using a Wi-Fi connection.":"使用 Wi-Fi 連線時不會限制功能。","No One":"無人","Everyone":"所有使用者"}};
+    APP_TRANSLATIONS['es-MX'] = APP_TRANSLATIONS['es-ES'];
+    APP_TRANSLATIONS['fr-CA'] = APP_TRANSLATIONS['fr-FR'];
+
+    const translatedTextSource = new WeakMap();
+    let languageObserver = null;
+
+    function normalizeAppLocale(value) {
+        const raw = String(value || '').trim().replace(/_/g, '-');
+        if (!raw) return null;
+        const exact = APP_SUPPORTED_LOCALES.find((locale) => locale.toLowerCase() === raw.toLowerCase());
+        if (exact) return exact;
+
+        const lower = raw.toLowerCase();
+        if (lower.startsWith('zh-hant') || lower === 'zh-tw' || lower === 'zh-hk' || lower === 'zh-mo') return 'zh-TW';
+        if (lower.startsWith('zh')) return 'zh-CN';
+
+        const language = lower.split('-')[0];
+        return {
+            de: 'de-DE', en: 'en-GB', es: 'es-ES', fr: 'fr-FR', it: 'it-IT',
+            ja: 'ja-JP', ko: 'ko-KR', nl: 'nl-NL', pt: 'pt-PT', ru: 'ru-RU'
+        }[language] || null;
+    }
+
+    function accountAppLocale() {
+        const user = state.currentUser || sessionUser() || {};
+        return normalizeAppLocale(user.language || user.locale || user.naLanguage);
+    }
+
+    function currentAppLocale() {
+        const preference = localSetting('language', 'account');
+        if (preference === 'account') {
+            return accountAppLocale() || normalizeAppLocale(navigator.language) || 'en-GB';
+        }
+        return normalizeAppLocale(preference) || accountAppLocale() || normalizeAppLocale(navigator.language) || 'en-GB';
+    }
+
+    function tr(source) {
+        const locale = currentAppLocale();
+        return APP_TRANSLATIONS[locale]?.[source] || source;
+    }
+
+    function localeDisplayName(locale, displayLocale = currentAppLocale()) {
+        try {
+            return new Intl.DisplayNames([displayLocale], { type: 'language' }).of(locale) || locale;
+        } catch {
+            return locale;
+        }
+    }
+
+    function translateTextNode(node) {
+        if (!node || node.nodeType !== Node.TEXT_NODE) return;
+        const parent = node.parentElement;
+        if (!parent || ['SCRIPT', 'STYLE', 'TEXTAREA', 'CODE', 'PRE'].includes(parent.tagName)) return;
+
+        const raw = node.nodeValue || '';
+        const trimmed = raw.trim();
+        if (!trimmed) return;
+
+        let source = translatedTextSource.get(node);
+        if (!source) {
+            if (!APP_I18N_KEYS.has(trimmed)) return;
+            source = trimmed;
+            translatedTextSource.set(node, source);
+        }
+
+        const translated = tr(source);
+        const lead = raw.match(/^\s*/)?.[0] || '';
+        const tail = raw.match(/\s*$/)?.[0] || '';
+        const next = `${lead}${translated}${tail}`;
+        if (node.nodeValue !== next) node.nodeValue = next;
+    }
+
+    function applyAppLanguage(root = document) {
+        document.documentElement.lang = currentAppLocale();
+
+        if (root.nodeType === Node.TEXT_NODE) {
+            translateTextNode(root);
+            return;
+        }
+
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        let node;
+        while ((node = walker.nextNode())) translateTextNode(node);
+
+        const scope = root.querySelectorAll ? root : document;
+        scope.querySelectorAll?.('[data-i18n-placeholder]').forEach((element) => {
+            const source = element.dataset.i18nPlaceholder;
+            if (source) element.setAttribute('placeholder', tr(source));
+        });
+        scope.querySelectorAll?.('[data-i18n-aria-label]').forEach((element) => {
+            const source = element.dataset.i18nAriaLabel;
+            if (source) element.setAttribute('aria-label', tr(source));
+        });
+    }
+
+    function installLanguageObserver() {
+        if (languageObserver || !document.body) return;
+        languageObserver = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                mutation.addedNodes.forEach((node) => {
+                    if (node.nodeType === Node.ELEMENT_NODE || node.nodeType === Node.TEXT_NODE) applyAppLanguage(node);
+                });
+            }
+        });
+        languageObserver.observe(document.body, { childList: true, subtree: true });
+    }
+
     // Endpoints recovered from the official 3.4.1 APK / current Coral contract.
     // Flags mirror the Android client behavior rather than adding Coral headers
     // globally to every request.
@@ -4299,7 +4448,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         const ms = toMillis(value);
         if (!ms) return '';
         try {
-            return new Intl.DateTimeFormat(undefined, withTime
+            return new Intl.DateTimeFormat(currentAppLocale(), withTime
                 ? { dateStyle: 'medium', timeStyle: 'short' }
                 : { dateStyle: 'medium' }).format(new Date(ms));
         } catch {
@@ -4310,11 +4459,12 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
     function relativeTime(value) {
         const ms = toMillis(value);
         if (!ms) return '';
-        const sec = Math.max(0, Math.floor((Date.now() - ms) / 1000));
-        if (sec < 60) return 'Just now';
-        if (sec < 3600) return `${Math.floor(sec / 60)} min. ago`;
-        if (sec < 86400) return `${Math.floor(sec / 3600)} hr. ago`;
-        return `${Math.floor(sec / 86400)} d. ago`;
+        const elapsed = Math.max(0, Date.now() - ms);
+        const rtf = new Intl.RelativeTimeFormat(currentAppLocale(), { numeric: 'auto' });
+        if (elapsed < 60_000) return rtf.format(0, 'second');
+        if (elapsed < 3_600_000) return rtf.format(-Math.floor(elapsed / 60_000), 'minute');
+        if (elapsed < 86_400_000) return rtf.format(-Math.floor(elapsed / 3_600_000), 'hour');
+        return rtf.format(-Math.floor(elapsed / 86_400_000), 'day');
     }
 
     function getCurrentFriends() {
@@ -4576,6 +4726,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             <div class="op-info-card">You'll get online-status notifications for friends (max of once per 30 mins. for each friend).</div>
             <div id="opFriendOnlineList" class="op-list"></div>`);
         screenShell('opSettingsPage', 'Settings', `<div id="opSettingsBody"></div>`);
+        screenShell('opLanguagePage', 'Language', `<div id="opLanguageBody"></div>`);
         screenShell('opDarkModePage', 'Dark Mode', `<div id="opDarkModeBody"></div>`);
         screenShell('opMobileDataPage', 'Mobile Data', `<div id="opMobileDataBody"></div>`);
         screenShell('opUsageDataPage', 'About Sending Usage Data', `<div id="opUsageDataBody"></div>`);
@@ -4611,6 +4762,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             opVisibilityPage: () => state.visibilityReturnTarget || 'opUserPage',
             opPushPage: () => state.pushReturnTarget || 'opSettingsPage',
             opSettingsPage: 'opUserPage',
+            opLanguagePage: 'opSettingsPage',
             opDarkModePage: 'opSettingsPage',
             opMobileDataPage: 'opSettingsPage',
             opUsageDataPage: 'opSettingsPage',
@@ -4721,6 +4873,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         const [user, permissions] = await Promise.all(calls);
         if (user) state.currentUser = user;
         if (permissions) state.permissions = permissions;
+        if (localSetting('language', 'account') === 'account') applyAppLanguage(document);
     }
 
     function ownPresencePlatformLabel(presence) {
@@ -4931,30 +5084,45 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         }
     }
 
-    async function openUserPage() {
+    async function openUserPage(options = {}) {
         ensureScreens();
-        assignPersistentViewOwner($('opUserPage'), activeAppTab);
-        const user = sessionUser() || {};
+        const userPage = $('opUserPage');
+        assignPersistentViewOwner(userPage, activeAppTab);
+
+        const user = state.currentUser || sessionUser() || {};
         $('opUserAvatar').src = user.imageUri || user.image2Uri || $('profileViewAvatar')?.src || '';
         $('opUserName').textContent = user.name || user.nickname || $('profileViewName')?.textContent || 'Switch Player';
         $('opFriendCode').textContent = user.links?.friendCode?.id || $('profileViewFriendCode')?.textContent || '—';
         renderOwnPresence(user);
-        openScreen('opUserPage');
 
-        try {
-            await loadCurrentUserAndPermissions(true);
-            const full = state.currentUser || user;
-            $('opUserAvatar').src = full.imageUri || full.image2Uri || $('opUserAvatar').src;
-            $('opUserName').textContent = full.name || full.nickname || $('opUserName').textContent;
-            $('opFriendCode').textContent = full.links?.friendCode?.id || $('opFriendCode').textContent;
-            renderOwnPresence(full);
-            const permissions = state.permissions?.permissions || full.permissions || {};
-            $('opOnlineStatusSummary').textContent = permissionLabel('presence', permissions.presence);
-            $('opPlayActivitySummary').textContent = permissionLabel('playLog', permissions.playLog);
-            await loadOwnPlayLogs(false);
-        } catch {
-            await loadOwnPlayLogs(false);
+        const backFromId = String(options.backFrom || '');
+        const backFrom = backFromId ? $(backFromId) : null;
+        if (backFrom && userPage && typeof nsoApkBack === 'function') {
+            ++openScreenToken;
+            await nsoApkBack(backFrom, userPage);
+            closeAppScreens('opUserPage');
+        } else {
+            openScreen('opUserPage');
         }
+        applyAppLanguage(userPage || document);
+
+        void (async () => {
+            try {
+                await loadCurrentUserAndPermissions(true);
+                const full = state.currentUser || user;
+                $('opUserAvatar').src = full.imageUri || full.image2Uri || $('opUserAvatar').src;
+                $('opUserName').textContent = full.name || full.nickname || $('opUserName').textContent;
+                $('opFriendCode').textContent = full.links?.friendCode?.id || $('opFriendCode').textContent;
+                renderOwnPresence(full);
+                const permissions = state.permissions?.permissions || full.permissions || {};
+                $('opOnlineStatusSummary').textContent = permissionLabel('presence', permissions.presence);
+                $('opPlayActivitySummary').textContent = permissionLabel('playLog', permissions.playLog);
+                if (localSetting('language', 'account') === 'account') applyAppLanguage(document);
+                await loadOwnPlayLogs(false);
+            } catch {
+                await loadOwnPlayLogs(false);
+            }
+        })();
     }
 
     async function openVisibility(kind, returnTarget = 'opUserPage') {
@@ -5046,8 +5214,18 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         if (!('Notification' in window)) {
             return { supported: false, permission: 'unsupported', enabled: false };
         }
-        let optedIn = false;
-        try { optedIn = localStorage.getItem(BROWSER_NOTIFICATION_SETTING_KEY) === 'true'; } catch (e) {}
+
+        let preference = localSetting('browser_notifications', '');
+        if (!preference) {
+            try {
+                const legacy = localStorage.getItem(BROWSER_NOTIFICATION_SETTING_KEY);
+                if (legacy === 'true') preference = 'on';
+                else if (legacy != null) preference = 'off';
+                if (preference) saveLocalSetting('browser_notifications', preference);
+            } catch {}
+        }
+
+        const optedIn = preference === 'on';
         return {
             supported: true,
             permission: Notification.permission,
@@ -5056,26 +5234,15 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
     }
 
     function setBrowserNotificationPreference(enabled) {
+        saveLocalSetting('browser_notifications', enabled ? 'on' : 'off');
         try {
             if (enabled) localStorage.setItem(BROWSER_NOTIFICATION_SETTING_KEY, 'true');
             else localStorage.removeItem(BROWSER_NOTIFICATION_SETTING_KEY);
-        } catch (e) {}
+        } catch {}
     }
 
-    function browserNotificationStatusText() {
-        const status = browserNotificationSupport();
-        if (!status.supported) return 'Browser notifications are not supported by this browser.';
-        if (status.permission === 'denied') return 'Blocked by your browser. Allow notifications for this site in browser settings.';
-        if (status.enabled) return 'On. NSO events are shown as browser notifications while this web app is open.';
-        if (status.permission === 'granted') return 'Off for this web app.';
-        return 'Off. Your browser will ask for permission when you enable them.';
-    }
-
-    function browserNotificationActionText() {
-        const status = browserNotificationSupport();
-        if (!status.supported) return 'Not Supported';
-        if (status.permission === 'denied') return 'Blocked in Browser';
-        return status.enabled ? 'Turn Off Browser Notifications' : 'Enable Browser Notifications';
+    function browserNotificationExplanation() {
+        return tr('Show Nintendo Switch App notifications in this browser while this web app is open. They follow your Nintendo notification settings. Nintendo and nxapi credentials are not stored for browser notifications.');
     }
 
     function browserNotificationKey(item, fallbackPrefix) {
@@ -5333,27 +5500,28 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         scheduleBrowserNotificationPoll(immediate ? 0 : (document.hidden ? 10 * 60_000 : 15 * 60_000));
     }
 
-    async function toggleBrowserNotifications() {
+    async function setBrowserNotificationsEnabled(enabled) {
         const status = browserNotificationSupport();
-        if (!status.supported || status.permission === 'denied') return;
-
-        if (status.enabled) {
+        if (!status.supported || status.permission === 'denied') {
             setBrowserNotificationPreference(false);
             stopBrowserNotificationMonitor();
-            return;
+            return false;
+        }
+
+        if (!enabled) {
+            setBrowserNotificationPreference(false);
+            stopBrowserNotificationMonitor();
+            return false;
         }
 
         let permission = status.permission;
-        if (permission !== 'granted') {
-            permission = await Notification.requestPermission();
-        }
-        if (permission === 'granted') {
-            setBrowserNotificationPreference(true);
-            startBrowserNotificationMonitor({ resetBaseline: true, immediate: true });
-        } else {
-            setBrowserNotificationPreference(false);
-            stopBrowserNotificationMonitor();
-        }
+        if (permission !== 'granted') permission = await Notification.requestPermission();
+
+        const granted = permission === 'granted';
+        setBrowserNotificationPreference(granted);
+        if (granted) startBrowserNotificationMonitor({ resetBaseline: true, immediate: true });
+        else stopBrowserNotificationMonitor();
+        return granted;
     }
 
     function installBrowserNotificationLifecycle() {
@@ -5385,15 +5553,16 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             ]);
             body.innerHTML = `
                 <section class="op-group op-no-margin">
-                    <h4>Browser Notifications</h4>
-                    <div class="op-browser-notification-card">
-                        <div>
-                            <b>Show NSO Notifications in This Browser</b>
-                            <small id="opBrowserNotificationStatus">${escapeHtml(browserNotificationStatusText())}</small>
-                        </div>
-                        <button type="button" class="op-browser-notification-action" id="opBrowserNotificationsAction" ${!browserNotificationSupport().supported || browserNotificationSupport().permission === 'denied' ? 'disabled' : ''}>${escapeHtml(browserNotificationActionText())}</button>
-                    </div>
-                    <p class="op-group-notice">Browser notifications follow your Nintendo notification settings and run only while this web app is open. No Nintendo or nxapi credentials are stored for browser notifications.</p>
+                    <label class="op-toggle-row">
+                        <span>
+                            <b>${escapeHtml(tr('Browser Notifications'))}</b>
+                            <small>${escapeHtml(browserNotificationExplanation())}</small>
+                        </span>
+                        <input id="opBrowserNotificationsToggle" type="checkbox"
+                            ${browserNotificationSupport().enabled ? 'checked' : ''}
+                            ${!browserNotificationSupport().supported || browserNotificationSupport().permission === 'denied' ? 'disabled' : ''}>
+                        <i></i>
+                    </label>
                 </section>
                 <section class="op-group">
                     <label class="op-toggle-row"><span><b>Friend Requests</b><small>You'll get notifications when receiving friend requests and when other users accept your friend requests.</small></span><input id="opPushFriendRequest" type="checkbox" ${settings.friendRequest ? 'checked' : ''}><i></i></label>
@@ -5413,17 +5582,17 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
                     <div id="opGwsPushList">${renderGwsPushRows(services)}</div>
                 </section>`;
 
-            const browserAction = $('opBrowserNotificationsAction');
-            browserAction?.addEventListener('click', async () => {
-                browserAction.disabled = true;
+            const browserToggle = $('opBrowserNotificationsToggle');
+            browserToggle?.addEventListener('change', async () => {
+                const desired = browserToggle.checked;
+                browserToggle.disabled = true;
                 try {
-                    await toggleBrowserNotifications();
+                    const enabled = await setBrowserNotificationsEnabled(desired);
+                    browserToggle.checked = enabled;
                 } finally {
                     const latest = browserNotificationSupport();
-                    browserAction.textContent = browserNotificationActionText();
-                    browserAction.disabled = !latest.supported || latest.permission === 'denied';
-                    const status = $('opBrowserNotificationStatus');
-                    if (status) status.textContent = browserNotificationStatusText();
+                    browserToggle.checked = latest.enabled;
+                    browserToggle.disabled = !latest.supported || latest.permission === 'denied';
                 }
             });
 
@@ -5538,15 +5707,101 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         });
     }
 
+    const USER_SETTINGS_CACHE_KEY = 'nso_official_user_settings_v1';
+
+    function readUserSettingsCache() {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(USER_SETTINGS_CACHE_KEY) || '{}');
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+
+    function writeUserSettingsCache(cache) {
+        try { localStorage.setItem(USER_SETTINGS_CACHE_KEY, JSON.stringify(cache || {})); } catch {}
+    }
+
     function localSetting(key, fallback = '') {
         try {
-            const value = localStorage.getItem(`nso_official_${key}`);
-            return value == null ? fallback : value;
-        } catch { return fallback; }
+            const cache = readUserSettingsCache();
+            if (Object.prototype.hasOwnProperty.call(cache, key)) return String(cache[key]);
+
+            const legacy = localStorage.getItem(`nso_official_${key}`);
+            if (legacy != null) {
+                cache[key] = String(legacy);
+                writeUserSettingsCache(cache);
+                return String(legacy);
+            }
+            return fallback;
+        } catch {
+            return fallback;
+        }
     }
 
     function saveLocalSetting(key, value) {
-        try { localStorage.setItem(`nso_official_${key}`, String(value)); } catch {}
+        try {
+            const normalized = String(value);
+            const cache = readUserSettingsCache();
+            cache[key] = normalized;
+            writeUserSettingsCache(cache);
+            // Preserve downgrade compatibility with the older per-setting keys.
+            localStorage.setItem(`nso_official_${key}`, normalized);
+        } catch {}
+    }
+
+    function languageSettingLabel() {
+        const preference = localSetting('language', 'account');
+        if (preference === 'account') {
+            const accountLocale = accountAppLocale();
+            return accountLocale
+                ? `${localeDisplayName(accountLocale)} · ${tr('Nintendo Account')}`
+                : tr('Nintendo Account language');
+        }
+        return localeDisplayName(normalizeAppLocale(preference) || currentAppLocale());
+    }
+
+    function renderLanguageSettingBody() {
+        const body = $('opLanguageBody');
+        if (!body) return;
+
+        const accountLocale = accountAppLocale() || normalizeAppLocale(navigator.language) || 'en-GB';
+        const preference = localSetting('language', 'account');
+        const otherLocales = APP_SUPPORTED_LOCALES.filter((locale) => locale !== accountLocale);
+
+        body.innerHTML = `
+            <div class="op-radio-list op-language-list">
+                <label class="op-radio-row op-language-row">
+                    <span class="op-language-copy">
+                        <b>${escapeHtml(localeDisplayName(accountLocale))}</b>
+                        <small>${escapeHtml(tr('Nintendo Account language'))}</small>
+                    </span>
+                    <input type="radio" name="opLanguage" value="account" ${preference === 'account' ? 'checked' : ''}>
+                </label>
+                ${otherLocales.map((locale) => `
+                    <label class="op-radio-row op-language-row">
+                        <span class="op-language-copy"><b>${escapeHtml(localeDisplayName(locale))}</b></span>
+                        <input type="radio" name="opLanguage" value="${escapeHtml(locale)}" ${preference === locale ? 'checked' : ''}>
+                    </label>`).join('')}
+            </div>
+            <div class="op-info-card">${escapeHtml(tr('Use your Nintendo Account language by default. You can choose another language for this web app; the choice is saved on this device.'))}</div>`;
+
+        body.querySelectorAll('input[name="opLanguage"]').forEach((input) => {
+            input.addEventListener('change', () => {
+                if (!input.checked) return;
+                saveLocalSetting('language', input.value);
+                applyAppLanguage(document);
+                renderSettingsPage();
+                renderLanguageSettingBody();
+            });
+        });
+        applyAppLanguage(body);
+    }
+
+    function openLanguageSetting() {
+        ensureScreens();
+        renderLanguageSettingBody();
+        openScreen('opLanguagePage');
     }
 
     function darkModeLabel(mode) {
@@ -5630,11 +5885,11 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             <div class="op-copy-page">
                 <p>If you select Allow, this application and its game-specific services will collect data, including via cookies, and will send it to Nintendo in order to analyze Nintendo's performance and provide Nintendo with statistics to optimize content, products, and services.</p>
                 <p>You can change this setting at any time from About Sending Usage Data. If you change this setting, this will not affect data that was already collected.</p>
+                <p class="op-muted">${escapeHtml(tr('Web-port note: this preference is saved only in this browser. This web port does not send Nintendo analytics data that the project does not implement.'))}</p>
                 <div class="op-radio-list op-inline-radio-list">
                     <label class="op-radio-row"><span>Allow</span><input type="radio" name="opUsageData" value="allow" ${allowed ? 'checked' : ''}></label>
                     <label class="op-radio-row"><span>Don't Allow</span><input type="radio" name="opUsageData" value="deny" ${!allowed ? 'checked' : ''}></label>
                 </div>
-                <p class="op-muted">Web-port note: this preference is preserved locally. The web port does not invent a Nintendo analytics transport that is not present in this project.</p>
             </div>`;
         openScreen('opUsageDataPage');
         $('opUsageDataBody').querySelectorAll('input[name="opUsageData"]').forEach((input) => {
@@ -5736,6 +5991,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             </section>
             <section class="op-group">
                 <h4>System</h4>
+                <button class="op-row" id="opSettingsLanguage"><span><b>Language</b><small>${escapeHtml(languageSettingLabel())}</small></span><i class="fa-solid fa-chevron-right"></i></button>
                 <button class="op-row" id="opSettingsDarkMode"><span><b>Dark Mode</b><small>${escapeHtml(darkModeLabel(localSetting('dark_mode', 'system')))}</small></span><i class="fa-solid fa-chevron-right"></i></button>
                 <button class="op-row" id="opSettingsMobileData"><span><b>Mobile Data</b><small>${escapeHtml(mobileDataLabel(localSetting('mobile_data', 'standard')))}</small></span><i class="fa-solid fa-chevron-right"></i></button>
                 <button class="op-row" id="opSettingsStorage"><span><b>Storage</b><small>Clear cached images and data.</small></span><i class="fa-solid fa-chevron-right"></i></button>
@@ -5757,7 +6013,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             </section>
             <button class="op-signout" id="opSettingsSignOutBtn"><i class="fa-solid fa-right-from-bracket"></i> Sign Out</button>`;
         $('opSettingsProfile')?.addEventListener('click', () => {
-            openUserPage();
+            openUserPage({ backFrom: 'opSettingsPage' });
         });
         $('opFriendCodeRow')?.addEventListener('click', () => $('openMyCodeQrBtn')?.click());
         $('opOnlineStatusRow')?.addEventListener('click', () => openVisibility('presence', 'opSettingsPage'));
@@ -5768,6 +6024,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             const ok = await confirmSheet('Sign Out', 'Sign out of Nintendo Switch App?', 'Sign Out');
             if (ok && typeof logout === 'function') logout();
         });
+        $('opSettingsLanguage')?.addEventListener('click', openLanguageSetting);
         $('opSettingsDarkMode')?.addEventListener('click', openDarkModeSetting);
         $('opSettingsMobileData')?.addEventListener('click', openMobileDataSetting);
         $('opSettingsUsageData')?.addEventListener('click', openUsageDataSetting);
@@ -6818,7 +7075,10 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             const previous = showAuthenticatedUI;
             const wrapped = function(session) {
                 const result = previous(session);
-                queueMicrotask(() => refreshNativeData());
+                queueMicrotask(() => {
+                    if (localSetting('language', 'account') === 'account') applyAppLanguage(document);
+                    refreshNativeData();
+                });
                 return result;
             };
             wrapped.__opWrapped = true;
@@ -6862,6 +7122,8 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         installSystemThemeWatcher();
         enforceMobileDataPreference();
         ensureScreens();
+        installLanguageObserver();
+        applyAppLanguage(document);
         installAuthenticatedRefreshHook();
         installBrowserNotificationLifecycle();
         installProfileAndNotifications();

@@ -3644,3 +3644,36 @@ body.op-light-theme .media-modal-meta p {
 body.op-light-theme .media-modal-meta strong {
     color: #202023 !important;
 }
+
+
+/* v24: language selector + instant Friend Code QR loading state */
+.op-language-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.op-language-copy b {
+    color: inherit;
+    font: 600 14px var(--font-heading, sans-serif);
+}
+.op-language-copy small {
+    color: #96969b;
+    font-size: 11.5px;
+    font-weight: 400;
+    line-height: 1.35;
+}
+body.op-light-theme .op-language-copy small { color: #68686e; }
+
+.friends-functional-qr-loading {
+    width: 190px;
+    height: 190px;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 10px;
+    color: #a8a8ad;
+    font-size: 12px;
+}
+.friends-functional-qr-loading i { font-size: 22px; }
+body.op-light-theme .friends-functional-qr-loading { color: #64646a; }
