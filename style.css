@@ -1695,7 +1695,7 @@ body.webview-active {
 .media-preview-card { width: 100%; max-width: none; height: 100%; padding: 0; border: 0; border-radius: 0; background: #1b1b1b; box-shadow: none; }
 .media-viewer-header { position: relative; z-index: 1; display: flex; height: 58px; align-items: center; gap: 17px; padding: 0 18px; background: #222223; }
 .media-viewer-header h2 { overflow: hidden; color: #e0e0e2; font: 700 15px var(--font-heading); text-overflow: ellipsis; white-space: nowrap; }
-.modal-close { position: static; flex: 0 0 18px; padding: 0; color: #eeeef0; font-size: 21px; }
+.modal-close { position: static; flex: 0 0 auto; padding: 0; color: #eeeef0; font-size: 21px; }
 .media-viewer-actions { display: flex; gap: 18px; margin-left: auto; }
 .media-viewer-actions button { border: 0; padding: 4px; background: transparent; color: #eeeef0; font-size: 17px; }
 .media-viewer-actions button:disabled { opacity: .9; }
