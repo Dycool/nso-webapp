@@ -10,7 +10,8 @@ class WebServiceManager {
         this.SPLATNET3_ID = '4834290508791808';
         this.NOOKLINK_ID = '4953919198265344';
         this.SPLATNET2_ID = '5741031244955648';
-        this.SMASHWORLD_ID = '5614999764533248';
+        this.SMASHWORLD_ID = '5598642853249024';
+        this.SMASHWORLD_LEGACY_ID = '5614999764533248';
 
         this.genericAdapter = new GenericWebViewAdapter(this);
         this.zeldaNotesAdapter = new ZeldaNotesAdapter(this);
@@ -25,7 +26,18 @@ class WebServiceManager {
         this.tokenCache = new Map();
         this.tokenInFlight = new Map();
 
+        // Method-2 attestations are expensive on the public nxapi service. Keep one
+        // short-lived, one-shot attestation in memory so the user's first service
+        // launch usually does not sit behind the full f-generation round trip.
+        // Nothing here is persisted to localStorage/sessionStorage.
+        this.method2WarmAttestation = null;
+        this.method2WarmPromise = null;
+        this.method2WarmTtlMs = 25000;
+        this.prewarmTimer = null;
+        this.prewarmObserver = null;
+
         this.initPostMessageListener();
+        this.initAttestationPrewarm();
     }
 
     getWorkerUrl() {
@@ -51,7 +63,7 @@ class WebServiceManager {
         if (idStr === this.SPLATNET2_ID || uri.includes('splatoon2.nintendo.net')) {
             return this.splatnet2Adapter;
         }
-        if (idStr === this.SMASHWORLD_ID || uri.includes('smashbros.nintendo.net') || uri.includes('smashworld.nintendo.net') || uri.includes('aaaba') || name.includes('smash')) {
+        if (idStr === this.SMASHWORLD_ID || idStr === this.SMASHWORLD_LEGACY_ID || uri.includes('smashbros.nintendo.net') || uri.includes('smashworld.nintendo.net') || uri.includes('aaaba') || name.includes('smash')) {
             return this.smashWorldAdapter;
         }
         if (name.includes('zelda') || uri.includes('zelda')) {
@@ -60,6 +72,140 @@ class WebServiceManager {
 
         // Generic fallback for any future or catalog service
         return this.genericAdapter;
+    }
+
+    getMethod2Context() {
+        const token = coralAccessToken();
+        const naId = userSession?.nsoWebapp?.naId;
+        const coralUserId = String(userSession?.result?.user?.id || userSession?.user?.id || '');
+        if (!token || !naId) return null;
+        return { token, naId, coralUserId };
+    }
+
+    sameMethod2Context(a, b) {
+        return Boolean(a && b &&
+            a.token === b.token &&
+            a.naId === b.naId &&
+            a.coralUserId === b.coralUserId);
+    }
+
+    hasFreshWarmAttestation(context) {
+        const warm = this.method2WarmAttestation;
+        return Boolean(warm &&
+            this.sameMethod2Context(warm.context, context) &&
+            Date.now() - warm.createdAt <= this.method2WarmTtlMs);
+    }
+
+    async warmGameWebServiceAttestation() {
+        const context = this.getMethod2Context();
+        if (!context || document.hidden || document.documentElement.classList.contains('webview-active')) return null;
+        if (this.hasFreshWarmAttestation(context)) {
+            return this.method2WarmAttestation.attestation;
+        }
+        if (this.method2WarmPromise) return this.method2WarmPromise;
+
+        this.method2WarmPromise = (async () => {
+            try {
+                const attestation = await nxapiGenerateF(2, context.token, {
+                    na_id: context.naId,
+                    coral_user_id: context.coralUserId
+                });
+
+                const currentContext = this.getMethod2Context();
+                if (this.sameMethod2Context(currentContext, context)) {
+                    this.method2WarmAttestation = {
+                        context,
+                        attestation,
+                        createdAt: Date.now()
+                    };
+                }
+                return attestation;
+            } catch (error) {
+                // Background prewarming must never break sign-in or the service catalog.
+                return null;
+            } finally {
+                this.method2WarmPromise = null;
+            }
+        })();
+
+        return this.method2WarmPromise;
+    }
+
+    async consumeMethod2Attestation(traceId, context) {
+        const consumeWarm = () => {
+            if (!this.hasFreshWarmAttestation(context)) return null;
+            const warm = this.method2WarmAttestation;
+            this.method2WarmAttestation = null; // one-shot: never reuse an f result
+            const ageMs = Date.now() - warm.createdAt;
+            console.log(`[LaunchTrace:${traceId || 'anon'}] stage=nxapi_f_method_2 source=prewarmed durationMs=0 ageMs=${ageMs}`);
+            return warm.attestation;
+        };
+
+        let warm = consumeWarm();
+        if (warm) return warm;
+
+        // If the idle prewarm is already running, join it instead of starting a
+        // duplicate f request. This is the main latency win for quick clicks.
+        if (this.method2WarmPromise) {
+            await this.method2WarmPromise;
+            warm = consumeWarm();
+            if (warm) return warm;
+        }
+
+        const startedAt = performance.now();
+        const attestation = await nxapiGenerateF(2, context.token, {
+            na_id: context.naId,
+            coral_user_id: context.coralUserId
+        });
+        console.log(`[LaunchTrace:${traceId || 'anon'}] stage=nxapi_f_method_2 source=live durationMs=${Math.round(performance.now() - startedAt)}`);
+        return attestation;
+    }
+
+    scheduleAttestationPrewarm(delayMs = 0) {
+        if (this.prewarmTimer) clearTimeout(this.prewarmTimer);
+        this.prewarmTimer = setTimeout(() => {
+            this.prewarmTimer = null;
+            if (document.hidden) return;
+
+            const run = () => this.warmGameWebServiceAttestation();
+            if (typeof window.requestIdleCallback === 'function') {
+                window.requestIdleCallback(run, { timeout: 1800 });
+            } else {
+                setTimeout(run, 0);
+            }
+        }, Math.max(0, delayMs));
+    }
+
+    initAttestationPrewarm() {
+        const install = () => {
+            const catalog = document.getElementById('gameServicesCatalog');
+            if (!catalog) return;
+
+            const kickIfReady = () => {
+                if (catalog.querySelector('.service-launch-card')) {
+                    this.scheduleAttestationPrewarm(350);
+                }
+            };
+
+            this.prewarmObserver = new MutationObserver(kickIfReady);
+            this.prewarmObserver.observe(catalog, { childList: true, subtree: true });
+
+            // Also warm on intent. These calls are deduplicated and a fresh warm
+            // attestation is kept only once, in memory, for 25 seconds.
+            catalog.addEventListener('pointerenter', () => this.warmGameWebServiceAttestation(), { passive: true });
+            catalog.addEventListener('focusin', () => this.warmGameWebServiceAttestation());
+            catalog.addEventListener('touchstart', () => this.warmGameWebServiceAttestation(), { passive: true, once: true });
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) kickIfReady();
+            });
+            kickIfReady();
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', install, { once: true });
+        } else {
+            install();
+        }
     }
 
     /**
@@ -93,13 +239,11 @@ class WebServiceManager {
 
             const coralUserId = String(userSession?.result?.user?.id || userSession?.user?.id || '');
 
-            const fStart = performance.now();
-            const attestation = await nxapiGenerateF(2, token, {
-                na_id: naId,
-                coral_user_id: coralUserId
+            const attestation = await this.consumeMethod2Attestation(traceId, {
+                token,
+                naId,
+                coralUserId
             });
-            const fDuration = Math.round(performance.now() - fStart);
-            console.log(`[LaunchTrace:${traceId || 'anon'}] stage=nxapi_f_method_2 durationMs=${fDuration}`);
 
             const tokenStart = performance.now();
             const result = await coralCall('/v4/Game/GetWebServiceToken', {
@@ -199,6 +343,10 @@ class WebServiceManager {
             this.activeAdapter = null;
             this.activeService = null;
         }
+
+        // Returning from a WebView is the best moment to prepare the next service
+        // launch without blocking the UI.
+        this.scheduleAttestationPrewarm(350);
     }
 
     /**

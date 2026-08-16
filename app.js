@@ -5,10 +5,12 @@
  */
 
 const WORKER_URL = 'https://nso-worker-backend.diogoenes0.workers.dev';
+const DEFAULT_NXAPI_ZNCA_API_URL = 'https://nxapi-znca-api.fancy.org.uk/api/znca';
+const DEFAULT_NXAPI_AUTH_CLIENT_ID = 'JGN1is1KSmRMOL-g4qmgZA';
 const NXAPI_ZNCA_API_URL = (window.NXAPI_ZNCA_API_URL ||
     localStorage.getItem('nxapi_znca_api_url') ||
-    'https://nxapi-znca-api.fancy.org.uk/api/znca').replace(/\/$/, '');
-const NXAPI_AUTH_CLIENT_ID = window.NXAPI_AUTH_CLIENT_ID || 'JGN1is1KSmRMOL-g4qmgZA';
+    DEFAULT_NXAPI_ZNCA_API_URL).replace(/\/$/, '');
+const NXAPI_AUTH_CLIENT_ID = window.NXAPI_AUTH_CLIENT_ID || DEFAULT_NXAPI_AUTH_CLIENT_ID;
 const NXAPI_AUTH_SCOPE = 'ca:gf ca:er ca:dr';
 const NXAPI_CLIENT_VERSION = 'w8zSLBsxR7rVoGJA';
 
@@ -362,11 +364,31 @@ async function refreshNxapiConfig() {
 }
 
 async function nxapiGenerateF(method, token, userData = {}) {
-    const response = await nxapiFetch('f', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ hash_method: String(method), token, ...userData })
-    });
+    const payload = { hash_method: String(method), token, ...userData };
+    let response;
+
+    // The default public nxapi f-generation path is handled directly by the
+    // Cloudflare Worker. The Worker keeps the public OAuth client credential
+    // token in isolate memory and retries transient upstream failures, removing
+    // the browser -> generic relay -> nxapi round trips from service launches.
+    // Custom nxapi endpoints/client IDs retain the generic standards-compliant path.
+    const canUseWorkerF = NXAPI_ZNCA_API_URL === DEFAULT_NXAPI_ZNCA_API_URL &&
+        nxapiClientId() === DEFAULT_NXAPI_AUTH_CLIENT_ID;
+
+    if (canUseWorkerF) {
+        response = await fetch(`${WORKER_URL}/api/nso/nxapi/f`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ ...payload, zncaVersion: ZNCA_VERSION })
+        });
+    } else {
+        response = await nxapiFetch('f', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify(payload)
+        });
+    }
+
     let data = {};
     try {
         data = await response.json();
@@ -831,7 +853,7 @@ function showAuthenticatedUI(session) {
 
 function logout() {
     window.webServiceManager?.closeActiveService();
-    window.opCloseParityScreens?.();
+    window.nsoCloseAppScreens?.();
     localStorage.removeItem('nso_user_session');
     localStorage.removeItem('nso_pkce_verifier');
     localStorage.removeItem('nso_auth_state');
@@ -2421,21 +2443,13 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
 
 
 // ---------------------------------------------------------------------------
-// Friends functional controls (merged from friends-functional.js)
+// Friends features
 // ---------------------------------------------------------------------------
 /**
- * Completes the Friends UI already present in app.js/index.html.
- *
- * This file deliberately does not replace the existing Friends list renderer,
- * navigation, friend-code search UI, or play-activity UI. It only wires the
- * controls that are currently disabled/local-only to Coral endpoints exposed
- * through the existing coralCall() helper.
+ * Friends requests, privacy, blocked-user, QR and GameChat controls wired directly to Coral.
  */
 (() => {
     'use strict';
-
-    if (window.__nsoFriendsFunctionalLoaded) return;
-    window.__nsoFriendsFunctionalLoaded = true;
 
     const state = {
         receivedRequests: [],
@@ -2521,7 +2535,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
     function refreshFriends() {
         if (typeof loadLiveFriendsList === 'function') {
             Promise.resolve(loadLiveFriendsList()).catch((error) => {
-                console.warn('[FriendsFunctional] Could not refresh friends', error);
+                console.warn('[Friends] Could not refresh friends', error);
             });
         }
     }
@@ -2574,7 +2588,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             const value = state.permissions?.permissions?.friendRequestReception;
             if (toggle && typeof value === 'boolean') toggle.checked = value;
         } catch (error) {
-            console.warn('[FriendsFunctional] Could not load friend permissions', error);
+            console.warn('[Friends] Could not load friend permissions', error);
         } finally {
             if (toggle) toggle.disabled = false;
         }
@@ -3127,7 +3141,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
     function installViewLoaders() {
         $('openAddFriendBtn')?.addEventListener('click', () => {
             loadFriendRequestLists().catch((error) => {
-                console.warn('[FriendsFunctional] Could not load friend requests', error);
+                console.warn('[Friends] Could not load friend requests', error);
             });
         });
 
@@ -3142,7 +3156,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
 
         $('openBlockedSettingBtn')?.addEventListener('click', () => {
             loadBlockedUsers().catch((error) => {
-                console.warn('[FriendsFunctional] Could not load blocked users', error);
+                console.warn('[Friends] Could not load blocked users', error);
             });
         });
 
@@ -3155,7 +3169,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
 
         $('openVoiceChattedFriendsBtn')?.addEventListener('click', () => {
             openVoiceChattedFriends().catch((error) => {
-                console.warn('[FriendsFunctional] Could not load GameChat friend candidates', error);
+                console.warn('[Friends] Could not load GameChat friend candidates', error);
                 alert(`Could not load users you've chatted with: ${error.message}`);
             });
         });
@@ -3168,29 +3182,21 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         installCorrectCancelSentRequest();
         installViewLoaders();
         updateNotifySettingsSummary();
-        console.log('[FriendsFunctional] Missing Friends controls wired to Coral');
     }
 
     init();
 })();
 
 // ---------------------------------------------------------------------------
-// APK-derived Nintendo Switch App parity layer (merged from official-parity.js)
-// Loads after the Friends functional block; supersedes overlapping controls via clone-and-replace.
+// Nintendo Switch App features
 // ---------------------------------------------------------------------------
 
 /**
- * Nintendo Switch App parity layer.
- *
- * Derived from the user's Nintendo Switch App 3.4.1 APK and wired against the
- * Coral helpers already present in nso-webapp. It deliberately leaves the
- * working authentication and game-specific WebView code alone.
+ * Native Nintendo Switch App screens and Coral-backed controls.
+ * Authentication and game-specific WebView orchestration remain in their dedicated core modules.
  */
 (() => {
     'use strict';
-
-    if (window.__nsoOfficialParityLoaded) return;
-    window.__nsoOfficialParityLoaded = true;
 
     const BASE = 'https://api-lp1.znc.srv.nintendo.net';
     const $ = (id) => document.getElementById(id);
@@ -3207,6 +3213,10 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         friendOnlineReturnTarget: 'opPushPage',
         announcements: [],
         loginFactor: null,
+        ownPlayLogs: [],
+        ownPlayLogsNsaId: '',
+        ownPlayLogsLoadedAt: 0,
+        ownPlayLogsPromise: null,
         screensReady: false,
         refreshing: null,
         mobileObserver: null
@@ -3317,7 +3327,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
     }
 
     /**
-     * Exact-ish Coral call for the endpoints added by this parity layer.
+     * Exact-ish Coral call for the endpoints added by this native feature controller.
      * Existing project calls are intentionally not monkey-patched, so working
      * game services and auth remain untouched.
      */
@@ -3370,10 +3380,10 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
     }
 
     function toast(message) {
-        let el = $('officialParityToast');
+        let el = $('nsoAppToast');
         if (!el) {
             el = document.createElement('div');
-            el.id = 'officialParityToast';
+            el.id = 'nsoAppToast';
             el.className = 'op-toast';
             document.body.appendChild(el);
         }
@@ -3383,7 +3393,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         toast.timer = setTimeout(() => el.classList.remove('show'), 2200);
     }
 
-    function replaceControl(id, handler, options = {}) {
+    function bindControl(id, handler, options = {}) {
         const old = $(id);
         if (!old) return null;
         const next = old.cloneNode(true);
@@ -3424,7 +3434,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         }
     }
 
-    function closeParityScreens(except = null) {
+    function closeAppScreens(except = null) {
         document.querySelectorAll('.op-screen').forEach((screen) => {
             if (screen.id === except) return;
             if (typeof hideViewInstant === 'function') hideViewInstant(screen);
@@ -3432,7 +3442,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         });
     }
 
-    window.opCloseParityScreens = () => closeParityScreens();
+    window.nsoCloseAppScreens = () => closeAppScreens();
 
     let openScreenToken = 0;
 
@@ -3449,10 +3459,10 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             slideViewIn(screen);
             screen.addEventListener('animationend', () => {
                 if (token !== openScreenToken || screen.classList.contains('view-slide-out')) return;
-                closeParityScreens(id);
+                closeAppScreens(id);
             }, { once: true });
         } else {
-            closeParityScreens(id);
+            closeAppScreens(id);
             screen.classList.remove('hidden');
         }
         window.scrollTo({ top: 0, behavior: 'auto' });
@@ -3479,23 +3489,73 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         state.screensReady = true;
 
         screenShell('opUserPage', 'User Page', `
-            <div class="op-profile-hero">
-                <img id="opUserAvatar" src="" alt="">
-                <h3 id="opUserName">Switch Player</h3>
-            </div>
-            <section class="op-group">
-                <h4>Nintendo Account</h4>
-                <button class="op-row" id="opFriendCodeRow"><span><b>Friend Code</b><small id="opFriendCode">—</small></span><i class="fa-solid fa-chevron-right"></i></button>
-                <button class="op-row" id="opOnlineStatusRow"><span><b>Online Status</b><small id="opOnlineStatusSummary">—</small></span><i class="fa-solid fa-chevron-right"></i></button>
-                <button class="op-row" id="opPlayActivityRow"><span><b>Play Activity</b><small id="opPlayActivitySummary">—</small></span><i class="fa-solid fa-chevron-right"></i></button>
-                <button class="op-row" id="opNintendoAccountRow"><span><b>Nintendo Account Website</b></span><i class="fa-solid fa-arrow-up-right-from-square"></i></button>
-            </section>
-            <section class="op-group">
-                <h4>Other</h4>
-                <button class="op-row" id="opPushNotificationsRow"><span><b>Push Notifications</b></span><i class="fa-solid fa-chevron-right"></i></button>
-                <button class="op-row" id="opAppSettingsRow"><span><b>Settings</b></span><i class="fa-solid fa-chevron-right"></i></button>
-            </section>
-            <button class="op-signout" id="opSignOutBtn"><i class="fa-solid fa-right-from-bracket"></i> Sign Out</button>`);
+            <div class="native-user-page">
+                <header class="native-user-hero">
+                    <img id="opUserAvatar" src="" alt="Your Nintendo Switch profile image">
+                    <h3 id="opUserName">Switch Player</h3>
+                </header>
+
+                <section class="native-user-card native-friend-code-card" aria-labelledby="nativeFriendCodeLabel">
+                    <div class="native-friend-code-copy">
+                        <span class="native-user-label" id="nativeFriendCodeLabel">Friend Code</span>
+                        <button id="nativeFriendCodeCopyBtn" class="native-friend-code-button" type="button" aria-label="Copy friend code">
+                            <span id="opFriendCode">SW-0000-0000-0000</span>
+                            <i class="fa-regular fa-copy" aria-hidden="true"></i>
+                        </button>
+                        <span class="native-copy-status" id="nativeCopyStatus" aria-live="polite"></span>
+                    </div>
+                    <div class="native-user-menu-wrap">
+                        <button class="native-user-more" id="nativeProfileMoreBtn" type="button" aria-label="Profile options" aria-expanded="false">
+                            <i class="fa-solid fa-ellipsis-vertical"></i>
+                        </button>
+                        <div class="native-user-menu hidden" id="nativeProfileMoreMenu">
+                            <button type="button" data-native-action="qr"><i class="fa-solid fa-qrcode"></i> Show Friend Code QR</button>
+                            <button type="button" data-native-action="push"><i class="fa-regular fa-bell"></i> Push Notifications</button>
+                            <button type="button" data-native-action="account"><i class="fa-solid fa-arrow-up-right-from-square"></i> Nintendo Account</button>
+                            <button type="button" class="native-danger-action" data-native-action="signout"><i class="fa-solid fa-right-from-bracket"></i> Sign Out</button>
+                        </div>
+                    </div>
+                </section>
+
+                <div class="native-user-actions" aria-label="Profile actions">
+                    <button class="native-user-action-card" id="nativeAddFriendBtn" type="button">
+                        <i class="fa-regular fa-face-smile"></i>
+                        <span>Add Friend</span>
+                    </button>
+                    <button class="native-user-action-card" id="nativeSettingsBtn" type="button">
+                        <i class="fa-solid fa-sun"></i>
+                        <span>Settings</span>
+                    </button>
+                </div>
+
+                <section class="native-user-section" aria-labelledby="nativeOnlineStatusHeading">
+                    <div class="native-user-section-head">
+                        <div>
+                            <strong id="nativeOnlineStatusHeading">Online Status</strong>
+                            <span id="opOnlineStatusSummary">—</span>
+                        </div>
+                        <button class="native-user-change" id="nativeOnlineStatusChangeBtn" type="button">
+                            <i class="fa-solid fa-circle-chevron-right"></i> Change
+                        </button>
+                    </div>
+                    <div class="native-user-offline" id="nativeOfflineStatus">Offline</div>
+                </section>
+
+                <section class="native-user-section native-play-section" aria-labelledby="nativePlayActivityHeading">
+                    <div class="native-user-section-head">
+                        <div>
+                            <strong id="nativePlayActivityHeading">Play Activity</strong>
+                            <span id="opPlayActivitySummary">—</span>
+                        </div>
+                        <button class="native-user-change" id="nativePlayActivityChangeBtn" type="button">
+                            <i class="fa-solid fa-circle-chevron-right"></i> Change
+                        </button>
+                    </div>
+                    <div class="native-user-play-list" id="nativePlayActivityList">
+                        <p class="native-user-loading">Loading play activity…</p>
+                    </div>
+                </section>
+            </div>`);
 
         screenShell('opVisibilityPage', 'Setting', `<div id="opVisibilityBody"></div>`);
         screenShell('opPushPage', 'Push Notifications', `<div id="opPushBody"></div>`);
@@ -3643,25 +3703,169 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         if (permissions) state.permissions = permissions;
     }
 
+    function formatOwnPresence(user) {
+        const presence = user?.presence || sessionUser()?.presence || null;
+        const presenceState = String(presence?.state || presence?.status || '').toUpperCase();
+        if (presenceState === 'ONLINE' || presenceState === 'PLAYING') return 'Online';
+
+        const lastSeen = toMillis(
+            presence?.updatedAt ?? presence?.logoutAt ?? presence?.lastOnlineAt ??
+            user?.presenceUpdatedAt ?? user?.lastOnlineAt
+        );
+        if (!lastSeen) return 'Offline';
+
+        const elapsedMs = Math.max(0, Date.now() - lastSeen);
+        const minutes = Math.floor(elapsedMs / 60000);
+        const hours = Math.floor(elapsedMs / 3600000);
+        if (hours < 1) return `Offline: ${Math.max(1, minutes)} minute(s)`;
+        if (hours < 48) return `Offline: ${hours} hour(s)`;
+        return `Offline: ${Math.floor(hours / 24)} day(s)`;
+    }
+
+    function ownPlayTimeText(totalPlayTime) {
+        const minutes = Number(totalPlayTime || 0);
+        if (!Number.isFinite(minutes) || minutes < 60) return 'Played for a little while';
+        const hours = Math.max(1, Math.round(minutes / 60));
+        return `Played for ${hours} hour(s) or more`;
+    }
+
+    function renderOwnPlayLogs(playLogs = []) {
+        const host = $('nativePlayActivityList');
+        if (!host) return;
+        host.replaceChildren();
+
+        if (!Array.isArray(playLogs) || playLogs.length === 0) {
+            const empty = document.createElement('p');
+            empty.className = 'native-user-empty';
+            empty.textContent = 'No play activity is available.';
+            host.appendChild(empty);
+            return;
+        }
+
+        for (const log of playLogs) {
+            const row = document.createElement('button');
+            row.type = 'button';
+            row.className = 'native-user-play-row';
+
+            const image = document.createElement('img');
+            image.src = log.imageUri || '';
+            image.alt = '';
+            image.loading = 'lazy';
+            image.addEventListener('error', () => image.classList.add('native-user-play-image-missing'));
+
+            const copy = document.createElement('span');
+            copy.className = 'native-user-play-copy';
+            const title = document.createElement('strong');
+            title.textContent = log.name || 'Game';
+            const playtime = document.createElement('span');
+            const minutes = Number(log.totalPlayTime || 0);
+            playtime.textContent = ownPlayTimeText(minutes);
+            playtime.className = Number.isFinite(minutes) && minutes >= 3000
+                ? 'native-playtime-highlight'
+                : 'native-playtime-normal';
+            copy.append(title, playtime);
+            row.append(image, copy);
+
+            if (typeof openGameSheet === 'function') {
+                row.addEventListener('click', () => openGameSheet({
+                    name: log.name || 'Game',
+                    imageUri: log.imageUri || '',
+                    shopUri: log.shopUri || ''
+                }));
+            } else {
+                row.disabled = true;
+            }
+            host.appendChild(row);
+        }
+    }
+
+    async function loadOwnPlayLogs(force = false) {
+        const user = state.currentUser || sessionUser() || {};
+        const nsaId = String(user.nsaId || '');
+        const host = $('nativePlayActivityList');
+        if (!host) return;
+        if (!nsaId) {
+            renderOwnPlayLogs([]);
+            return;
+        }
+
+        const isFresh = state.ownPlayLogsNsaId === nsaId &&
+            Date.now() - state.ownPlayLogsLoadedAt < 5 * 60 * 1000;
+        if (!force && isFresh) {
+            renderOwnPlayLogs(state.ownPlayLogs);
+            return;
+        }
+        if (state.ownPlayLogsPromise) return state.ownPlayLogsPromise;
+
+        host.innerHTML = '<p class="native-user-loading">Loading play activity…</p>';
+        state.ownPlayLogsPromise = (async () => {
+            try {
+                const result = await coralExact('friendPlayLog', { nsaId });
+                const logs = Array.isArray(result) ? result : (result?.playLogs || []);
+                state.ownPlayLogs = logs;
+                state.ownPlayLogsNsaId = nsaId;
+                state.ownPlayLogsLoadedAt = Date.now();
+                renderOwnPlayLogs(logs);
+            } catch {
+                host.innerHTML = '<p class="native-user-empty">Play activity is private or not available.</p>';
+            } finally {
+                state.ownPlayLogsPromise = null;
+            }
+        })();
+        return state.ownPlayLogsPromise;
+    }
+
+    async function copyOwnFriendCode() {
+        const value = $('opFriendCode')?.textContent?.trim();
+        if (!value || value === '—') return;
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(value);
+            } else {
+                const input = document.createElement('textarea');
+                input.value = value;
+                input.style.position = 'fixed';
+                input.style.opacity = '0';
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand('copy');
+                input.remove();
+            }
+            const status = $('nativeCopyStatus');
+            const button = $('nativeFriendCodeCopyBtn');
+            if (status) status.textContent = 'Copied';
+            button?.classList.add('copied');
+            setTimeout(() => {
+                if (status) status.textContent = '';
+                button?.classList.remove('copied');
+            }, 1200);
+        } catch {
+            toast('Could not copy the friend code.');
+        }
+    }
+
     async function openUserPage() {
         ensureScreens();
-        const user = sessionUser();
-        $('opUserAvatar').src = user?.imageUri || user?.image2Uri || $('profileViewAvatar')?.src || '';
-        $('opUserName').textContent = user?.name || user?.nickname || $('profileViewName')?.textContent || 'Switch Player';
-        $('opFriendCode').textContent = user?.links?.friendCode?.id || $('profileViewFriendCode')?.textContent || '—';
+        const user = sessionUser() || {};
+        $('opUserAvatar').src = user.imageUri || user.image2Uri || $('profileViewAvatar')?.src || '';
+        $('opUserName').textContent = user.name || user.nickname || $('profileViewName')?.textContent || 'Switch Player';
+        $('opFriendCode').textContent = user.links?.friendCode?.id || $('profileViewFriendCode')?.textContent || '—';
+        $('nativeOfflineStatus').textContent = formatOwnPresence(user);
         openScreen('opUserPage');
 
         try {
             await loadCurrentUserAndPermissions(true);
-            const full = state.currentUser || user || {};
+            const full = state.currentUser || user;
             $('opUserAvatar').src = full.imageUri || full.image2Uri || $('opUserAvatar').src;
-            $('opUserName').textContent = full.name || $('opUserName').textContent;
+            $('opUserName').textContent = full.name || full.nickname || $('opUserName').textContent;
             $('opFriendCode').textContent = full.links?.friendCode?.id || $('opFriendCode').textContent;
-            const p = state.permissions?.permissions || full.permissions || {};
-            $('opOnlineStatusSummary').textContent = permissionLabel('presence', p.presence);
-            $('opPlayActivitySummary').textContent = permissionLabel('playLog', p.playLog);
-        } catch (error) {
-            console.warn('[OfficialParity] User Page refresh failed', error);
+            $('nativeOfflineStatus').textContent = formatOwnPresence(full);
+            const permissions = state.permissions?.permissions || full.permissions || {};
+            $('opOnlineStatusSummary').textContent = permissionLabel('presence', permissions.presence);
+            $('opPlayActivitySummary').textContent = permissionLabel('playLog', permissions.playLog);
+            await loadOwnPlayLogs(false);
+        } catch {
+            await loadOwnPlayLogs(false);
         }
     }
 
@@ -3920,8 +4124,8 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
 
     function installSystemThemeWatcher() {
         const media = globalThis.matchMedia?.('(prefers-color-scheme: dark)');
-        if (!media || media.__nsoParityBound) return;
-        media.__nsoParityBound = true;
+        if (!media || media.__nsoMediaBound) return;
+        media.__nsoMediaBound = true;
         media.addEventListener?.('change', () => {
             if (localSetting('dark_mode', 'system') === 'system') applyDarkMode('system');
         });
@@ -4220,7 +4424,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             // GameChat may not be available to every account. Keep Home usable.
             host.innerHTML = `<button type="button" class="op-chat-empty-card" id="opChatHowToHome"><i class="fa-solid fa-comments"></i><span><b>You can use GameChat from your Nintendo Switch 2 system.</b><small>How to Use GameChat</small></span><i class="fa-solid fa-chevron-right"></i></button>`;
             $('opChatHowToHome')?.addEventListener('click', openChatPage);
-            console.debug('[OfficialParity] Chat/List unavailable', error);
+            console.debug('[NSO] Chat/List unavailable', error);
         }
     }
 
@@ -4343,7 +4547,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         if (!item) return;
         if (item.hasRead === false && item.id) {
             item.hasRead = true;
-            coralExact('announcementRead', { id: item.id }).catch((error) => console.debug('[OfficialParity] Announcement read marker failed', error));
+            coralExact('announcementRead', { id: item.id }).catch((error) => console.debug('[NSO] Announcement read marker failed', error));
         }
         const content = item.operation?.contents || item.contents || (item.type === 'FRIEND_REQUEST' ? 'You received a friend request.' : '');
         $('opAnnouncementDetailBody').innerHTML = `
@@ -4365,7 +4569,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         $('notificationBtn')?.setAttribute('aria-label', unread ? 'Notifications — unread notifications' : 'Notifications');
     }
 
-    function installAlbumParity() {
+    function installAlbumFeatures() {
         const title = $('albumPageTitle');
         if (title) title.textContent = 'Uploaded Data';
         const header = title?.closest('.album-toolbar-header');
@@ -4379,7 +4583,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             header.querySelector('.album-batch-actions')?.prepend(btn);
         }
 
-        replaceControl('mediaInfoBtn', async () => {
+        bindControl('mediaInfoBtn', async () => {
             const item = currentMediaItem();
             if (!item) return;
             const meta = $('mediaModalMeta');
@@ -4399,7 +4603,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
                     });
                     tags = result?.tags || '';
                 } catch (error) {
-                    console.debug('[OfficialParity] Hashtag/List unavailable', error);
+                    console.debug('[NSO] Hashtag/List unavailable', error);
                 }
             }
             const expiration = expirationLabel(item.expiresAt);
@@ -4510,13 +4714,13 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
     function installFriendOnlinePageReplacement() {
         const oldOpen = $('openNotifySettingBtn');
         if (oldOpen) {
-            const btn = replaceControl('openNotifySettingBtn', async () => {
+            const btn = bindControl('openNotifySettingBtn', async () => {
                 await openFriendOnlineSettings('friendSettingsView');
             });
             btn?.querySelector('span') && (btn.querySelector('span').textContent = 'Notify When Friends Come Online');
         }
         // Remove the earlier capture-phase redirect by replacing the button node.
-        replaceControl('changeNotifySettingBtn', () => openFriendOnlineSettings('friendSettingsView'));
+        bindControl('changeNotifySettingBtn', () => openFriendOnlineSettings('friendSettingsView'));
         const notice = $('friendSettingsNotifyView')?.querySelector('.settings-subtext');
         if (notice) notice.textContent = "You'll get online-status notifications for friends (max of once per 30 mins. for each friend).";
     }
@@ -4549,7 +4753,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         });
     }
 
-    function installFriendDetailParity() {
+    function installFriendDetailFeatures() {
         if (typeof openFriendDetail === 'function' && !openFriendDetail.__opFriendDetailWrapped) {
             const previous = openFriendDetail;
             const wrapped = function(friend) {
@@ -4985,19 +5189,19 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
     }
 
     function installChatCandidateReplacement() {
-        replaceControl('openVoiceChattedFriendsBtn', openChatCandidates);
+        bindControl('openVoiceChattedFriendsBtn', openChatCandidates);
         const empty = $('chattedUsersView')?.querySelector('.chatted-users-empty');
         if (empty) empty.textContent = "Users you've chatted with will be displayed here.";
     }
 
     function installProfileAndNotifications() {
-        replaceControl('userAvatarContainer', (event) => {
+        bindControl('userAvatarContainer', (event) => {
             event.preventDefault();
             event.stopImmediatePropagation();
             $('profileView')?.classList.add('hidden');
             openUserPage();
         }, { capture: true });
-        replaceControl('notificationBtn', (event) => {
+        bindControl('notificationBtn', (event) => {
             event.preventDefault();
             event.stopImmediatePropagation();
             $('notificationView')?.classList.add('hidden');
@@ -5007,15 +5211,66 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
 
     function installUserPageBindings() {
         ensureScreens();
-        $('opFriendCodeRow')?.addEventListener('click', () => $('openMyCodeQrBtn')?.click());
-        $('opOnlineStatusRow')?.addEventListener('click', () => openVisibility('presence'));
-        $('opPlayActivityRow')?.addEventListener('click', () => openVisibility('playLog'));
-        $('opNintendoAccountRow')?.addEventListener('click', () => window.open('https://accounts.nintendo.com/', '_blank', 'noopener'));
-        $('opPushNotificationsRow')?.addEventListener('click', openPushNotifications);
-        $('opAppSettingsRow')?.addEventListener('click', openSettings);
-        $('opSignOutBtn')?.addEventListener('click', async () => {
-            const ok = await confirmSheet('Sign Out', 'Sign out of Nintendo Switch App?', 'Sign Out');
-            if (ok && typeof logout === 'function') logout();
+
+        $('nativeFriendCodeCopyBtn')?.addEventListener('click', copyOwnFriendCode);
+        $('nativeOnlineStatusChangeBtn')?.addEventListener('click', () => openVisibility('presence'));
+        $('nativePlayActivityChangeBtn')?.addEventListener('click', () => openVisibility('playLog'));
+        $('nativeSettingsBtn')?.addEventListener('click', openSettings);
+        $('nativeAddFriendBtn')?.addEventListener('click', () => {
+            const userPage = $('opUserPage');
+            if (userPage && typeof hideViewInstant === 'function') hideViewInstant(userPage);
+            else userPage?.classList.add('hidden');
+            const addFriend = $('addFriendView');
+            if (addFriend && typeof slideViewIn === 'function') slideViewIn(addFriend);
+            else $('openAddFriendBtn')?.click();
+        });
+
+        const moreButton = $('nativeProfileMoreBtn');
+        const moreMenu = $('nativeProfileMoreMenu');
+        const closeMenu = () => {
+            moreMenu?.classList.add('hidden');
+            moreButton?.setAttribute('aria-expanded', 'false');
+        };
+        moreButton?.addEventListener('click', (event) => {
+            event.stopPropagation();
+            const open = moreMenu?.classList.contains('hidden') === true;
+            moreMenu?.classList.toggle('hidden', !open);
+            moreButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+        moreMenu?.addEventListener('click', async (event) => {
+            const button = event.target.closest('[data-native-action]');
+            if (!button) return;
+            const action = button.dataset.nativeAction;
+            closeMenu();
+            if (action === 'qr') $('openMyCodeQrBtn')?.click();
+            if (action === 'push') openPushNotifications();
+            if (action === 'account') window.open('https://accounts.nintendo.com/', '_blank', 'noopener');
+            if (action === 'signout') {
+                const ok = await confirmSheet('Sign Out', 'Sign out of Nintendo Switch App?', 'Sign Out');
+                if (ok && typeof logout === 'function') logout();
+            }
+        });
+        document.addEventListener('click', (event) => {
+            if (!moreMenu || moreMenu.classList.contains('hidden')) return;
+            if (moreMenu.contains(event.target) || moreButton?.contains(event.target)) return;
+            closeMenu();
+        });
+
+        // The real app keeps the dock visible on the User Page.
+        $('homeDock')?.addEventListener('click', () => {
+            const userPage = $('opUserPage');
+            if (!userPage?.classList.contains('hidden')) {
+                if (typeof hideViewInstant === 'function') hideViewInstant(userPage);
+                else userPage.classList.add('hidden');
+            }
+        }, true);
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            const userPage = $('opUserPage');
+            if (!userPage || userPage.classList.contains('hidden')) return;
+            closeMenu();
+            if (typeof slideViewOut === 'function') slideViewOut(userPage);
+            else userPage.classList.add('hidden');
         });
     }
 
@@ -5024,7 +5279,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             const previous = showAuthenticatedUI;
             const wrapped = function(session) {
                 const result = previous(session);
-                queueMicrotask(() => refreshParityData());
+                queueMicrotask(() => refreshNativeData());
                 return result;
             };
             wrapped.__opWrapped = true;
@@ -5032,10 +5287,10 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         }
     }
 
-    async function refreshParityData() {
+    async function refreshNativeData() {
         if (state.refreshing) return state.refreshing;
         state.refreshing = (async () => {
-            installAlbumParity();
+            installAlbumFeatures();
             if (coralToken()) {
                 coralExact('announcements').then((result) => {
                     state.announcements = Array.isArray(result) ? result : (result?.announcements || []);
@@ -5046,7 +5301,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         return state.refreshing;
     }
 
-    function installReceivedRequestTextParity() {
+    function installReceivedRequestText() {
         const host = $('receivedRequestsContainer');
         if (!host) return;
         const fix = () => {
@@ -5070,12 +5325,11 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         installUserPageBindings();
         installFriendOnlinePageReplacement();
         installExistingRequestSettingExactCall();
-        installFriendDetailParity();
+        installFriendDetailFeatures();
         installChatCandidateReplacement();
-        installAlbumParity();
-        installReceivedRequestTextParity();
-        refreshParityData();
-        console.log('[OfficialParity] APK-derived Nintendo Switch App parity layer loaded');
+        installAlbumFeatures();
+        installReceivedRequestText();
+        refreshNativeData();
     }
 
     init();

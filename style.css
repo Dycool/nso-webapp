@@ -1760,7 +1760,7 @@ body.webview-active #homeDock {
 }
 
 /* ---------------------------------------------------------------------------
-   Friends functional controls (previously injected by friends-functional.js)
+   Friends controls
    --------------------------------------------------------------------------- */
 .friends-functional-toast {
     position: fixed; z-index: 10000; left: 50%; bottom: 84px;
@@ -1863,11 +1863,11 @@ body.webview-active #homeDock {
 }
 
 /* --------------------------------------------------------------------------- */
-/* APK-derived Nintendo Switch App parity layer (merged from official-parity.css) */
-/* Loads after the Friends functional block so .op-* and light-theme win cascade. */
+/* Nintendo Switch App screens */
+/* Keep screen and theme rules after the base Friends styles. */
 /* --------------------------------------------------------------------------- */
 
-/* APK-derived main-app parity layer. Loaded after the existing project CSS. */
+/* Native app screens. */
 
 .op-screen {
     position: fixed;
@@ -2566,3 +2566,347 @@ body.op-light-theme .op-dialog { background: #fff; }
 body.op-light-theme .op-dialog p { color: #606066; }
 body.op-light-theme .op-dialog-actions button { background: #ececef; color: #222225; }
 body.op-light-theme .op-dialog-actions button.primary { background: #22afe5; color: #fff; }
+
+/* Nintendo Switch App User Page and native motion */
+#opUserPage {
+    z-index: 235 !important;
+    background: #1b1b1b !important;
+    color: #e1e1e3;
+    padding-bottom: 96px;
+}
+#opUserPage .op-header { display: none !important; }
+#opUserPage .op-scroll {
+    width: 100% !important;
+    max-width: none !important;
+    height: 100% !important;
+    min-height: 100%;
+    overflow-y: auto;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #1b1b1b;
+}
+body:has(#opUserPage:not(.hidden)) .home-dock {
+    display: flex !important;
+    z-index: 260 !important;
+}
+
+.native-user-page {
+    width: min(850px, calc(100vw - 48px));
+    margin: 72px auto 118px;
+    padding: 0 0 28px;
+}
+.native-user-hero {
+    display: grid;
+    justify-items: center;
+    margin-bottom: 22px;
+    animation: nso-native-rise .25s cubic-bezier(.2,.8,.2,1) both;
+}
+.native-user-hero img {
+    width: 98px;
+    height: 98px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: #303033;
+}
+.native-user-hero h3 {
+    margin: 8px 0 0;
+    color: #e7e7e8;
+    font: 700 22px var(--font-heading);
+    letter-spacing: -.02em;
+}
+
+.native-user-card,
+.native-user-action-card,
+.native-user-play-list {
+    background: #323234;
+    border: 0;
+    box-shadow: none;
+}
+.native-friend-code-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 82px;
+    padding: 16px 22px;
+    border-radius: 9px;
+    animation: nso-native-rise .27s .025s cubic-bezier(.2,.8,.2,1) both;
+}
+.native-friend-code-copy { min-width: 0; }
+.native-user-label {
+    display: block;
+    margin-bottom: 5px;
+    color: #ababaf;
+    font-size: 11px;
+    font-weight: 600;
+}
+.native-friend-code-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #e5e5e7;
+    font: 700 16px var(--font-heading);
+    cursor: pointer;
+    transition: opacity .14s ease, transform .12s ease;
+}
+.native-friend-code-button:hover { opacity: .86; }
+.native-friend-code-button:active { transform: scale(.98); }
+.native-friend-code-button.copied i::before { content: "\f00c"; }
+.native-copy-status {
+    position: absolute;
+    left: 22px;
+    bottom: 5px;
+    min-height: 12px;
+    color: #25b9ea;
+    font-size: 10px;
+}
+.native-user-menu-wrap { position: relative; }
+.native-user-more {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #d6d6d8;
+    font-size: 20px;
+    cursor: pointer;
+    transition: background .14s ease, transform .12s ease;
+}
+.native-user-more:hover { background: rgba(255,255,255,.08); }
+.native-user-more:active { transform: scale(.92); }
+.native-user-menu {
+    position: absolute;
+    top: 42px;
+    right: 0;
+    z-index: 20;
+    width: 235px;
+    padding: 6px;
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 8px;
+    background: #29292c;
+    box-shadow: 0 12px 30px rgba(0,0,0,.42);
+    animation: nso-native-menu .14s ease-out both;
+}
+.native-user-menu button {
+    width: 100%;
+    min-height: 42px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #dddde0;
+    text-align: left;
+    font: 600 13px var(--font-heading);
+    cursor: pointer;
+}
+.native-user-menu button:hover { background: rgba(255,255,255,.07); }
+.native-user-menu .native-danger-action { color: #f06c78; }
+
+.native-user-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+    margin-top: 9px;
+    animation: nso-native-rise .29s .05s cubic-bezier(.2,.8,.2,1) both;
+}
+.native-user-action-card {
+    min-height: 100px;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 8px;
+    border-radius: 9px;
+    color: #e5e5e7;
+    cursor: pointer;
+    transition: background .14s ease, transform .12s ease;
+}
+.native-user-action-card i { font-size: 34px; font-weight: 400; }
+.native-user-action-card span { font: 700 13px var(--font-heading); }
+.native-user-action-card:hover { background: #39393c; }
+.native-user-action-card:active { transform: scale(.985); background: #3c3c3f; }
+
+.native-user-section {
+    margin-top: 46px;
+    animation: nso-native-rise .3s .075s cubic-bezier(.2,.8,.2,1) both;
+}
+.native-user-section-head {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 48px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #3c3c3e;
+}
+.native-user-section-head > div { display: grid; gap: 3px; }
+.native-user-section-head strong {
+    color: #e0e0e2;
+    font: 700 14px var(--font-heading);
+}
+.native-user-section-head span {
+    color: #a4a4a9;
+    font-size: 12px;
+}
+.native-user-change {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 7px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #1db8ec;
+    font: 700 12px var(--font-heading);
+    cursor: pointer;
+    transition: background .14s ease, transform .12s ease;
+}
+.native-user-change:hover { background: rgba(29,184,236,.08); }
+.native-user-change:active { transform: scale(.96); }
+.native-user-change i { font-size: 13px; }
+.native-user-offline {
+    min-height: 80px;
+    display: grid;
+    place-items: center;
+    border-bottom: 1px solid #3c3c3e;
+    color: #a8a8ac;
+    font-size: 13px;
+}
+.native-play-section { margin-top: 30px; }
+.native-user-play-list {
+    margin-top: 12px;
+    border-radius: 0;
+    overflow: hidden;
+}
+.native-user-play-row {
+    width: 100%;
+    min-height: 92px;
+    display: flex;
+    align-items: center;
+    gap: 17px;
+    padding: 13px 17px;
+    border: 0;
+    border-bottom: 1px solid rgba(255,255,255,.035);
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background .13s ease;
+    animation: nso-native-row .22s ease-out both;
+}
+.native-user-play-row:last-child { border-bottom: 0; }
+.native-user-play-row:hover { background: rgba(255,255,255,.035); }
+.native-user-play-row:active { background: rgba(255,255,255,.06); }
+.native-user-play-row img {
+    width: 58px;
+    height: 58px;
+    flex: 0 0 auto;
+    border-radius: 4px;
+    object-fit: cover;
+    background: #28282a;
+}
+.native-user-play-row img.native-user-play-image-missing { visibility: hidden; }
+.native-user-play-copy { min-width: 0; display: grid; gap: 3px; }
+.native-user-play-copy strong {
+    overflow: hidden;
+    color: #e4e4e6;
+    font: 700 14px var(--font-heading);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.native-user-play-copy > span { font-size: 12px; }
+.native-playtime-highlight { color: #11b9ee; }
+.native-playtime-normal { color: #a5a5a9; }
+.native-user-loading,
+.native-user-empty {
+    min-height: 82px;
+    display: grid;
+    place-items: center;
+    margin: 0;
+    padding: 20px;
+    color: #99999e;
+    font-size: 12px;
+}
+
+/* Content motion that complements the existing animated Lottie dock. */
+.tab-page.active {
+    animation: nso-native-tab-enter .2s cubic-bezier(.2,.8,.2,1) both;
+}
+.service-launch-card,
+.friends-page-grid > *,
+.album-page-grid > * {
+    animation: nso-native-card-enter .22s ease-out both;
+}
+.service-launch-card:active { transform: scale(.992); }
+.service-launch-card.launching-service {
+    position: relative;
+    overflow: hidden;
+}
+.service-launch-card.launching-service::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(100deg, transparent 22%, rgba(255,255,255,.07) 48%, transparent 72%);
+    transform: translateX(-100%);
+    animation: nso-native-shimmer 1.05s ease-in-out infinite;
+}
+
+@keyframes nso-native-rise {
+    from { opacity: 0; transform: translateY(9px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@keyframes nso-native-row {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@keyframes nso-native-menu {
+    from { opacity: 0; transform: translateY(-5px) scale(.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes nso-native-tab-enter {
+    from { opacity: .35; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@keyframes nso-native-card-enter {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@keyframes nso-native-shimmer {
+    to { transform: translateX(100%); }
+}
+
+@media (max-width: 640px) {
+    .native-user-page { width: calc(100vw - 28px); margin-top: 66px; }
+    .native-user-hero img { width: 88px; height: 88px; }
+    .native-friend-code-card { padding-inline: 17px; }
+    .native-user-action-card { min-height: 88px; }
+    .native-user-play-row { min-height: 84px; padding-inline: 13px; gap: 13px; }
+    .native-user-play-row img { width: 53px; height: 53px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .native-user-hero,
+    .native-friend-code-card,
+    .native-user-actions,
+    .native-user-section,
+    .native-user-play-row,
+    .tab-page.active,
+    .service-launch-card,
+    .friends-page-grid > *,
+    .album-page-grid > *,
+    .service-launch-card.launching-service::after {
+        animation: none !important;
+    }
+    .native-friend-code-button,
+    .native-user-more,
+    .native-user-action-card,
+    .native-user-change {
+        transition: none !important;
+    }
+}
