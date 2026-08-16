@@ -1,7 +1,7 @@
 /* NSO WebApp runtime cache.
  * API/auth/GameWebService traffic is intentionally never cached here.
  */
-const STATIC_CACHE = 'nso-static-v1';
+const STATIC_CACHE = 'nso-static-v2';
 const IMAGE_CACHE = 'nso-images-v1';
 const MAX_IMAGE_ENTRIES = 300;
 const MAX_STATIC_ENTRIES = 80;
@@ -57,7 +57,8 @@ self.addEventListener('fetch', (event) => {
 
     if (url.origin === self.location.origin && ['script', 'style', 'font'].includes(request.destination)) {
         // App assets are query-versioned in index.html, so cache-first is safe: a
-        // deployment changes the URL and naturally bypasses the old entry.
+        // deployment changes the URL and naturally bypasses the old entry. The v2
+        // cache also evicts the pre-fix auth.js entry from existing installations.
         event.respondWith(cacheFirst(request, STATIC_CACHE));
         return;
     }
