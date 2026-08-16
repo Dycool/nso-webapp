@@ -3266,3 +3266,303 @@ body:has(#opUserPage:not(.hidden)) .home-dock {
         transition: none !important;
     }
 }
+
+/* ========================================================================== 
+   Light theme contrast + native screen parity
+   Keep the Nintendo app chrome red in both themes and explicitly remap older
+   dark-only surfaces that predate op-light-theme.
+   ========================================================================== */
+body.op-light-theme {
+    --text-primary: #18181b;
+    --text-secondary: #505057;
+    --text-muted: #707077;
+}
+
+/* Nintendo app chrome stays Nintendo red; the app title is always white. */
+body.op-light-theme .navbar {
+    background: #e60012 !important;
+    border-bottom-color: transparent !important;
+}
+body.op-light-theme .brand-title,
+body.op-light-theme .user-name,
+body.op-light-theme .navbar .notification-button {
+    color: #fff !important;
+}
+body.op-light-theme .notification-button span { border-color: #e60012; }
+
+/* Home / section headings and compact friend strip. */
+body.op-light-theme .friends-grid .friend-name,
+body.op-light-theme .friends-page-grid .friend-game.friend-game-playing,
+body.op-light-theme .op-section-title-row h2,
+body.op-light-theme .service-tab-btn.active {
+    color: #222225 !important;
+}
+body.op-light-theme .friends-grid .friend-time,
+body.op-light-theme .friends-page-grid .friend-time { color: #66666d; }
+body.op-light-theme .text-action { color: #168fbe; }
+body.op-light-theme .btn-album-action {
+    background: #fff;
+    color: #232327;
+    border-color: rgba(0,0,0,.12);
+}
+body.op-light-theme .btn-album-action:hover:not(:disabled) {
+    background: #f0f0f2;
+    color: #17171a;
+    border-color: rgba(0,0,0,.18);
+}
+body.op-light-theme .btn-album-download,
+body.op-light-theme .btn-album-download:hover:not(:disabled) {
+    background: #2e96ea;
+    border-color: #2e96ea;
+    color: #fff;
+}
+
+/* Friends detail and play activity. */
+body.op-light-theme .friend-detail-back,
+body.op-light-theme .friend-detail-more,
+body.op-light-theme .notification-back,
+body.op-light-theme .profile-back { color: #252529; }
+body.op-light-theme .friend-detail-more:hover,
+body.op-light-theme .friend-activity-row.clickable:hover { background: rgba(0,0,0,.045); }
+body.op-light-theme .friend-detail-panel h2,
+body.op-light-theme .friend-detail-activity h3,
+body.op-light-theme .friend-meta-item h4,
+body.op-light-theme .friend-activity-row strong { color: #222225; }
+body.op-light-theme .friend-detail-note,
+body.op-light-theme .friend-detail-presence,
+body.op-light-theme .friend-detail-presence-offline-text,
+body.op-light-theme .friend-meta-item p,
+body.op-light-theme .friend-activity-row span.playtime-normal { color: #626269; }
+body.op-light-theme .friend-detail-note i { background: #e2e2e5; color: #55555b; }
+body.op-light-theme .friend-detail-actions button {
+    background: #fff;
+    color: #222225;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.08);
+}
+body.op-light-theme .friend-detail-actions button:hover:not(:disabled) {
+    background: #f0f0f2;
+    color: #17171a;
+}
+body.op-light-theme .friend-detail-actions i { color: #56565c; }
+body.op-light-theme .friend-detail-presence,
+body.op-light-theme .friend-activity-row { border-color: rgba(0,0,0,.09); }
+body.op-light-theme .friend-detail-current-game:active { background: #ececef; }
+
+/* Friends action popover, request rows and GameChat candidates. */
+body.op-light-theme .friends-functional-menu {
+    background: #fff;
+    box-shadow: 0 10px 30px rgba(0,0,0,.18);
+    border: 1px solid rgba(0,0,0,.08);
+}
+body.op-light-theme .friends-functional-menu button { color: #242428; }
+body.op-light-theme .friends-functional-menu button:hover { background: rgba(0,0,0,.055); }
+body.op-light-theme .friends-functional-menu button.danger { color: #d73d47; }
+body.op-light-theme .friends-functional-user-row,
+body.op-light-theme .friends-functional-request-row {
+    background: #fff;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.055);
+}
+body.op-light-theme .friends-functional-user-row strong,
+body.op-light-theme .friends-functional-request-row strong { color: #222225; }
+body.op-light-theme .friends-functional-user-row span,
+body.op-light-theme .friends-functional-request-row span,
+body.op-light-theme .friends-functional-request-row small { color: #65656c; }
+body.op-light-theme .friends-functional-user-row > button,
+body.op-light-theme .friends-functional-request-actions button,
+body.op-light-theme .friends-functional-qr-actions button {
+    background: #ececef;
+    color: #252529;
+}
+body.op-light-theme .friends-functional-request-actions button.primary {
+    background: #22aee8;
+    color: #fff;
+}
+
+/* QR modal. The QR itself remains white, while all surrounding UI follows theme. */
+body.op-light-theme .friends-functional-qr-card {
+    background: #fff;
+    color: #222225;
+    border-color: rgba(0,0,0,.09);
+    box-shadow: 0 16px 40px rgba(0,0,0,.22);
+}
+body.op-light-theme .friends-functional-qr-header { border-bottom-color: rgba(0,0,0,.08); }
+body.op-light-theme .friends-functional-qr-header button,
+body.op-light-theme .friends-functional-qr-header h2,
+body.op-light-theme .friends-functional-friend-code { color: #222225; }
+body.op-light-theme .friends-functional-qr-label { color: #66666d; }
+
+/* Friend settings / Add Friend. */
+body.op-light-theme .settings-back-btn,
+body.op-light-theme .settings-top-header h2,
+body.op-light-theme .req-detail-back-btn,
+body.op-light-theme .req-detail-more-btn,
+body.op-light-theme .fc-search-close-btn,
+body.op-light-theme .fc-search-header h2 { color: #222225; }
+body.op-light-theme .settings-menu-row,
+body.op-light-theme .settings-section-divider span,
+body.op-light-theme .settings-status-label,
+body.op-light-theme .toggle-row-copy strong,
+body.op-light-theme .add-friend-section h3 { color: #242428; }
+body.op-light-theme .settings-menu-row {
+    border-bottom-color: rgba(0,0,0,.08);
+}
+body.op-light-theme .settings-menu-row:hover { color: #111114; background: rgba(0,0,0,.035); }
+body.op-light-theme .settings-menu-row i { color: #76767c; }
+body.op-light-theme .settings-subtext,
+body.op-light-theme .toggle-row-copy span,
+body.op-light-theme .empty-blocked-text,
+body.op-light-theme .add-friend-section p { color: #63636a; }
+body.op-light-theme .settings-section-divider { border-bottom-color: rgba(0,0,0,.10); }
+body.op-light-theme .add-friend-top-card,
+body.op-light-theme .add-friend-full-card,
+body.op-light-theme .sent-request-card {
+    background: #fff;
+    color: #242428;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.07);
+}
+body.op-light-theme .add-friend-top-card:hover,
+body.op-light-theme .add-friend-full-card:hover,
+body.op-light-theme .sent-request-card:hover { background: #f2f2f4; }
+body.op-light-theme .fc-badge-icon { border-color: #505057; color: #303034; }
+body.op-light-theme .sent-request-info strong { color: #242428; }
+body.op-light-theme .sent-request-info span { color: #66666d; }
+
+/* Sent request detail + friend-code search sheets. */
+body.op-light-theme .req-detail-dropdown {
+    background: #fff;
+    border-color: rgba(0,0,0,.09);
+    box-shadow: 0 6px 20px rgba(0,0,0,.18);
+}
+body.op-light-theme .dropdown-item-delete:hover { background: rgba(0,0,0,.05); }
+body.op-light-theme .req-detail-panel h2,
+body.op-light-theme .req-detail-meta-block strong,
+body.op-light-theme .req-detail-activity-block h3,
+body.op-light-theme .req-activity-item-info strong { color: #242428; }
+body.op-light-theme .req-detail-meta-block p,
+body.op-light-theme .req-activity-item-info span.muted { color: #626269; }
+body.op-light-theme .req-detail-activity-list { background: #fff; }
+body.op-light-theme .req-activity-item { border-bottom-color: rgba(0,0,0,.07); }
+body.op-light-theme .fc-input-box {
+    background: #fff;
+    border-color: rgba(0,0,0,.11);
+}
+body.op-light-theme .fc-input-box.active-focused { border-color: #22b8f0; }
+body.op-light-theme .fc-input { color: #222225; }
+body.op-light-theme .fc-input::placeholder { color: #9a9aa0; }
+body.op-light-theme .fc-prefix,
+body.op-light-theme .fc-subtext,
+body.op-light-theme .fc-result-label { color: #65656c; }
+body.op-light-theme .fc-result-sheet {
+    background: #fff;
+    color: #222225;
+    box-shadow: 0 -10px 34px rgba(0,0,0,.18);
+}
+body.op-light-theme .fc-sheet-handle { background: #c9c9cd; }
+body.op-light-theme .fc-result-name,
+body.op-light-theme .fc-result-code { color: #222225; }
+
+/* Legacy profile and notifications overlays. */
+body.op-light-theme .notification-panel h2,
+body.op-light-theme .profile-panel h2 { color: #222225; }
+body.op-light-theme .notification-item,
+body.op-light-theme .profile-membership,
+body.op-light-theme .profile-logout {
+    background: #fff;
+    color: #242428;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.06);
+}
+body.op-light-theme .notification-item p,
+body.op-light-theme .profile-panel > p { color: #5e5e65; }
+body.op-light-theme .notification-item span { color: #74747b; }
+body.op-light-theme .profile-logout { color: #d64a55; }
+
+/* Generic official-parity screens that were added with dark-only literals. */
+body.op-light-theme .op-secondary { background: #ececef; color: #242428; }
+body.op-light-theme .op-secondary.danger { color: #d84d56; }
+body.op-light-theme .op-success-state h3,
+body.op-light-theme .op-subtitle,
+body.op-light-theme .op-steps b,
+body.op-light-theme .op-chat-detail-hero h3,
+body.op-light-theme .op-playlog-row b,
+body.op-light-theme .op-field > span { color: #242428; }
+body.op-light-theme .op-success-state p,
+body.op-light-theme .op-steps small,
+body.op-light-theme .op-chat-card span small,
+body.op-light-theme .op-chat-list-row span small,
+body.op-light-theme .op-candidate-row span small,
+body.op-light-theme .op-chat-detail-hero p,
+body.op-light-theme .op-playlog-row span small,
+body.op-light-theme .op-muted { color: #64646b; }
+body.op-light-theme .op-chat-empty-card,
+body.op-light-theme .op-chat-card,
+body.op-light-theme .op-steps li,
+body.op-light-theme .op-chat-list-row,
+body.op-light-theme .op-candidate-row,
+body.op-light-theme .op-chat-detail-hero,
+body.op-light-theme .op-playlog-row {
+    background: #fff;
+    color: #242428;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.055);
+}
+body.op-light-theme .op-chat-empty-card span b,
+body.op-light-theme .op-chat-card span b,
+body.op-light-theme .op-chat-list-row span b,
+body.op-light-theme .op-candidate-row span b { color: #242428; }
+body.op-light-theme .op-profile-hero p { color: #64646b; }
+body.op-light-theme .op-back:hover { background: rgba(0,0,0,.055); color: #111114; }
+body.op-light-theme .op-gws-label img,
+body.op-light-theme .op-friend-toggle-row img,
+body.op-light-theme .op-chat-card img,
+body.op-light-theme .op-chat-list-row img,
+body.op-light-theme .op-candidate-row img { background: #e8e8eb; }
+
+/* User Page was deliberately dark-only; make every surface and text token theme-aware. */
+body.op-light-theme #opUserPage {
+    background: #f3f3f5 !important;
+    color: #222225;
+}
+body.op-light-theme #opUserPage .op-header,
+body.op-light-theme #opUserPage .op-scroll {
+    background: #f3f3f5 !important;
+    border-bottom-color: rgba(0,0,0,.07);
+}
+body.op-light-theme .native-user-hero img { background: #e4e4e7; }
+body.op-light-theme .native-user-hero h3,
+body.op-light-theme .native-friend-code-button,
+body.op-light-theme .native-user-action-card,
+body.op-light-theme .native-user-section-head strong,
+body.op-light-theme .native-user-presence-copy strong,
+body.op-light-theme .native-user-play-copy strong { color: #222225; }
+body.op-light-theme .native-user-label,
+body.op-light-theme .native-user-section-head span,
+body.op-light-theme .native-user-offline,
+body.op-light-theme .native-playtime-normal,
+body.op-light-theme .native-user-loading,
+body.op-light-theme .native-user-empty { color: #626269; }
+body.op-light-theme .native-user-card,
+body.op-light-theme .native-user-action-card,
+body.op-light-theme .native-user-play-list,
+body.op-light-theme .native-user-presence-row {
+    background: #fff;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.06);
+}
+body.op-light-theme .native-user-action-card:hover,
+body.op-light-theme .native-user-presence-row:hover { background: #f1f1f3; }
+body.op-light-theme .native-user-action-card:active,
+body.op-light-theme .native-user-presence-row:active { background: #e9e9ec; }
+body.op-light-theme .native-user-section-head,
+body.op-light-theme .native-user-offline,
+body.op-light-theme .native-user-play-row { border-color: rgba(0,0,0,.08); }
+body.op-light-theme .native-user-play-row:hover { background: rgba(0,0,0,.035); }
+body.op-light-theme .native-user-play-row:active { background: rgba(0,0,0,.06); }
+body.op-light-theme .native-user-presence-row img,
+body.op-light-theme .native-user-play-row img { background: #e7e7ea; }
+
+/* Game detail sheet follows the app theme too. */
+body.op-light-theme .game-sheet {
+    background: #fff;
+    color: #222225;
+    box-shadow: 0 -12px 36px rgba(0,0,0,.20);
+}
+body.op-light-theme .game-sheet-handle { background: #c6c6ca; }
+body.op-light-theme .game-sheet-name { color: #222225; }
