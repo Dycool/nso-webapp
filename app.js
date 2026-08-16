@@ -1980,7 +1980,7 @@ async function openFriendDetail(friend) {
                 }
 
                 const row = document.createElement('div');
-                row.className = 'friend-activity-row';
+                row.className = 'friend-activity-row clickable';
                 row.innerHTML = `
                     <img src="${log.imageUri || ''}" alt="" onerror="this.style.display='none'">
                     <div>
@@ -1988,6 +1988,11 @@ async function openFriendDetail(friend) {
                         <span class="${isOver50 ? 'playtime-highlight' : 'playtime-normal'}">${playText}</span>
                     </div>
                 `;
+                row.addEventListener('click', () => openGameSheet({
+                    name: log.name || 'Game',
+                    imageUri: log.imageUri || '',
+                    shopUri: log.shopUri || ''
+                }));
                 list.appendChild(row);
             });
         } else if (presence) {
@@ -2023,6 +2028,43 @@ async function openFriendDetail(friend) {
         }
     }
 }
+
+// Game detail bottom sheet
+function openGameSheet(game) {
+    const overlay = document.getElementById('gameSheetOverlay');
+    const sheet = document.getElementById('gameSheet');
+    const img = document.getElementById('gameSheetImg');
+    const name = document.getElementById('gameSheetName');
+    const link = document.getElementById('gameSheetLink');
+
+    img.src = game.imageUri || '';
+    img.alt = game.name || 'Game';
+    name.textContent = game.name || 'Game';
+
+    if (game.shopUri) {
+        link.href = game.shopUri;
+        link.style.display = '';
+    } else {
+        link.style.display = 'none';
+    }
+
+    sheet.classList.remove('sheet-closing');
+    overlay.classList.remove('hidden');
+}
+
+function closeGameSheet() {
+    const overlay = document.getElementById('gameSheetOverlay');
+    const sheet = document.getElementById('gameSheet');
+    sheet.classList.add('sheet-closing');
+    sheet.addEventListener('animationend', () => {
+        overlay.classList.add('hidden');
+        sheet.classList.remove('sheet-closing');
+    }, { once: true });
+}
+
+document.getElementById('gameSheetOverlay')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeGameSheet();
+});
 
 document.getElementById('closeMediaModalBtn').addEventListener('click', () => {
     document.getElementById('mediaModal').classList.add('hidden');
