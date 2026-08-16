@@ -468,81 +468,8 @@ textarea {
     .service-health-banner { top: max(66px, calc(env(safe-area-inset-top) + 58px)); }
 }
 
-.remembered-account-section {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-bottom: 20px;
-    padding: 18px;
-    background: var(--bg-input);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-}
 
-.btn-resume-remembered {
-    width: 100%;
-    background: linear-gradient(135deg, #00b4d8, #0077b6);
-    color: #fff;
-    border: none;
-    padding: 14px 20px;
-    border-radius: var(--radius-sm);
-    font-family: var(--font-heading);
-    font-size: 15px;
-    font-weight: 700;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    box-shadow: 0 4px 18px rgba(0, 180, 216, 0.35);
-    transition: all 0.2s ease;
-}
 
-.btn-resume-remembered:hover:not(:disabled) {
-    background: linear-gradient(135deg, #00c6eb, #0088cc);
-    transform: translateY(-1px);
-}
-
-.btn-resume-remembered:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.btn-forget-remembered {
-    background: transparent;
-    border: 1px solid rgba(240, 108, 120, 0.35);
-    color: #f06c78;
-    padding: 8px 14px;
-    border-radius: var(--radius-sm);
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.btn-forget-remembered:hover {
-    background: rgba(240, 108, 120, 0.12);
-}
-
-.remembered-divider {
-    display: flex;
-    align-items: center;
-    text-align: center;
-    margin: 8px 0 0;
-    color: var(--text-muted);
-    font-size: 12px;
-}
-
-.remembered-divider::before,
-.remembered-divider::after {
-    content: '';
-    flex: 1;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.remembered-divider span {
-    padding: 0 10px;
-}
 
 .remember-me-option {
     margin: 16px 0 20px;
@@ -604,6 +531,15 @@ textarea {
 .btn-submit-gate:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+
+/* A remembered account never gets its own login-card UI. If its cached Coral
+   session expired, the normal Sign In flow reuses the remembered Nintendo
+   session and shows only the nxapi disclosure needed to refresh Coral. */
+#loginWorkflow.remembered-consent-only .auth-steps,
+#loginWorkflow.remembered-consent-only .remember-me-option {
+    display: none !important;
 }
 
 .profile-forget-remembered {

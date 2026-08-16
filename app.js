@@ -469,37 +469,27 @@ function checkStartupSession() {
     updateRememberedUI();
 }
 
-function updateRememberedUI() {
+function hasRememberedAccount() {
     const rememberedFlag = localStorage.getItem('nso_has_remembered_account') === 'true';
     const rememberedExpiresAt = Number(localStorage.getItem('nso_remember_expires_at') || 0);
-    // Pre-v14 remembered grants did not store their server expiry locally. Keep those
-    // visible and let the already-30-day-capped server record decide at resume time.
-    const hasRemembered = rememberedFlag && (rememberedExpiresAt <= 0 || rememberedExpiresAt > Date.now());
 
-    // New grants carry their absolute server expiry, so the UI can expire them locally
-    // without even offering a stale resume action.
+    // New grants carry their absolute server expiry. Legacy grants without a local
+    // expiry are still checked against the server's hard 30-day limit at resume time.
     if (rememberedFlag && rememberedExpiresAt > 0 && rememberedExpiresAt <= Date.now()) {
         localStorage.removeItem('nso_has_remembered_account');
         localStorage.removeItem('nso_remember_expires_at');
+        return false;
     }
+    return rememberedFlag && (rememberedExpiresAt <= 0 || rememberedExpiresAt > Date.now());
+}
 
-    const section = document.getElementById('rememberedAccountSection');
+function updateRememberedUI() {
+    const hasRemembered = hasRememberedAccount();
     const profileForgetBtn = document.getElementById('profileForgetRememberedBtn');
-
-    if (section) {
-        if (hasRemembered) {
-            section.classList.remove('hidden');
-        } else {
-            section.classList.add('hidden');
-        }
-    }
     if (profileForgetBtn) {
-        if (hasRemembered) {
-            profileForgetBtn.classList.remove('hidden');
-        } else {
-            profileForgetBtn.classList.add('hidden');
-        }
+        profileForgetBtn.classList.toggle('hidden', !hasRemembered);
     }
+    return hasRemembered;
 }
 
 
@@ -1598,41 +1588,114 @@ function showAuthenticatedUI(session) {
     loadSwitchMedia();
 }
 
-function logout() {
-    window.webServiceManager?.closeActiveService();
-    window.nsoCloseAppScreens?.();
-    // Release only this tab's active lease. If the user explicitly enabled Remember
-    // Me, keep that encrypted grant and its Coral cache so “Sign Out” does not behave
-    // like “Forget Remembered Account”.
-    releaseTokenBrokerSession({ keepalive: true });
-    try { sessionStorage.removeItem('nso_token_broker_client_id'); } catch (e) {}
-    sessionStorage.removeItem('nso_user_session');
-    localStorage.removeItem('nso_user_session');
-    localStorage.removeItem('nso_pkce_verifier');
-    localStorage.removeItem('nso_auth_state');
-    userSession = null;
-    nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 };
-    showLoginGate();
-    updateRememberedUI();
+async function purgeServerAccountState() {
+    const clientId = tokenBrokerClientId();
+
+    // New Worker versions perform Remember Me revocation + broker release in one
+    // server-side operation so Sign Out cannot leave persistent account state behind.
+    let response = null;
+    try {
+        response = await fetch(`${WORKER_URL}/api/nso/auth/logout`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            credentials: 'include',
+            keepalive: true,
+            body: JSON.stringify({ clientId })
+        });
+    } catch (error) {
+        response = null;
+    }
+
+    if (response?.ok) return;
+
+    // Deployment-order compatibility: if the webapp reaches an older Worker, perform
+    // the same cleanup through the two existing endpoints.
+    if (!response || response.status === 404 || response.status === 405) {
+        const [forgetResponse, releaseResponse] = await Promise.all([
+            fetch(`${WORKER_URL}/api/nso/remember/forget`, {
+                method: 'POST',
+                credentials: 'include',
+                keepalive: true
+            }),
+            fetch(`${WORKER_URL}/api/nso/cache/session/release`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                keepalive: true,
+                body: JSON.stringify({ clientId })
+            })
+        ]);
+        if (forgetResponse.ok && releaseResponse.ok) return;
+    }
+
+    throw new Error('The server could not remove the remembered account and cached login session.');
 }
 
-async function clearRememberedAccount() {
-    localStorage.removeItem('nso_has_remembered_account');
-    localStorage.removeItem('nso_remember_expires_at');
-    updateRememberedUI();
+async function logout() {
+    if (logout.__inFlight) return logout.__inFlight;
+
+    logout.__inFlight = (async () => {
+        window.webServiceManager?.closeActiveService();
+        window.nsoCloseAppScreens?.();
+        stopTokenBrokerHeartbeat();
+
+        try {
+            await purgeServerAccountState();
+        } catch (error) {
+            // Do not pretend sign-out succeeded while the server may still retain the
+            // Remember Me grant/cache. Keep the local session so the user can retry.
+            startTokenBrokerHeartbeat();
+            alert(`Could not sign out securely: ${error.message}`);
+            return;
+        }
+
+        localStorage.removeItem('nso_has_remembered_account');
+        localStorage.removeItem('nso_remember_expires_at');
+        try { sessionStorage.removeItem('nso_token_broker_client_id'); } catch (e) {}
+        sessionStorage.removeItem('nso_user_session');
+        localStorage.removeItem('nso_user_session');
+        localStorage.removeItem('nso_pkce_verifier');
+        localStorage.removeItem('nso_auth_state');
+        userSession = null;
+        nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 };
+
+        const loginWorkflow = document.getElementById('loginWorkflow');
+        loginWorkflow?.classList.add('hidden');
+        loginWorkflow?.classList.remove('remembered-consent-only');
+        document.getElementById('beginSignInBtn')?.classList.remove('hidden');
+        document.querySelector('.login-help')?.classList.remove('hidden');
+
+        showLoginGate();
+        updateRememberedUI();
+    })();
+
     try {
-        await fetch(`${WORKER_URL}/api/nso/remember/forget`, {
-            method: 'POST',
-            credentials: 'include'
-        });
-    } catch (e) {
-        console.warn('[RememberMe] Failed to delete server-side remember record:', e);
+        return await logout.__inFlight;
+    } finally {
+        logout.__inFlight = null;
     }
 }
 
+async function clearRememberedAccount() {
+    const response = await fetch(`${WORKER_URL}/api/nso/remember/forget`, {
+        method: 'POST',
+        credentials: 'include'
+    });
+    if (!response.ok) {
+        throw new Error(`Remembered-account removal failed (HTTP ${response.status}).`);
+    }
+    localStorage.removeItem('nso_has_remembered_account');
+    localStorage.removeItem('nso_remember_expires_at');
+    updateRememberedUI();
+}
+
 async function forgetRememberedAccount() {
-    await clearRememberedAccount();
-    alert('Remembered Nintendo Account has been forgotten on this device.');
+    try {
+        await clearRememberedAccount();
+        alert('Remembered Nintendo Account has been forgotten on this device.');
+    } catch (error) {
+        alert(`Could not forget the remembered account: ${error.message}`);
+    }
 }
 
 function openProfile() {
@@ -1680,13 +1743,13 @@ function renderNotifications(items) {
 }
 
 let loginInFlight = null;
+let pendingRememberedResume = false;
 
 function setAuthButtonsDisabled(disabled, label = null) {
     const submitGateBtn = document.getElementById('submitAuthGateBtn');
     const pasteAuthGateBtn = document.getElementById('pasteAuthGateBtn');
     const oauthGateBtn = document.getElementById('nintendoOAuthGateBtn');
-    const resumeBtn = document.getElementById('resumeRememberedBtn');
-    const forgetBtn = document.getElementById('forgetRememberedBtn');
+    const beginSignInBtn = document.getElementById('beginSignInBtn');
 
     if (submitGateBtn) {
         submitGateBtn.disabled = disabled;
@@ -1695,12 +1758,7 @@ function setAuthButtonsDisabled(disabled, label = null) {
     }
     if (pasteAuthGateBtn) pasteAuthGateBtn.disabled = disabled;
     if (oauthGateBtn) oauthGateBtn.disabled = disabled;
-    if (resumeBtn) {
-        resumeBtn.disabled = disabled;
-        if (label && disabled) resumeBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${label}`;
-        else resumeBtn.innerHTML = '<i class="fa-solid fa-key"></i> Continue with remembered Nintendo Account';
-    }
-    if (forgetBtn) forgetBtn.disabled = disabled;
+    if (beginSignInBtn) beginSignInBtn.disabled = disabled;
 }
 
 function setAuthGateHint(_text) {
@@ -1719,13 +1777,13 @@ async function performFullAuthentication(options = {}) {
     setAuthButtonsDisabled(true, 'Signing in...');
 
     loginInFlight = (async () => {
+        const isResume = options.isResume === true;
         try {
             // Do not contact nxapi just to check a remembered/brokered Coral session.
             // Consent is enforced at the exact point an nxapi request becomes necessary.
             let idToken = null;
             let accessToken = null;
             let longLivedSessionToken = null;
-            const isResume = options.isResume === true;
 
             if (isResume) {
                 setAuthButtonsDisabled(true, 'Signing in...');
@@ -2033,7 +2091,12 @@ async function performFullAuthentication(options = {}) {
             const rememberCheckbox = document.getElementById('rememberMeCheckbox');
             const shouldRemember = rememberCheckbox?.checked === true;
 
-            if (shouldRemember && longLivedSessionToken) {
+            if (isResume) {
+                // Resuming an existing remembered account must not treat the hidden,
+                // unchecked Remember Me box as an opt-out. Keep the existing grant
+                // until the user explicitly signs out or forgets it from their profile.
+                updateRememberedUI();
+            } else if (shouldRemember && longLivedSessionToken) {
                 try {
                     setAuthGateHint('Saving encrypted session on server…');
                     const remResp = await fetch(`${WORKER_URL}/api/nso/remember/save`, {
@@ -2078,9 +2141,24 @@ async function performFullAuthentication(options = {}) {
                 updateRememberedUI();
             }
 
+            pendingRememberedResume = false;
+            document.getElementById('loginWorkflow')?.classList.remove('remembered-consent-only');
             setAuthGateHint('');
             showAuthenticatedUI(data);
         } catch (err) {
+            if (isResume && err instanceof AuthStageError && err.stage === 'NXAPI_AUTH' && !hasNxapiConsent()) {
+                // The remembered Nintendo session is still usable, but Coral itself
+                // needs refreshing. Show only the required nxapi disclosure; no
+                // remembered-account card or Nintendo sign-in/paste steps.
+                pendingRememberedResume = true;
+                const workflow = document.getElementById('loginWorkflow');
+                workflow?.classList.add('remembered-consent-only');
+                workflow?.classList.remove('hidden');
+                document.getElementById('beginSignInBtn')?.classList.add('hidden');
+                document.querySelector('.login-help')?.classList.add('hidden');
+                workflow?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
+            }
             // If authentication failed after opening an ephemeral broker lease,
             // release it immediately. Without Remember Me this causes the account
             // cache to be purged now instead of waiting for the 90-second crash
@@ -2114,8 +2192,6 @@ function initAuthGate() {
     const beginSignInBtn = document.getElementById('beginSignInBtn');
     const loginWorkflow = document.getElementById('loginWorkflow');
     const authInput = document.getElementById('idTokenGateInput');
-    const resumeRememberedBtn = document.getElementById('resumeRememberedBtn');
-    const forgetRememberedBtn = document.getElementById('forgetRememberedBtn');
     const profileForgetRememberedBtn = document.getElementById('profileForgetRememberedBtn');
     const nxapiConsentCheckbox = document.getElementById('nxapiConsentCheckbox');
     const nxapiDisclosure = document.getElementById('nxapiDisclosure');
@@ -2153,6 +2229,16 @@ function initAuthGate() {
 
     if (beginSignInBtn) {
         beginSignInBtn.addEventListener('click', () => {
+            if (hasRememberedAccount()) {
+                pendingRememberedResume = true;
+                // Reuse the remembered Nintendo session behind the normal Sign In
+                // button. There is intentionally no separate remembered-account card.
+                performFullAuthentication({ isResume: true });
+                return;
+            }
+
+            pendingRememberedResume = false;
+            loginWorkflow.classList.remove('remembered-consent-only');
             loginWorkflow.classList.remove('hidden');
             beginSignInBtn.classList.add('hidden');
             document.querySelector('.login-help')?.classList.add('hidden');
@@ -2185,22 +2271,13 @@ function initAuthGate() {
     if (submitGateBtn) {
         submitGateBtn.addEventListener('click', () => {
             if (!requireNxapiConsent()) return;
+            if (pendingRememberedResume && hasRememberedAccount()) {
+                performFullAuthentication({ isResume: true });
+                return;
+            }
             const input = authInput?.value.trim() || '';
             performFullAuthentication({ input });
         });
-    }
-
-    if (resumeRememberedBtn) {
-        resumeRememberedBtn.addEventListener('click', () => {
-            // A valid remembered Coral cache hit needs no nxapi call, so do not force
-            // disclosure consent up front. If the cache is expired/missing, the nxapi
-            // path itself will request consent before making any third-party request.
-            performFullAuthentication({ isResume: true });
-        });
-    }
-
-    if (forgetRememberedBtn) {
-        forgetRememberedBtn.addEventListener('click', forgetRememberedAccount);
     }
 
     if (profileForgetRememberedBtn) {
