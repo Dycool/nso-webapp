@@ -1585,20 +1585,20 @@ body.webview-active {
 
 @keyframes nso-loading-pulse { from { opacity: .72; } to { opacity: 1; } }
 
-/* Android-style slide transitions for sub-views */
-@keyframes slide-in-from-right {
-    from { transform: translateX(100%); }
-    to   { transform: translateX(0); }
+/* Android-style fade+shift transitions for sub-views */
+@keyframes view-enter {
+    from { opacity: 0; transform: translateX(56px); }
+    to   { opacity: 1; transform: translateX(0); }
 }
-@keyframes slide-out-to-right {
-    from { transform: translateX(0); }
-    to   { transform: translateX(100%); }
+@keyframes view-exit {
+    from { opacity: 1; transform: translateX(0); }
+    to   { opacity: 0; transform: translateX(56px); }
 }
 .view-slide-in {
-    animation: slide-in-from-right 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    animation: view-enter 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 .view-slide-out {
-    animation: slide-out-to-right 0.24s cubic-bezier(0.4, 0, 0.6, 1) forwards;
+    animation: view-exit 0.2s cubic-bezier(0.4, 0, 0.6, 1) forwards;
     pointer-events: none;
 }
 
