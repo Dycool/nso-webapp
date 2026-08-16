@@ -1347,9 +1347,9 @@ body.dark-theme { background: #1b1b1b; }
 @keyframes service-launch-spin { to { transform: rotate(360deg); } }
 .service-loading-tile { flex: 0 0 clamp(176px, 18.4vw, 300px); aspect-ratio: 1; border-radius: 8px; }
 .service-status { align-self: center; color: #a9a9ad; }
-.home-content-section .media-grid { display: flex; gap: 10px; min-height: 0; margin: 0; justify-content: center; justify-content: safe center; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; scrollbar-width: none; padding-bottom: 2px; }
+.home-content-section .media-grid { display: flex; gap: 12px; min-height: 0; margin: 0; justify-content: flex-start; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; scrollbar-width: none; padding-bottom: 6px; }
 .home-content-section .media-grid::-webkit-scrollbar { display: none; }
-.home-content-section .media-item, .home-content-section .media-loading-tile { position: relative; display: flex; flex-direction: column; flex: 0 0 clamp(180px, calc((100% - 40px) / 5), 320px); width: auto; min-width: 0; min-height: 0; scroll-snap-align: start; }
+.home-content-section .media-item, .home-content-section .media-loading-tile { position: relative; display: flex; flex-direction: column; flex: 0 0 clamp(280px, max(28vw, 56vh), 520px); width: auto; min-width: 0; min-height: 0; scroll-snap-align: start; }
 .home-dock { position: fixed; z-index: 120; left: 50%; bottom: 15px; display: flex; width: min(450px, calc(100vw - 40px)); height: 50px; padding: 0 28px; align-items: center; justify-content: space-between; border-radius: 9999px; background: #464648; transform: translateX(-50%); box-shadow: 0 8px 24px rgba(0,0,0,.32); }
 .home-dock button { display: flex; align-items: center; justify-content: center; width: 56px; height: 44px; border: 0; border-radius: 12px; background: transparent; cursor: pointer; padding: 0; }
 .dock-svg-icon { width: 26px; height: 26px; display: block; transition: transform .12s ease; }
@@ -1599,15 +1599,18 @@ body.webview-active {
 .friend-detail-view { position: fixed; z-index: 220; inset: 0; overflow-y: auto; background: #1b1b1b; color: #d8d8da; }
 .friend-detail-back, .friend-detail-more { position: fixed; top: 17px; border: 0; background: transparent; color: #e4e4e5; font-size: 22px; cursor: pointer; }
 .friend-detail-back { left: 29px; }
-.friend-detail-more { right: 29px; opacity: .45; cursor: default; }
+.friend-detail-more { right: 29px; opacity: .9; cursor: pointer; transition: opacity .15s ease, background .15s ease; border-radius: 50%; padding: 4px; display: inline-flex; align-items: center; justify-content: center; }
+.friend-detail-more:hover { opacity: 1; background: rgba(255, 255, 255, 0.08); }
 .friend-detail-panel { width: min(700px, calc(100vw - 40px)); margin: 106px auto 90px; text-align: center; }
 .friend-detail-avatar { display: block; width: 92px; height: 92px; margin: 0 auto 7px; border-radius: 50%; object-fit: cover; }
 .friend-detail-panel h2 { color: #dedee0; font: 700 20px var(--font-heading); }
-.friend-detail-note { margin-top: 2px; color: #aaaab0; font-size: 13px; }
+.friend-detail-note { margin-top: 2px; color: #aaaab0; font-size: 13px; cursor: pointer; }
 .friend-detail-note i { display: inline-grid; width: 21px; height: 21px; margin-right: 5px; place-items: center; border-radius: 50%; background: #3b3b3d; font-size: 10px; }
 .friend-detail-actions { display: grid; gap: 8px; width: 286px; margin: 29px auto; }
-.friend-detail-actions button { height: 52px; border: 0; border-radius: 5px; background: #38383a; color: #d8d8da; font: 700 14px var(--font-heading); }
-.friend-detail-actions button:disabled { opacity: 1; }
+.friend-detail-actions button { height: 52px; border: 0; border-radius: 5px; background: #38383a; color: #d8d8da; font: 700 14px var(--font-heading); cursor: pointer; transition: background .15s ease, transform .12s ease; }
+.friend-detail-actions button:hover:not(:disabled) { background: #444448; color: #fff; }
+.friend-detail-actions button:active:not(:disabled) { transform: scale(0.98); }
+.friend-detail-actions button:disabled { opacity: 1; cursor: pointer; }
 .friend-detail-actions i { margin-right: 11px; color: #cacace; font-size: 19px; vertical-align: -2px; }
 .friend-detail-presence { margin: 0; padding: 28px 0; border-top: 1px solid #3a3a3b; border-bottom: 1px solid #3a3a3b; color: #b5b5b9; font-size: 13px; }
 .friend-detail-activity { margin-top: 39px; text-align: left; }
@@ -1647,7 +1650,8 @@ body.webview-active {
 
 
 /* Native album viewer: captures are presented edge-to-edge under a compact toolbar. */
-.modal-overlay { position: fixed; z-index: 300; inset: 0; display: block; padding: 0; background: #1b1b1b; }
+#mediaModal { position: fixed; z-index: 300; inset: 0; display: block; padding: 0; background: #1b1b1b; }
+#mediaModal.hidden { display: none !important; }
 .media-preview-card { width: 100%; max-width: none; height: 100%; padding: 0; border: 0; border-radius: 0; background: #1b1b1b; box-shadow: none; }
 .media-viewer-header { position: relative; z-index: 1; display: flex; height: 58px; align-items: center; gap: 17px; padding: 0 18px; background: #222223; }
 .media-viewer-header h2 { overflow: hidden; color: #e0e0e2; font: 700 15px var(--font-heading); text-overflow: ellipsis; white-space: nowrap; }
@@ -1684,8 +1688,8 @@ body.webview-active {
     .game-services-catalog { gap: 8px; }
     .game-services-catalog { justify-content: flex-start; }
     .service-launch-card, .service-loading-tile { flex-basis: 176px; }
-    .home-content-section .media-grid { justify-content: flex-start; gap: 8px; }
-    .home-content-section .media-item, .home-content-section .media-loading-tile { flex: 0 0 clamp(170px, 46vw, 220px); }
+    .home-content-section .media-grid { justify-content: flex-start; gap: 10px; }
+    .home-content-section .media-item, .home-content-section .media-loading-tile { flex: 0 0 clamp(220px, 64vw, 320px); }
     .native-tab-page { padding-top: 16px; }
     .native-page-heading h1 { font-size: 21px; }
     .friends-page-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
