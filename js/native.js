@@ -644,7 +644,7 @@
             const image = document.createElement('img');
             image.src = log.imageUri || '';
             image.alt = '';
-            image.loading = 'lazy';
+            image.loading = 'eager';
             image.addEventListener('error', () => image.classList.add('native-user-play-image-missing'));
 
             const copy = document.createElement('span');

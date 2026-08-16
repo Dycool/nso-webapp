@@ -427,6 +427,38 @@ class WebServiceManager {
         return div.innerHTML;
     }
 
+    destroyServiceFrame() {
+        const frame = document.getElementById('inAppGameWebviewFrame');
+        if (!frame) return;
+        try { frame.remove(); } catch (e) { frame.parentNode?.removeChild(frame); }
+    }
+
+    mountServiceFrame(service, src) {
+        const wrap = document.querySelector('.inapp-webview-frame-wrap');
+        if (!wrap || !src) return null;
+
+        this.destroyServiceFrame();
+
+        // Configure the complete cross-origin WebView while detached, then
+        // navigate it directly to the Worker before insertion. This avoids a
+        // sandboxed inherited about:blank document and its Chromium warning.
+        const frame = document.createElement('iframe');
+        frame.id = 'inAppGameWebviewFrame';
+        frame.name = 'inAppGameWebviewFrame';
+        frame.title = 'Nintendo Switch Online Game Service';
+        frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads');
+
+        // Zelda Notes uses the Screen Wake Lock API while its map is open.
+        // Delegate only that capability to Zelda's Worker-origin document.
+        if (this.getAdapter(service) === this.zeldaNotesAdapter) {
+            frame.setAttribute('allow', 'screen-wake-lock');
+        }
+
+        frame.src = String(src);
+        wrap.appendChild(frame);
+        return frame;
+    }
+
     clearLaunchTransitionClasses() {
         const overlay = document.getElementById('inAppGameWebview');
         const surfaces = this.getLaunchBackgroundSurfaces();
@@ -446,9 +478,8 @@ class WebServiceManager {
 
         const overlay = document.getElementById('inAppGameWebview');
         const title = document.getElementById('inAppGameWebviewTitle');
-        const frame = document.getElementById('inAppGameWebviewFrame');
         if (title) title.textContent = service?.name || nsoUiText('Game Service');
-        if (frame) frame.src = 'about:blank';
+        this.destroyServiceFrame();
         this.ensureLoadingSurface(service);
 
         document.documentElement.classList.add('gws-transition-active');
@@ -505,6 +536,7 @@ class WebServiceManager {
 
         const overlay = document.getElementById('inAppGameWebview');
         const surfaces = this.getLaunchBackgroundSurfaces();
+        this.destroyServiceFrame();
         document.documentElement.classList.remove('webview-active');
         document.body.classList.remove('webview-active');
         document.documentElement.classList.add('gws-transition-active');
@@ -651,13 +683,11 @@ class WebServiceManager {
         }
 
         const overlay = document.getElementById('inAppGameWebview');
-        const frame = document.getElementById('inAppGameWebviewFrame');
         const surfaces = this.getLaunchBackgroundSurfaces();
 
-        // about:blank is set at the instant Back is pressed so the browser cancels
-        // the Nintendo document/subresource waterfall instead of continuing it behind
-        // the 400 ms APK-style back animation.
-        if (frame) frame.src = 'about:blank';
+        // Removing the frame cancels the Nintendo document/subresource waterfall
+        // immediately without navigating through inherited about:blank.
+        this.destroyServiceFrame();
         document.getElementById('gwsNativeLoading')?.classList.add('hidden');
 
         document.documentElement.classList.remove('webview-active');

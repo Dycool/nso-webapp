@@ -368,11 +368,6 @@
             <button class="webview-reload-btn" id="reloadInAppGameWebviewBtn" type="button" aria-label="Retry"><i class="fa-solid fa-rotate-right"></i></button>
         </header>
         <div class="inapp-webview-frame-wrap">
-            <!-- allow-same-origin is required: proxied Nintendo game services need
-                 origin-sensitive Web APIs (cookies, localStorage, fetch credentials).
-                 The browser warns that allow-scripts + allow-same-origin can escape
-                 sandboxing; this is an accepted trade-off for WebView parity. -->
-            <iframe id="inAppGameWebviewFrame" name="inAppGameWebviewFrame" title="Nintendo Switch Online Game Service" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"></iframe>
         </div>
     </section>
 

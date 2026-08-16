@@ -154,7 +154,7 @@ function renderMediaCards(container, items, isAlbumPage = false) {
         button.innerHTML = `
             ${isAlbumPage ? '<button class="media-select-check" type="button" aria-label="Select item"><i class="fa-solid fa-check"></i></button>' : ''}
             <div class="media-thumb-wrap">
-                <img src="${item.thumbnailUri || item.contentUri}" alt="${title}" loading="lazy">
+                <img src="${item.thumbnailUri || item.contentUri}" alt="${title}" loading="eager">
                 ${item.type === 'video' ? '<span class="video-badge"><i class="fa-solid fa-play"></i></span>' : ''}
             </div>
             <span class="media-title">${title}</span>
