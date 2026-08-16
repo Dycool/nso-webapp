@@ -5,6 +5,17 @@
  * Durable Object session management, and the controlled postMessage bridge protocol.
  */
 
+
+function nsoUiText(source) {
+    try { return typeof window.nsoTranslateText === 'function' ? window.nsoTranslateText(source) : source; } catch { return source; }
+}
+function nsoUiVars(source, values = {}) {
+    try { return typeof window.nsoTranslateVars === 'function' ? window.nsoTranslateVars(source, values) : String(source).replace(/\{([A-Za-z0-9_]+)\}/g, (_, key) => String(values[key] ?? '')); } catch { return source; }
+}
+function nsoUiApk(key, fallback = '') {
+    try { return typeof window.nsoTranslateApkKey === 'function' ? window.nsoTranslateApkKey(key) : (fallback || key); } catch { return fallback || key; }
+}
+
 class WebServiceManager {
     constructor() {
         this.SPLATNET3_ID = '4834290508791808';
@@ -221,7 +232,7 @@ class WebServiceManager {
 
             const shouldRetry500 = response.status === 500 && attempt < maxAttempts;
             if (shouldRetry500) {
-                this.setLoadingStatus('Retrying…');
+                this.setLoadingStatus(nsoUiText('Retrying…'));
                 await this.waitForRetry(1000, options.signal);
                 continue;
             }
@@ -236,6 +247,7 @@ class WebServiceManager {
             const error = new Error(message);
             error.status = response.status;
             error.code = noMatchingWorker ? 'nxapi_unsupported_version' : (data?.error || 'broker_generation_error');
+            if (noMatchingWorker) error.requestedVersion = requestedVersion;
             throw error;
         }
 
@@ -393,10 +405,10 @@ class WebServiceManager {
         catalog?.classList.toggle('launch-locked', this.launchLocked);
 
         document.querySelectorAll('#gameServicesCatalog .service-launch-card button').forEach((button) => {
-            if (!button.dataset.nsoOriginalText) button.dataset.nsoOriginalText = button.textContent || 'Connect';
+            if (!button.dataset.nsoOriginalText) button.dataset.nsoOriginalText = button.textContent || nsoUiText('Connect');
             button.disabled = this.launchLocked;
-            if (button === activeButton && this.launchLocked) button.textContent = 'Connecting…';
-            else button.textContent = button.dataset.nsoOriginalText || 'Connect';
+            if (button === activeButton && this.launchLocked) button.textContent = nsoUiText('Connecting…');
+            else button.textContent = button.dataset.nsoOriginalText || nsoUiText('Connect');
         });
     }
 
@@ -426,7 +438,7 @@ class WebServiceManager {
             <div class="gws-native-loading-inner">
                 ${image}
                 <span class="gws-native-loading-spinner" aria-hidden="true"></span>
-                <strong class="gws-native-loading-title">${this.escapeText(service?.name || 'Game Service')}</strong>
+                <strong class="gws-native-loading-title">${this.escapeText(service?.name || nsoUiText('Game Service'))}</strong>
                 <span class="gws-native-loading-status hidden" aria-live="polite"></span>
             </div>`;
         loading.classList.remove('hidden', 'is-complete');
@@ -460,7 +472,7 @@ class WebServiceManager {
         const overlay = document.getElementById('inAppGameWebview');
         const title = document.getElementById('inAppGameWebviewTitle');
         const frame = document.getElementById('inAppGameWebviewFrame');
-        if (title) title.textContent = service?.name || 'Game Service';
+        if (title) title.textContent = service?.name || nsoUiText('Game Service');
         if (frame) frame.src = 'about:blank';
         this.ensureLoadingSurface(service);
 
@@ -615,7 +627,10 @@ class WebServiceManager {
                 const cloudflareCancel = this.cancelCloudflareLaunch(launchId);
                 await this.cancelNativeServiceLaunch();
                 await cloudflareCancel;
-                alert(`Could not open ${service.name || 'service'}: ${e.message}`);
+                const reason = e?.code === 'nxapi_unsupported_version'
+                    ? nsoUiVars('No matching nxapi Android worker is available for Nintendo Switch App {version} right now. Please try again later.', { version: e.requestedVersion || '?' })
+                    : (Number(e?.status || 0) === 429 ? nsoUiText('nxapi is temporarily rate-limited. Please try again later.') : nsoUiApk('Error_Dialog_Message_Unknown_Error', 'An error has occurred.'));
+                alert(nsoUiVars('Could not open {service}. {reason}', { service: service.name || nsoUiText('Game Service'), reason }));
             } else {
                 
             }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nintendo Switch Online WebApp</title>
+    <title>Nintendo Switch App</title>
     <meta name="description" content="Modern web application port of Nintendo Switch Online (Coral) featuring Friends List, Game Web Services, and Switch Album Media.">
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260816-v25">
@@ -36,7 +36,7 @@
                     <i class="fa-regular fa-bell"></i><span></span>
                 </button>
                 <button class="avatar-box hidden" id="userAvatarContainer" type="button" aria-label="Open profile">
-                    <img src="" alt="Avatar" id="userAvatar">
+                    <img src="" alt="User icon" id="userAvatar">
                     <span class="user-name hidden" id="userNickname">Switch Player</span>
                 </button>
             </div>
@@ -73,7 +73,7 @@
             <div class="nxapi-disclosure" id="nxapiDisclosure">
                 <div class="nxapi-disclosure-copy">
                     <strong>Third-party service disclosure</strong>
-                    <p>Sign-in uses <a href="https://github.com/samuelthomas2774/nxapi-znca-api" target="_blank" rel="noopener noreferrer">nxapi-znca-api</a> (operated by Ellie Gray). Your Nintendo Account ID token, Coral session token, and encrypted Coral API requests/responses are sent to this service for Coral attestation and request encryption.</p>
+                    <p>Sign-in uses the third-party service nxapi-znca-api, operated by Ellie Gray. Your Nintendo Account ID token, Coral session token, and encrypted Coral API requests/responses are sent to this service for Coral attestation and request encryption.</p>
                     <a class="nxapi-help-link" href="https://github.com/samuelthomas2774/nxapi-znca-api/blob/docs/docs/end-user-help.md" target="_blank" rel="noopener noreferrer">Learn more about nxapi</a>
                 </div>
                 <label class="nxapi-consent-row">
@@ -87,7 +87,7 @@
                     <span>1</span>
                     <div>
                         <strong>Sign in on Nintendo Account</strong>
-                        <p>Click below to open Nintendo's official sign-in page:</p>
+                        <p>Click below to open Nintendo’s official sign-in page:</p>
                         <button class="btn-nintendo-oauth" id="nintendoOAuthGateBtn">
                             <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Nintendo Sign In
                         </button>
@@ -98,8 +98,8 @@
                     <span>2</span>
                     <div>
                         <strong>Complete Sign In & Paste URL / Token</strong>
-                        <p>After signing in, right-click <strong>Select this person</strong> → <strong>Copy link address</strong>. Paste it below and we will continue automatically.</p>
-                        <textarea id="idTokenGateInput" placeholder="Paste redirect URL (npf71b963c1b7b6d119://auth#...) or session_token string here..."></textarea>
+                        <p>After signing in, right-click Select this person → Copy link address. Paste it below and we will continue automatically.</p>
+                        <textarea id="idTokenGateInput" placeholder="Paste redirect URL or session token here…"></textarea>
                         <button type="button" class="btn-paste-token" id="pasteAuthGateBtn"><i class="fa-regular fa-clipboard"></i> Paste from clipboard</button>
                     </div>
                 </div>
@@ -306,7 +306,7 @@
             </div>
         </header>
         <div class="req-detail-panel">
-            <img id="sentReqDetailAvatar" src="" alt="Avatar" class="req-detail-avatar">
+            <img id="sentReqDetailAvatar" src="" alt="User icon" class="req-detail-avatar">
             <h2 id="sentReqDetailName"></h2>
 
             <div class="req-detail-meta-block">
@@ -346,7 +346,7 @@
         <!-- Search Result Card / Bottom Sheet -->
         <div class="fc-result-sheet hidden" id="fcResultSheet">
             <div class="fc-sheet-handle"></div>
-            <img id="fcResultAvatar" src="" alt="User Avatar" class="fc-result-avatar">
+            <img id="fcResultAvatar" src="" alt="User icon" class="fc-result-avatar">
             <h3 id="fcResultName" class="fc-result-name"></h3>
             <span class="fc-result-label">Friend Code</span>
             <span id="fcResultCode" class="fc-result-code"></span>
@@ -359,7 +359,7 @@
         <header class="inapp-webview-header">
             <button class="webview-back-btn" id="closeInAppGameWebviewBtn" type="button" aria-label="Back"><i class="fa-solid fa-arrow-left"></i></button>
             <h2 id="inAppGameWebviewTitle">Game Service</h2>
-            <button class="webview-reload-btn" id="reloadInAppGameWebviewBtn" type="button" aria-label="Reload"><i class="fa-solid fa-rotate-right"></i></button>
+            <button class="webview-reload-btn" id="reloadInAppGameWebviewBtn" type="button" aria-label="Retry"><i class="fa-solid fa-rotate-right"></i></button>
         </header>
         <div class="inapp-webview-frame-wrap">
             <iframe id="inAppGameWebviewFrame" name="inAppGameWebviewFrame" title="Nintendo Switch Online Game Service" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"></iframe>
@@ -445,7 +445,7 @@
     <section class="profile-view hidden" id="profileView" aria-label="Your profile">
         <button class="profile-back" id="closeProfileBtn" type="button" aria-label="Back"><i class="fa-solid fa-arrow-left"></i></button>
         <div class="profile-panel">
-            <img id="profileViewAvatar" src="" alt="Your Nintendo Switch profile image">
+            <img id="profileViewAvatar" src="" alt="User icon">
             <h2 id="profileViewName">Switch Player</h2>
             <p id="profileViewFriendCode">SW-0000-0000-0000</p>
             <div class="profile-membership"><i class="fa-solid fa-check"></i><span>Nintendo Switch Online account connected</span></div>
@@ -467,7 +467,7 @@
     </div>
 
     <script src="services/adapters.js?v=20260816-v17"></script>
-    <script src="services/manager.js?v=20260816-v26"></script>
-    <script src="app.js?v=20260816-v43"></script>
+    <script src="services/manager.js?v=20260816-v27"></script>
+    <script src="app.js?v=20260816-v44"></script>
 </body>
 </html>
