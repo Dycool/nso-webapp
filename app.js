@@ -831,6 +831,7 @@ function showAuthenticatedUI(session) {
 
 function logout() {
     window.webServiceManager?.closeActiveService();
+    window.opCloseParityScreens?.();
     localStorage.removeItem('nso_user_session');
     localStorage.removeItem('nso_pkce_verifier');
     localStorage.removeItem('nso_auth_state');
@@ -838,9 +839,10 @@ function logout() {
     nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 };
     showLoginGate();
     updateRememberedUI();
+    clearRememberedAccount();
 }
 
-async function forgetRememberedAccount() {
+async function clearRememberedAccount() {
     localStorage.removeItem('nso_has_remembered_account');
     updateRememberedUI();
     try {
@@ -851,6 +853,10 @@ async function forgetRememberedAccount() {
     } catch (e) {
         console.warn('[RememberMe] Failed to delete server-side remember record:', e);
     }
+}
+
+async function forgetRememberedAccount() {
+    await clearRememberedAccount();
     alert('Remembered Nintendo Account has been forgotten on this device.');
 }
 
@@ -3426,12 +3432,29 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         });
     }
 
+    window.opCloseParityScreens = () => closeParityScreens();
+
+    let openScreenToken = 0;
+
     function openScreen(id) {
         const screen = $(id);
         if (!screen) return;
-        closeParityScreens(id);
-        if (typeof slideViewIn === 'function') slideViewIn(screen);
-        else screen.classList.remove('hidden');
+        const token = ++openScreenToken;
+        if (typeof slideViewIn === 'function') {
+            // Bring this screen to the front of the op-screen stack so it paints
+            // over the previously visible screen during the slide-in, and only
+            // hide the others once it has fully covered the viewport. Hiding them
+            // up front would expose the home screen through the fade transition.
+            document.body.appendChild(screen);
+            slideViewIn(screen);
+            screen.addEventListener('animationend', () => {
+                if (token !== openScreenToken || screen.classList.contains('view-slide-out')) return;
+                closeParityScreens(id);
+            }, { once: true });
+        } else {
+            closeParityScreens(id);
+            screen.classList.remove('hidden');
+        }
         window.scrollTo({ top: 0, behavior: 'auto' });
     }
 
@@ -3531,12 +3554,18 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             if (!back) continue;
             replaceNodeListener(back, () => {
                 const childView = $(child);
+                const parentView = $(parent);
                 const revealParent = () => {
                     if (parent.startsWith('op')) {
-                        openScreen(parent);
+                        // Unhide the parent so it paints underneath the exiting
+                        // child (it was appended before the child). No animation:
+                        // the child covers it until it starts sliding out.
+                        if (parentView?.classList.contains('hidden')) {
+                            if (typeof showViewInstant === 'function') showViewInstant(parentView);
+                            else parentView.classList.remove('hidden');
+                        }
                         return;
                     }
-                    const parentView = $(parent);
                     if (parentView?.classList.contains('hidden')) {
                         if (typeof slideViewIn === 'function') slideViewIn(parentView);
                         else parentView.classList.remove('hidden');
@@ -3544,7 +3573,11 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
                 };
 
                 if (childView && typeof slideViewOut === 'function') {
-                    slideViewOut(childView, revealParent);
+                    // Reveal the parent underneath BEFORE the child starts
+                    // sliding out, so the home screen never shows through the
+                    // exit animation.
+                    revealParent();
+                    slideViewOut(childView);
                 } else {
                     childView?.classList.add('hidden');
                     revealParent();
@@ -3558,12 +3591,14 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
                 const childView = $('opFriendOnlinePage');
                 const revealParent = () => {
                     const parent = state.friendOnlineReturnTarget || 'opPushPage';
+                    const parentView = $(parent);
                     if (parent.startsWith('op')) {
-                        openScreen(parent);
+                        if (parentView?.classList.contains('hidden')) {
+                            if (typeof showViewInstant === 'function') showViewInstant(parentView);
+                            else parentView.classList.remove('hidden');
+                        }
                         return;
                     }
-
-                    const parentView = $(parent);
                     if (parentView?.classList.contains('hidden')) {
                         if (typeof slideViewIn === 'function') slideViewIn(parentView);
                         else parentView.classList.remove('hidden');
@@ -3571,7 +3606,8 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
                 };
 
                 if (childView && typeof slideViewOut === 'function') {
-                    slideViewOut(childView, revealParent);
+                    revealParent();
+                    slideViewOut(childView);
                 } else {
                     childView?.classList.add('hidden');
                     revealParent();
@@ -4058,7 +4094,6 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
                 <div class="op-row op-static"><span><b>© Nintendo</b></span></div>
             </section>`;
         $('opSettingsProfile')?.addEventListener('click', () => {
-            $('opSettingsPage')?.classList.add('hidden');
             openUserPage();
         });
         $('opSettingsDarkMode')?.addEventListener('click', openDarkModeSetting);
