@@ -111,6 +111,7 @@ class WebServiceManager {
                 clientId,
                 serviceId: String(serviceId),
                 coralUserId,
+                zncaVersion: typeof window.nsoActiveZncaVersion === 'function' ? window.nsoActiveZncaVersion() : (typeof ZNCA_VERSION === 'string' ? ZNCA_VERSION : undefined),
                 forceFresh: options.forceFresh === true
             })
         });
@@ -138,22 +139,6 @@ class WebServiceManager {
         status.classList.toggle('hidden', !text);
     }
 
-    waitForRetry(delayMs, signal) {
-        if (signal?.aborted) return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
-        return new Promise((resolve, reject) => {
-            const timer = setTimeout(() => {
-                signal?.removeEventListener('abort', onAbort);
-                resolve();
-            }, Math.max(0, Number(delayMs || 0)));
-            const onAbort = () => {
-                clearTimeout(timer);
-                signal?.removeEventListener('abort', onAbort);
-                reject(new DOMException('The operation was aborted.', 'AbortError'));
-            };
-            signal?.addEventListener('abort', onAbort, { once: true });
-        });
-    }
-
     async requestBrokerGeneratedToken(serviceId, traceId, options = {}) {
         const clientId = this.tokenBrokerClientId();
         if (!clientId) return { unavailable: true };
@@ -162,97 +147,88 @@ class WebServiceManager {
         const coralUserId = String(userSession?.result?.user?.id || userSession?.user?.id || '');
         if (!coralToken || !naId) return { unavailable: true };
 
+        const zncaVersion = typeof window.nsoActiveZncaVersion === 'function'
+            ? window.nsoActiveZncaVersion()
+            : (typeof ZNCA_VERSION === 'string' ? ZNCA_VERSION : '3.4.1');
+        if (typeof window.nsoBindNxapiCoralContext === 'function') {
+            window.nsoBindNxapiCoralContext(String(naId), zncaVersion);
+        }
+
         // Only acquire an nxapi bearer after Cloudflare has positively reported a
-        // cache miss. Cache hits therefore make zero nxapi-auth or /f requests.
+        // cache miss. The bearer is then kept in memory for its validity and remains
+        // pinned to this Coral user + ZNCA version.
         const nxapiAccessToken = await getNxapiAccessToken({
             signal: options.signal,
             cancelKey: options.cancelKey
         });
 
-        // Keep the ZNCA product version in sync with nxapi before spending a method-2
-        // generation on a cache miss. This is a cheap config read, cached in memory,
-        // and never retries /f. If config is unavailable we keep the bundled APK version.
-        if (typeof refreshNxapiConfig === 'function') {
-            await refreshNxapiConfig(nxapiAccessToken, {
-                silent: true,
-                signal: options.signal,
-                cancelKey: options.cancelKey
-            });
+        // Public nxapi terms prohibit automatic retries after an HTTP response.
+        // One user interaction therefore produces at most one generation request.
+        if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+        const response = await fetch(`${this.getWorkerUrl()}/api/nso/service/token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            credentials: 'include',
+            signal: options.signal,
+            body: JSON.stringify({
+                clientId,
+                serviceId: String(serviceId),
+                coralAccessToken: coralToken,
+                nxapiAccessToken,
+                naId: String(naId),
+                coralUserId,
+                zncaVersion,
+                forceFresh: options.forceFresh === true,
+                cancelKey: options.cancelKey || undefined
+            })
+        });
+        if (typeof window.nsoObserveServiceResponse === 'function') {
+            window.nsoObserveServiceResponse(response, { provider: 'nxapi-znca', operation: 'Game service token generation' });
         }
 
-        // nxapi occasionally emits an isolated HTTP 500 while a worker is otherwise
-        // healthy. Keep the native loading surface visible and retry that specific
-        // transient once. Other statuses (especially 429/401/406) are never blindly
-        // retried. Background diagnostics are started by nsoObserveServiceResponse.
-        const maxAttempts = 2;
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
-            const response = await fetch(`${this.getWorkerUrl()}/api/nso/service/token`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-                credentials: 'include',
-                signal: options.signal,
-                body: JSON.stringify({
-                    clientId,
-                    serviceId: String(serviceId),
-                    coralAccessToken: coralToken,
-                    nxapiAccessToken,
-                    naId: String(naId),
-                    coralUserId,
-                    zncaVersion: typeof ZNCA_VERSION === 'string' ? ZNCA_VERSION : undefined,
-                    forceFresh: options.forceFresh === true,
-                    cancelKey: options.cancelKey || undefined
-                })
-            });
-            if (typeof window.nsoObserveServiceResponse === 'function') {
-                window.nsoObserveServiceResponse(response, { provider: 'nxapi-znca', operation: 'Game service token generation' });
-            }
-
-            let data = {};
-            try { data = await response.json(); } catch (e) {}
-            if (response.ok && data?.token?.token) {
-                this.setLoadingStatus('');
-                return { token: data.token.token, expiresAt: Number(data.token.expiresAt || 0), source: data.source || 'generated' };
-            }
-            if (response.status === 401 && data?.error === 'broker_session_missing') {
-                this.setLoadingStatus('');
-                return { unavailable: true };
-            }
-            if (response.status === 401 && data?.error === 'nxapi_invalid_token') {
-                try { nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 }; } catch (e) {}
-            }
-            if (response.status === 429 && typeof parseRetryAfter === 'function' && typeof setRateLimitUntil === 'function') {
-                const until = parseRetryAfter(response.headers.get('Retry-After')) || (Date.now() + 60000);
-                setRateLimitUntil('f2', until);
-            }
-            if (response.status === 499 || data?.error === 'launch_cancelled') {
-                this.setLoadingStatus('');
-                throw new DOMException('The operation was aborted.', 'AbortError');
-            }
-
-            const shouldRetry500 = response.status === 500 && attempt < maxAttempts;
-            if (shouldRetry500) {
-                this.setLoadingStatus(nsoUiText('Retrying…'));
-                await this.waitForRetry(1000, options.signal);
-                continue;
-            }
-
+        let data = {};
+        try { data = await response.json(); } catch (e) {}
+        if (response.ok && data?.token?.token) {
             this.setLoadingStatus('');
-            const requestedVersion = typeof ZNCA_VERSION === 'string' ? ZNCA_VERSION : 'unknown';
-            const noMatchingWorker = response.status === 406 || data?.error === 'nxapi_unsupported_version' ||
-                /no matching workers/i.test(String(data?.error_description || data?.error || ''));
-            const message = noMatchingWorker
-                ? `nxapi has no matching Android worker for Nintendo Switch App ${requestedVersion} right now. ${String(data?.error_description || '').trim()}`.trim()
-                : (data?.error_description || data?.error || `Cloudflare token broker failed (HTTP ${response.status}).`);
-            const error = new Error(message);
-            error.status = response.status;
-            error.code = noMatchingWorker ? 'nxapi_unsupported_version' : (data?.error || 'broker_generation_error');
-            if (noMatchingWorker) error.requestedVersion = requestedVersion;
-            throw error;
+            return { token: data.token.token, expiresAt: Number(data.token.expiresAt || 0), source: data.source || 'generated' };
+        }
+        if (response.status === 401 && data?.error === 'broker_session_missing') {
+            this.setLoadingStatus('');
+            return { unavailable: true };
+        }
+        if (response.status === 401 && data?.error === 'nxapi_invalid_token') {
+            try { clearNxapiAuthSession(); } catch (e) {}
+        }
+        if (response.status === 429 && typeof parseRetryAfter === 'function' && typeof setRateLimitUntil === 'function') {
+            const until = parseRetryAfter(response.headers.get('Retry-After')) || (Date.now() + 60000);
+            setRateLimitUntil('f2', until);
+        }
+        if (response.status === 499 || data?.error === 'launch_cancelled') {
+            this.setLoadingStatus('');
+            throw new DOMException('The operation was aborted.', 'AbortError');
         }
 
         this.setLoadingStatus('');
-        throw new Error('Could not obtain a GameWebServiceToken.');
+        const noMatchingWorker = response.status === 406 || data?.error === 'nxapi_unsupported_version' ||
+            /no matching workers/i.test(String(data?.error_description || data?.error || ''));
+        const versionMismatch = response.status === 400 && (data?.error === 'nxapi_version_context_mismatch' ||
+            /X-znca-Version.*does not match token/i.test(String(data?.error_description || data?.error || '')));
+        if (versionMismatch) {
+            // Public nxapi terms prohibit retrying the failed HTTP response. Drop
+            // only the in-memory OAuth token so the next explicit launch can obtain
+            // a fresh token for the session's pinned ZNCA version.
+            try { clearNxapiAuthSession(); } catch (e) {}
+        }
+        const message = noMatchingWorker
+            ? `nxapi has no matching Android worker for Nintendo Switch App ${zncaVersion} right now. ${String(data?.error_description || '').trim()}`.trim()
+            : versionMismatch
+                ? `The nxapi token context did not match Nintendo Switch App ${zncaVersion}. The stale in-memory nxapi token was cleared; try launching again.`
+                : (data?.error_description || data?.error || `Cloudflare token broker failed (HTTP ${response.status}).`);
+        const error = new Error(message);
+        error.status = response.status;
+        error.code = noMatchingWorker ? 'nxapi_unsupported_version' : (versionMismatch ? 'nxapi_version_context_mismatch' : (data?.error || 'broker_generation_error'));
+        if (noMatchingWorker || versionMismatch) error.requestedVersion = zncaVersion;
+        throw error;
     }
 
     async getGameWebServiceTokenCanonical(serviceId, traceId, options = {}) {
@@ -303,8 +279,7 @@ class WebServiceManager {
      * 3. Only on a miss, acquire an in-memory nxapi bearer and let the account DO
      *    single-flight one method-2 generation across every active device.
      * 4. Fall back to the canonical browser path only when the broker session itself
-     *    is unavailable. An isolated broker/nxapi HTTP 500 gets one bounded retry while
-     *    the native loading screen remains visible; all other failures stay fail-fast.
+     *    is unavailable. HTTP responses are never automatically retried.
      */
     async getGameWebServiceToken(serviceId, traceId, forceFresh = false, options = {}) {
         const idStr = String(serviceId);

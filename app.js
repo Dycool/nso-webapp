@@ -17,10 +17,29 @@ const NXAPI_CLIENT_VERSION = 'w8zSLBsxR7rVoGJA';
 // Exact Coral Header Constants
 const ZNCA_PLATFORM = 'Android';
 const ZNCA_PLATFORM_VERSION = '12';
-let ZNCA_VERSION = '3.4.1';
+const BUNDLED_ZNCA_VERSION = '3.4.1';
+let ZNCA_VERSION = BUNDLED_ZNCA_VERSION;
+
+function validZncaVersion(value) {
+    return typeof value === 'string' && /^\d+\.\d+\.\d+$/.test(value);
+}
+
+function activeZncaVersion(session = userSession) {
+    const pinned = session?.nsoWebapp?.zncaVersion;
+    return validZncaVersion(pinned) ? pinned : (validZncaVersion(ZNCA_VERSION) ? ZNCA_VERSION : BUNDLED_ZNCA_VERSION);
+}
+
+function applySessionZncaVersion(session = userSession) {
+    ZNCA_VERSION = validZncaVersion(session?.nsoWebapp?.zncaVersion)
+        ? session.nsoWebapp.zncaVersion
+        : BUNDLED_ZNCA_VERSION;
+    return ZNCA_VERSION;
+}
+
+window.nsoActiveZncaVersion = activeZncaVersion;
 
 function zncaUserAgent() {
-    return `com.nintendo.znca/${ZNCA_VERSION}(${ZNCA_PLATFORM}/${ZNCA_PLATFORM_VERSION})`;
+    return `com.nintendo.znca/${activeZncaVersion()}(${ZNCA_PLATFORM}/${ZNCA_PLATFORM_VERSION})`;
 }
 
 // ---------------------------------------------------------------------------
@@ -45,8 +64,31 @@ let userSession = null;
 let nxapiAuthSession = {
     accessToken: null,
     refreshToken: null,
-    expiresAt: 0
+    expiresAt: 0,
+    coralNaId: null,
+    zncaVersion: null
 };
+
+function clearNxapiAuthSession() {
+    nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0, coralNaId: null, zncaVersion: null };
+}
+
+function bindNxapiCoralContext(naId, zncaVersion = activeZncaVersion()) {
+    const normalizedNaId = String(naId || '');
+    const normalizedVersion = validZncaVersion(zncaVersion) ? zncaVersion : BUNDLED_ZNCA_VERSION;
+    const boundUser = String(nxapiAuthSession.coralNaId || '');
+    const boundVersion = String(nxapiAuthSession.zncaVersion || '');
+    if ((boundUser && normalizedNaId && boundUser !== normalizedNaId) ||
+        (boundVersion && boundVersion !== normalizedVersion)) {
+        clearNxapiAuthSession();
+    }
+    if (normalizedNaId) nxapiAuthSession.coralNaId = normalizedNaId;
+    nxapiAuthSession.zncaVersion = normalizedVersion;
+    ZNCA_VERSION = normalizedVersion;
+    return normalizedVersion;
+}
+
+window.nsoBindNxapiCoralContext = bindNxapiCoralContext;
 let nxapiTokenPromise = null;
 let nxapiAuthMetadata = null;
 let activeMediaItem = null;
@@ -132,7 +174,7 @@ function updateRateLimitBanner() {
 // Diagnostics are background-only. A failed dependency request starts one
 // single-flight health pass; the UI is only notified after that pass confirms a
 // real service problem. Healthy/transient results stay silent.
-const SERVICE_DIAGNOSTICS_COOLDOWN_MS = 15_000;
+const SERVICE_DIAGNOSTICS_COOLDOWN_MS = 60_000;
 const SERVICE_CIRCUIT_DEFAULT_MS = 30_000;
 const SERVICE_HEALTH_TOAST_MS = 3_000;
 let serviceDiagnosticsInFlight = null;
@@ -301,59 +343,40 @@ async function runServiceDiagnostics(options = {}) {
         };
 
         try {
+            // One Worker invocation is enough: /api/nso/diagnostics already checks
+            // the Worker and nxapi. The older two-step /health?deep=1 + diagnostics
+            // path doubled Worker traffic and Durable Object round-trips.
+            const validNxapiToken = nxapiAuthSession?.accessToken && nxapiAuthSession.expiresAt > Date.now() + 5_000
+                ? nxapiAuthSession.accessToken : null;
             const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), 5_000);
-            let healthResp;
+            const timer = setTimeout(() => controller.abort(), 7_000);
+            let response;
             try {
-                healthResp = await fetch(`${WORKER_URL}/health?deep=1`, {
-                    headers: { Accept: 'application/json' },
+                response = await fetch(`${WORKER_URL}/api/nso/diagnostics`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                    credentials: 'include',
                     cache: 'no-store',
-                    signal: controller.signal
+                    signal: controller.signal,
+                    body: JSON.stringify({
+                        nxapiAccessToken: validNxapiToken || undefined,
+                        zncaVersion: activeZncaVersion(),
+                        deepCloudflare: options.deepCloudflare === true
+                    })
                 });
             } finally {
                 clearTimeout(timer);
             }
-            const health = await healthResp.json().catch(() => ({}));
-            result.cloudflare = {
-                status: health?.status || (healthResp.ok ? 'ok' : 'error'),
-                httpStatus: healthResp.status,
-                checks: health?.checks || {},
-                timestamp: health?.timestamp || null
-            };
-
-            if (healthResp.ok) {
-                const validNxapiToken = nxapiAuthSession?.accessToken && nxapiAuthSession.expiresAt > Date.now() + 5_000
-                    ? nxapiAuthSession.accessToken : null;
-                const diagController = new AbortController();
-                const diagTimer = setTimeout(() => diagController.abort(), 7_000);
-                let diagResp;
-                try {
-                    diagResp = await fetch(`${WORKER_URL}/api/nso/diagnostics`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-                        credentials: 'include',
-                        cache: 'no-store',
-                        signal: diagController.signal,
-                        body: JSON.stringify({
-                            nxapiAccessToken: validNxapiToken || undefined,
-                            zncaVersion: ZNCA_VERSION
-                        })
-                    });
-                } finally {
-                    clearTimeout(diagTimer);
-                }
-                const diag = await diagResp.json().catch(() => ({}));
-                if (diag?.cloudflare) result.cloudflare = diag.cloudflare;
-                if (diag?.nxapi) result.nxapi = diag.nxapi;
-                result.status = diag?.status || (diagResp.ok ? 'ok' : 'degraded');
-            } else {
-                result.status = 'unavailable';
-            }
+            const diag = await response.json().catch(() => ({}));
+            result.status = diag?.status || (response.ok ? 'ok' : 'degraded');
+            if (diag?.cloudflare) result.cloudflare = diag.cloudflare;
+            else result.cloudflare = { status: response.ok ? 'ok' : 'unavailable', httpStatus: response.status };
+            if (diag?.nxapi) result.nxapi = diag.nxapi;
         } catch (error) {
             result.status = 'unavailable';
             result.cloudflare = {
                 status: 'unavailable',
-                error: error?.name === 'AbortError' ? 'health_timeout' : 'health_request_failed'
+                error: error?.name === 'AbortError' ? 'diagnostic_timeout' : 'diagnostic_request_failed'
             };
         }
 
@@ -397,23 +420,33 @@ function observeServiceResponse(response, context = {}) {
         const isZnca = isNxapiZncaProvider(provider) || context.provider === 'nxapi-znca' || errorCode.startsWith('nxapi_');
         const isUnsupportedVersion = status === 406 && (errorCode.includes('unsupported_version') || String(description).toLowerCase().includes('unsupported version'));
 
-        // Do not show anything while diagnostics are running and do not open a
-        // circuit on the raw response alone. A transient 500 should be allowed to
-        // recover. The circuit/warning is only created if diagnostics confirms an
-        // unhealthy dependency.
-        if (isZnca && (looksUnavailable || isUnsupportedVersion)) {
+        // A 406 is already a definitive nxapi response and /config worker_count is
+        // documented as monitoring/debug data, not client selection data. Avoid an
+        // extra diagnostic request for it. For real 5xx/unavailable failures, use a
+        // single diagnostics request (with a one-minute cooldown).
+        if (isZnca && looksUnavailable && !isUnsupportedVersion && [500, 502, 503, 504].includes(status)) {
             void runServiceDiagnostics({
-                reason: context.operation || (isUnsupportedVersion ? 'nxapi version mismatch' : `nxapi HTTP ${status}`),
-                force: isUnsupportedVersion
+                reason: context.operation || `nxapi HTTP ${status}`,
+                deepCloudflare: false
             });
         } else if (provider === 'cloudflare' && [500, 502, 503, 504].includes(status)) {
-            void runServiceDiagnostics({ reason: context.operation || `Cloudflare HTTP ${status}` });
+            void runServiceDiagnostics({
+                reason: context.operation || `Cloudflare HTTP ${status}`,
+                deepCloudflare: true
+            });
         }
     })();
     return response;
 }
 
 window.nsoObserveServiceResponse = observeServiceResponse;
+
+function nxapiVersionContextMismatch(status, dataOrText = '') {
+    const text = typeof dataOrText === 'string'
+        ? dataOrText
+        : `${dataOrText?.error_description || ''} ${dataOrText?.error_message || ''} ${dataOrText?.error || ''}`;
+    return Number(status) === 400 && /X-znca-Version.*does not match token/i.test(String(text));
+}
 
 function serviceFailureMessage(data, response, fallback) {
     const status = Number(response?.status || 0);
@@ -435,6 +468,12 @@ document.addEventListener('DOMContentLoaded', () => {
     checkStartupSession();
 });
 
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js?v=20260816-v1', { scope: './' }).catch(() => {});
+    }, { once: true });
+}
+
 function checkStartupSession() {
     // Coral credentials are never kept in persistent browser storage unless the
     // user has explicitly opted into Remember Me. Migrate one legacy localStorage
@@ -455,6 +494,7 @@ function checkStartupSession() {
 
             if (token && expiresAt > Date.now() + 60000) {
                 userSession = parsed;
+                applySessionZncaVersion(parsed);
                 showAuthenticatedUI(parsed);
                 return;
             }
@@ -543,11 +583,7 @@ let nxapiLoginWarmPromise = null;
 
 async function warmNxapiForLogin() {
     if (nxapiLoginWarmPromise) return nxapiLoginWarmPromise;
-    nxapiLoginWarmPromise = (async () => {
-        const accessToken = await getNxapiAccessToken();
-        await refreshNxapiConfig(accessToken, { silent: true });
-        return accessToken;
-    })();
+    nxapiLoginWarmPromise = getNxapiAccessToken();
     try {
         return await nxapiLoginWarmPromise;
     } finally {
@@ -557,6 +593,7 @@ async function warmNxapiForLogin() {
 
 async function generateCoralViaTokenBroker({ idToken, naId, language, country, birthday }) {
     await prepareNxapi();
+    bindNxapiCoralContext(naId, BUNDLED_ZNCA_VERSION);
     // nxapi authentication/config are warmed as soon as the user explicitly accepts
     // the disclosure, usually while Nintendo sign-in is open in the other tab.
     const nxapiAccessToken = await warmNxapiForLogin();
@@ -583,7 +620,7 @@ async function generateCoralViaTokenBroker({ idToken, naId, language, country, b
         setRateLimitUntil('f1', until);
     }
     if (response.status === 401 && data?.error === 'nxapi_invalid_token') {
-        nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 };
+        clearNxapiAuthSession();
     }
     if (!response.ok || !validBrokerCoralSession(data?.coral, naId)) {
         const message = serviceFailureMessage(data, response, `Cloudflare token broker could not create Coral session`);
@@ -597,19 +634,13 @@ async function generateCoralViaTokenBroker({ idToken, naId, language, country, b
     return data.coral.session;
 }
 
+// Broker operations themselves refresh the ephemeral lease. A periodic keepalive
+// would spend one Worker request + one Durable Object request (and storage/alarm
+// writes) just to keep memory warm, while Cloudflare may evict an idle DO anyway.
+// Keep the route server-side for older clients, but current clients do no background
+// broker heartbeat at all.
 function startTokenBrokerHeartbeat() {
-    if (tokenBrokerHeartbeatTimer) clearInterval(tokenBrokerHeartbeatTimer);
-    const beat = () => {
-        if (!userSession) return;
-        fetch(`${WORKER_URL}/api/nso/cache/heartbeat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ clientId: tokenBrokerClientId() })
-        }).catch(() => {});
-    };
-    beat();
-    tokenBrokerHeartbeatTimer = setInterval(beat, 45_000);
+    stopTokenBrokerHeartbeat();
 }
 
 function stopTokenBrokerHeartbeat() {
@@ -629,13 +660,8 @@ function releaseTokenBrokerSession(options = {}) {
     }).catch(() => {});
 }
 
-window.addEventListener('pagehide', (event) => {
-    if (!event.persisted) releaseTokenBrokerSession({ keepalive: true });
-});
-
-window.addEventListener('pageshow', () => {
-    if (userSession) startTokenBrokerHeartbeat();
-});
+// Do not spend a Worker/DO request on ordinary pagehide/refresh. Ephemeral leases
+// expire server-side and explicit Sign Out still performs destructive cleanup.
 
 function nxapiClientId() {
     return NXAPI_AUTH_CLIENT_ID.trim();
@@ -700,6 +726,31 @@ function nxapiUrl(path) {
     return `${NXAPI_ZNCA_API_URL}/${path.replace(/^\//, '')}`;
 }
 
+const NXAPI_AUTH_METADATA_CACHE_KEY = 'nso_nxapi_auth_metadata_v1';
+const NXAPI_AUTH_METADATA_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function readCachedNxapiAuthMetadata() {
+    try {
+        const record = JSON.parse(localStorage.getItem(NXAPI_AUTH_METADATA_CACHE_KEY) || 'null');
+        if (!record || Number(record.expiresAt || 0) <= Date.now()) return null;
+        const endpoint = String(record.tokenEndpoint || '');
+        const url = new URL(endpoint);
+        if (url.protocol !== 'https:' || !url.hostname.endsWith('fancy.org.uk')) return null;
+        return { token_endpoint: endpoint };
+    } catch { return null; }
+}
+
+function writeCachedNxapiAuthMetadata(metadata) {
+    try {
+        const endpoint = String(metadata?.token_endpoint || '');
+        if (!endpoint) return;
+        localStorage.setItem(NXAPI_AUTH_METADATA_CACHE_KEY, JSON.stringify({
+            tokenEndpoint: endpoint,
+            expiresAt: Date.now() + NXAPI_AUTH_METADATA_MAX_AGE_MS
+        }));
+    } catch {}
+}
+
 /**
  * Single-flight in-memory nxapi token acquisition adhering strictly to public terms.
  * Never persists nxapi tokens to storage.
@@ -732,6 +783,8 @@ async function getNxapiAccessToken(options = {}) {
             throw new AuthStageError('NXAPI_AUTH', 'Enter an nxapi-auth public client ID before signing in.');
         }
 
+        if (!nxapiAuthMetadata) nxapiAuthMetadata = readCachedNxapiAuthMetadata();
+
         if (!nxapiAuthMetadata) {
             const apiOrigin = new URL(NXAPI_ZNCA_API_URL).origin;
             const protectedResourceResp = await proxyFetch(`${apiOrigin}/.well-known/oauth-protected-resource`, {
@@ -757,6 +810,7 @@ async function getNxapiAccessToken(options = {}) {
             if (!authorizationMetadataResp.ok || !nxapiAuthMetadata.token_endpoint) {
                 throw new AuthStageError('NXAPI_AUTH', nxapiAuthMetadata.error_description || 'Could not discover the nxapi token endpoint.');
             }
+            writeCachedNxapiAuthMetadata(nxapiAuthMetadata);
         }
 
         const isRefresh = Boolean(nxapiAuthSession.refreshToken);
@@ -796,7 +850,7 @@ async function getNxapiAccessToken(options = {}) {
 
         if (!tokenResp.ok || !tokenData.access_token) {
             if (isRefresh) {
-                nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 };
+                clearNxapiAuthSession();
             }
             const errMsg = tokenData.error_description || tokenData.error || `nxapi authentication failed (HTTP ${tokenResp.status}).`;
             throw new AuthStageError('NXAPI_AUTH', errMsg, null, tokenResp.status);
@@ -805,7 +859,9 @@ async function getNxapiAccessToken(options = {}) {
         nxapiAuthSession = {
             accessToken: tokenData.access_token,
             expiresAt: Date.now() + Math.max(1, Number(tokenData.expires_in || 300)) * 1000,
-            refreshToken: tokenData.refresh_token || null
+            refreshToken: tokenData.refresh_token || nxapiAuthSession.refreshToken || null,
+            coralNaId: nxapiAuthSession.coralNaId || null,
+            zncaVersion: nxapiAuthSession.zncaVersion || activeZncaVersion()
         };
 
         return nxapiAuthSession.accessToken;
@@ -826,58 +882,26 @@ async function nxapiFetch(path, options = {}) {
         headers: {
             'X-znca-Client-Version': NXAPI_CLIENT_VERSION,
             'X-znca-Platform': ZNCA_PLATFORM,
-            'X-znca-Version': ZNCA_VERSION,
+            'X-znca-Version': activeZncaVersion(),
             Authorization: `Bearer ${token}`,
             ...(options.headers || {})
         }
     });
 
     if (response.status === 401) {
-        nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 };
+        clearNxapiAuthSession();
     }
 
     return response;
 }
 
-let nxapiConfigRefreshedAt = 0;
-
-async function refreshNxapiConfig(accessToken = null, options = {}) {
-    const maxAgeMs = Math.max(0, Number(options.maxAgeMs ?? 5 * 60 * 1000));
-    if (options.force !== true && nxapiConfigRefreshedAt && Date.now() - nxapiConfigRefreshedAt < maxAgeMs) {
-        return ZNCA_VERSION;
-    }
-    try {
-        const token = accessToken || await getNxapiAccessToken({
-            signal: options.signal,
-            cancelKey: options.cancelKey
-        });
-        const response = await proxyFetch(nxapiUrl('config'), {
-            headers: {
-                Accept: 'application/json',
-                Authorization: `Bearer ${token}`,
-                'X-znca-Client-Version': NXAPI_CLIENT_VERSION,
-                'X-znca-Platform': ZNCA_PLATFORM,
-                'X-znca-Version': ZNCA_VERSION
-            },
-            signal: options.signal,
-            cancelKey: options.cancelKey,
-            diagnosticOperation: 'nxapi config refresh'
-        });
-        const config = await response.json().catch(() => ({}));
-        if (response.ok && typeof config.nso_version === 'string' && /^\d+\.\d+\.\d+$/.test(config.nso_version)) {
-            ZNCA_VERSION = config.nso_version;
-            nxapiConfigRefreshedAt = Date.now();
-        }
-        return ZNCA_VERSION;
-    } catch (e) {
-        if (options.silent !== true) {
-            console.warn('Could not load nxapi ZNCA configuration; using bundled version.', e);
-        }
-        return ZNCA_VERSION;
-    }
-}
+// Do not dynamically change X-znca-Version after nxapi/Coral authentication.
+// nxapi associates protected API use with one Coral user/context; changing the
+// app version while reusing that context causes `X-znca-Version ... does not match token`.
+// Version changes therefore happen only when a brand-new Coral session is created.
 
 async function nxapiGenerateF(method, token, userData = {}, requestOptions = {}) {
+    if (userData?.na_id) bindNxapiCoralContext(userData.na_id, activeZncaVersion());
     // Keep f-generation on the proven nxapi-auth path. The Worker already relays
     // these requests, so adding a second Worker-owned OAuth client path only adds
     // another failure mode without making the remote attestation itself faster.
@@ -895,6 +919,7 @@ async function nxapiGenerateF(method, token, userData = {}, requestOptions = {})
     } catch (e) {}
 
     if (!response.ok || !data.f || !data.request_id || !Number.isFinite(Number(data.timestamp))) {
+        if (nxapiVersionContextMismatch(response.status, data)) clearNxapiAuthSession();
         const errorMsg = serviceFailureMessage(data, response, 'nxapi did not return a complete attestation result.');
         if (response.status === 429 || errorMsg.toLowerCase().includes('too many attempts') || errorMsg.toLowerCase().includes('rate limit')) {
             const retryAfterHeader = response.headers.get('Retry-After');
@@ -916,6 +941,7 @@ async function nxapiGenerateF(method, token, userData = {}, requestOptions = {})
 }
 
 async function nxapiEncryptRequest(url, bearerToken, body, requestOptions = {}) {
+    if (userSession?.nsoWebapp?.naId) bindNxapiCoralContext(userSession.nsoWebapp.naId, activeZncaVersion());
     const response = await nxapiFetch('encrypt-request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -929,6 +955,7 @@ async function nxapiEncryptRequest(url, bearerToken, body, requestOptions = {}) 
     } catch (e) {}
 
     if (!response.ok || !data.data) {
+        if (nxapiVersionContextMismatch(response.status, data)) clearNxapiAuthSession();
         const errorMsg = serviceFailureMessage(data, response, 'nxapi request encryption failed.');
         if (response.status === 429 || errorMsg.toLowerCase().includes('too many attempts') || errorMsg.toLowerCase().includes('rate limit')) {
             const retryAfterHeader = response.headers.get('Retry-After');
@@ -950,6 +977,7 @@ async function nxapiEncryptRequest(url, bearerToken, body, requestOptions = {}) 
 }
 
 async function nxapiDecryptResponse(encryptedBase64, requestOptions = {}) {
+    if (userSession?.nsoWebapp?.naId) bindNxapiCoralContext(userSession.nsoWebapp.naId, activeZncaVersion());
     const response = await nxapiFetch('decrypt-response', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'text/plain' },
@@ -959,6 +987,7 @@ async function nxapiDecryptResponse(encryptedBase64, requestOptions = {}) {
     });
     const data = await response.text();
     if (!response.ok) {
+        if (nxapiVersionContextMismatch(response.status, data)) clearNxapiAuthSession();
         if (response.status === 429 || data.toLowerCase().includes('too many attempts') || data.toLowerCase().includes('rate limit')) {
             const retryAfterHeader = response.headers.get('Retry-After');
             const until = parseRetryAfter(retryAfterHeader) || (Date.now() + 60000);
@@ -1581,6 +1610,7 @@ function showLoginGate() {
 }
 
 function showAuthenticatedUI(session) {
+    applySessionZncaVersion(session);
     document.getElementById('loginGate').classList.add('hidden');
     document.getElementById('appContent').classList.remove('hidden');
     document.getElementById('mainNavTabs').classList.remove('hidden');
@@ -1691,8 +1721,11 @@ async function logout() {
         localStorage.removeItem('nso_user_session');
         localStorage.removeItem('nso_pkce_verifier');
         localStorage.removeItem('nso_auth_state');
+        clearAllCoralDataCache();
+        try { navigator.serviceWorker?.controller?.postMessage({ type: 'CLEAR_RUNTIME' }); } catch (e) {}
         userSession = null;
-        nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 };
+        applySessionZncaVersion(null);
+        clearNxapiAuthSession();
 
         const loginWorkflow = document.getElementById('loginWorkflow');
         loginWorkflow?.classList.add('hidden');
@@ -1860,10 +1893,13 @@ async function performFullAuthentication(options = {}) {
                     try {
                         const jsonSession = JSON.parse(input);
                         const expiresIn = Number(jsonSession?.result?.webApiServerCredential?.expiresIn || 7200);
-                        jsonSession.nsoWebapp = jsonSession.nsoWebapp || {
-                            coralExpiresAt: Date.now() + expiresIn * 1000
+                        jsonSession.nsoWebapp = {
+                            ...(jsonSession.nsoWebapp || {}),
+                            coralExpiresAt: Number(jsonSession?.nsoWebapp?.coralExpiresAt || 0) || Date.now() + expiresIn * 1000,
+                            zncaVersion: validZncaVersion(jsonSession?.nsoWebapp?.zncaVersion) ? jsonSession.nsoWebapp.zncaVersion : BUNDLED_ZNCA_VERSION
                         };
                         userSession = jsonSession;
+                        applySessionZncaVersion(jsonSession);
                         sessionStorage.setItem('nso_user_session', JSON.stringify(jsonSession));
                         showAuthenticatedUI(jsonSession);
                         return;
@@ -2113,6 +2149,9 @@ async function performFullAuthentication(options = {}) {
             data.nsoWebapp = {
                 ...(data.nsoWebapp || {}),
                 naId,
+                zncaVersion: validZncaVersion(data?.nsoWebapp?.zncaVersion)
+                    ? data.nsoWebapp.zncaVersion
+                    : activeZncaVersion(),
                 // A broker cache hit carries the original absolute expiry. Never
                 // extend it merely because another device reused the same token.
                 coralExpiresAt: brokerExpiresAt > Date.now()
@@ -2120,6 +2159,8 @@ async function performFullAuthentication(options = {}) {
                     : Date.now() + expiresInSec * 1000
             };
             userSession = data;
+            applySessionZncaVersion(data);
+            bindNxapiCoralContext(naId, activeZncaVersion(data));
             sessionStorage.setItem('nso_user_session', JSON.stringify(data));
 
             // Persist Remember Me ONLY after complete Coral Account/Login flow succeeds!
@@ -2319,102 +2360,289 @@ function initAuthGate() {
 
 
 
-// Load Live Friends directly from Nintendo API in Browser Client-Side JS
-async function loadLiveFriendsList() {
-    if (!userSession) return;
-
-    const friendContainers = ['homeFriendsGrid', 'friendsGrid'].map(id => document.getElementById(id));
-    friendContainers.forEach(container => {
-        container.innerHTML = Array.from({ length: 6 }, () => '<div class="friend-loading-tile"><i></i><span></span></div>').join('');
-    });
-
-    let tokenToUse = null;
-    if (userSession.result && userSession.result.webApiServerCredential) {
-        tokenToUse = userSession.result.webApiServerCredential.accessToken;
-    } else if (userSession.webApiServerCredential) {
-        tokenToUse = userSession.webApiServerCredential.accessToken;
-    } else if (userSession.accessToken) {
-        tokenToUse = userSession.accessToken;
-    }
-
-    if (!tokenToUse) {
-        friendContainers.forEach(container => {
-            container.innerHTML = `<p class="service-status error">${escapeHtml(trKey('LoginError_Label_NA_Re_Authorize_Description'))}</p>`;
-        });
-        return;
-    }
-
-    try {
-        const friendListUrl = 'https://api-lp1.znc.srv.nintendo.net/v4/Friend/List';
-        const friendListBody = JSON.stringify({ parameter: {} });
-        const encryptedFriendListBody = await nxapiEncryptRequest(friendListUrl, tokenToUse, friendListBody);
-
-        const resp = await proxyFetch(friendListUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/octet-stream',
-                'Accept': 'application/octet-stream,application/json',
-                'Accept-Language': (typeof window.nsoCurrentLocale === 'function' ? window.nsoCurrentLocale() : 'en-GB'),
-                'Authorization': `Bearer ${tokenToUse}`,
-                'X-ProductVersion': ZNCA_VERSION,
-                'X-Platform': ZNCA_PLATFORM,
-                'User-Agent': zncaUserAgent(),
-                'Pragma': 'no-cache',
-                'Cache-Control': 'no-cache'
-            },
-            bodyBase64: encryptedFriendListBody
-        });
-
-        const data = await parseCoralResponse(resp);
-        if (data.result && data.result.friends) {
-            renderFriendsList(data.result.friends);
-        } else {
-            friendContainers.forEach(container => {
-                console.error('[Friends] API returned an error', data); container.innerHTML = `<p class="service-status error">${escapeHtml(trKey('Common_Loading_Failed'))}</p>`;
-            });
-        }
-    } catch (e) {
-        friendContainers.forEach(container => {
-            console.error('[Friends] load failed', e); container.innerHTML = `<p class="service-status error">${escapeHtml(trKey('Common_Loading_Failed'))}</p>`;
-        });
-    }
-}
-
+// Coral API access and browser-local response caching.
 function coralAccessToken() {
     return userSession?.result?.webApiServerCredential?.accessToken ||
         userSession?.webApiServerCredential?.accessToken || userSession?.accessToken || null;
 }
 
+const CORAL_DATA_CACHE_PREFIX = 'nso_coral_data_v2:';
+const coralRequestFlights = new Map();
+const CORAL_READ_TTLS = Object.freeze({
+    '/v4/User/ShowSelf': 5 * 60_000,
+    '/v3/User/Permissions/ShowSelf': 5 * 60_000,
+    '/v4/Friend/List': 45_000,
+    '/v4/Friend/Show': 60_000,
+    '/v4/User/PlayLog/Show': 10 * 60_000,
+    '/v5/Chat/FriendCandidate/List': 60_000,
+    '/v4/FriendRequest/Received/List': 60_000,
+    '/v5/Chat/List': 60_000,
+    '/v5/Chat/Show': 60_000,
+    '/v1/Event/GetActiveEvent': 30_000,
+    '/v5/PushNotification/Settings/List': 5 * 60_000,
+    '/v4/GameWebService/List': 30 * 60_000,
+    '/v4/Announcement/List': 5 * 60_000,
+    '/v4/Media/List': 2 * 60_000,
+    '/v5/Hashtag/List': 10 * 60_000,
+    '/v4/NA/User/LoginFactor/Show': 30 * 60_000
+});
+
+function stableCacheString(value) {
+    if (value === null || typeof value !== 'object') return JSON.stringify(value);
+    if (Array.isArray(value)) return `[${value.map(stableCacheString).join(',')}]`;
+    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableCacheString(value[key])}`).join(',')}}`;
+}
+
+function shortCacheHash(value) {
+    let hash = 2166136261;
+    const text = String(value || '');
+    for (let i = 0; i < text.length; i++) {
+        hash ^= text.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+}
+
+function coralCacheAccountKey() {
+    const naId = String(userSession?.nsoWebapp?.naId || '');
+    return naId ? shortCacheHash(naId) : '';
+}
+
+function coralCacheStorageKey(path, requestBody) {
+    const account = coralCacheAccountKey();
+    if (!account) return null;
+    let identityBody = requestBody;
+    if (requestBody && typeof requestBody === 'object' && !Array.isArray(requestBody) && Object.prototype.hasOwnProperty.call(requestBody, 'requestId')) {
+        identityBody = { ...requestBody };
+        delete identityBody.requestId; // transport nonce, not part of the resource identity
+    }
+    const locale = typeof window.nsoCurrentLocale === 'function' ? window.nsoCurrentLocale() : 'en-GB';
+    return `${CORAL_DATA_CACHE_PREFIX}${account}:${shortCacheHash(`${locale}|${path}|${stableCacheString(identityBody)}`)}`;
+}
+
+function readCoralDataCache(path, requestBody, ttlMs, allowStaleMs = 0) {
+    const key = coralCacheStorageKey(path, requestBody);
+    if (!key) return null;
+    try {
+        const record = JSON.parse(localStorage.getItem(key) || 'null');
+        if (!record || !Number.isFinite(Number(record.savedAt))) return null;
+        const age = Date.now() - Number(record.savedAt);
+        if (age <= ttlMs) return { value: record.value, stale: false, age };
+        if (allowStaleMs > 0 && age <= allowStaleMs) return { value: record.value, stale: true, age };
+    } catch {}
+    return null;
+}
+
+function writeCoralDataCache(path, requestBody, value) {
+    const key = coralCacheStorageKey(path, requestBody);
+    if (!key) return;
+    try {
+        localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), path, value }));
+    } catch {
+        // Quota pressure should never break the live app. Drop the oldest NSO data
+        // entries and retry once, leaving browser/static caches untouched.
+        try {
+            const entries = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (!k?.startsWith(CORAL_DATA_CACHE_PREFIX)) continue;
+                try { entries.push([k, Number(JSON.parse(localStorage.getItem(k) || '{}').savedAt || 0)]); } catch {}
+            }
+            entries.sort((a, b) => a[1] - b[1]).slice(0, Math.max(1, Math.ceil(entries.length / 3))).forEach(([k]) => localStorage.removeItem(k));
+            localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), path, value }));
+        } catch {}
+    }
+}
+
+function invalidateCoralDataCache(paths = null) {
+    const account = coralCacheAccountKey();
+    if (!account) return;
+    const prefix = `${CORAL_DATA_CACHE_PREFIX}${account}:`;
+    const wanted = paths ? new Set(Array.isArray(paths) ? paths : [paths]) : null;
+    try {
+        const remove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (!key?.startsWith(prefix)) continue;
+            if (!wanted) { remove.push(key); continue; }
+            try {
+                const record = JSON.parse(localStorage.getItem(key) || '{}');
+                if (wanted.has(record.path)) remove.push(key);
+            } catch { remove.push(key); }
+        }
+        remove.forEach(key => localStorage.removeItem(key));
+    } catch {}
+}
+
+function clearAllCoralDataCache() {
+    try {
+        const remove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key?.startsWith(CORAL_DATA_CACHE_PREFIX)) remove.push(key);
+        }
+        remove.forEach(key => localStorage.removeItem(key));
+    } catch {}
+    coralRequestFlights.clear();
+}
+
+window.nsoClearCoralDataCache = clearAllCoralDataCache;
+
+function invalidateAfterCoralMutation(path) {
+    const groups = {
+        '/v4/User/Permissions/UpdateSelf': ['/v3/User/Permissions/ShowSelf'],
+        '/v5/PushNotification/Settings/Update': ['/v5/PushNotification/Settings/List'],
+        '/v4/Announcement/MarkAsRead': ['/v4/Announcement/List'],
+        '/v3/Friend/Favorite/Create': ['/v4/Friend/List', '/v4/Friend/Show'],
+        '/v3/Friend/Favorite/Delete': ['/v4/Friend/List', '/v4/Friend/Show'],
+        '/v4/Friend/Note/Update': ['/v4/Friend/List', '/v4/Friend/Show'],
+        '/v3/Friend/Delete': ['/v4/Friend/List', '/v4/Friend/Show'],
+        '/v3/User/Block/Create': ['/v4/Friend/List', '/v5/Chat/FriendCandidate/List'],
+        '/v4/FriendRequest/Create': ['/v4/FriendRequest/Received/List', '/v4/Friend/List'],
+        '/v3/FriendRequest/Create': ['/v4/FriendRequest/Received/List', '/v4/Friend/List'],
+        '/v3/FriendRequest/Delete': ['/v4/FriendRequest/Received/List']
+    };
+    if (groups[path]) invalidateCoralDataCache(groups[path]);
+}
+
+async function legacyCoralRequest(path, requestBody, token, options = {}) {
+    const url = `https://api-lp1.znc.srv.nintendo.net${path}`;
+    const requestOptions = { signal: options.signal, cancelKey: options.cancelKey };
+    const encrypted = await nxapiEncryptRequest(url, token, JSON.stringify(requestBody), requestOptions);
+    const headers = {
+        'Content-Type': 'application/octet-stream',
+        Accept: 'application/octet-stream,application/json',
+        'Accept-Language': typeof window.nsoCurrentLocale === 'function' ? window.nsoCurrentLocale() : 'en-GB',
+        Authorization: `Bearer ${token}`,
+        'User-Agent': zncaUserAgent(),
+        Pragma: 'no-cache',
+        'Cache-Control': 'no-cache'
+    };
+    if (options.platform !== false) headers['X-Platform'] = ZNCA_PLATFORM;
+    if (options.productVersion !== false) headers['X-ProductVersion'] = activeZncaVersion();
+    const response = await proxyFetch(url, {
+        method: 'POST', headers, bodyBase64: encrypted,
+        signal: options.signal, cancelKey: options.cancelKey
+    });
+    const data = await parseCoralResponse(response, requestOptions);
+    return { response, data };
+}
+
 async function coralCall(path, parameter = {}, options = {}) {
     const token = coralAccessToken();
     if (!token) throw new Error('No Coral access token is available. Sign in again.');
+    const naId = String(userSession?.nsoWebapp?.naId || '');
+    if (!naId) throw new Error('Nintendo Account context is unavailable. Sign in again.');
 
-    const url = `https://api-lp1.znc.srv.nintendo.net${path}`;
-    throwIfAborted(options.signal);
     const requestBody = options.body || { parameter };
-    const requestOptions = { signal: options.signal, cancelKey: options.cancelKey };
-    const encrypted = await nxapiEncryptRequest(url, token, JSON.stringify(requestBody), requestOptions);
-    throwIfAborted(options.signal);
-    const response = await proxyFetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/octet-stream',
-            Accept: 'application/octet-stream,application/json',
-            'Accept-Language': (typeof window.nsoCurrentLocale === 'function' ? window.nsoCurrentLocale() : 'en-GB'),
-            Authorization: `Bearer ${token}`,
-            'X-ProductVersion': ZNCA_VERSION,
-            'X-Platform': ZNCA_PLATFORM,
-            'User-Agent': zncaUserAgent()
-        },
-        bodyBase64: encrypted,
-        signal: options.signal,
-        cancelKey: options.cancelKey
-    });
-    const data = await parseCoralResponse(response, requestOptions);
-    if (!response.ok || !data?.result) {
-        throw new Error(data?.errorMessage || data?.error || `Nintendo API request failed (HTTP ${response.status}).`);
+    const ttlMs = options.cache === false ? 0 : Math.max(0, Number(options.cacheTtlMs ?? CORAL_READ_TTLS[path] ?? 0));
+    const staleIfErrorMs = ttlMs ? Math.max(ttlMs, Number(options.staleIfErrorMs ?? Math.min(24 * 60 * 60_000, ttlMs * 12))) : 0;
+    const cacheKey = coralCacheStorageKey(path, requestBody);
+    if (ttlMs && options.forceRefresh !== true) {
+        const cached = readCoralDataCache(path, requestBody, ttlMs);
+        if (cached) return cached.value;
     }
-    return data.result;
+
+    const flightKey = cacheKey || `${path}|${stableCacheString(requestBody)}`;
+    if (coralRequestFlights.has(flightKey)) return coralRequestFlights.get(flightKey);
+
+    const promise = (async () => {
+        try {
+            throwIfAborted(options.signal);
+            const version = bindNxapiCoralContext(naId, activeZncaVersion());
+            const nxapiAccessToken = await getNxapiAccessToken({ signal: options.signal, cancelKey: options.cancelKey });
+            const response = await fetch(`${WORKER_URL}/api/nso/coral/call`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                credentials: 'include',
+                signal: options.signal,
+                body: JSON.stringify({
+                    clientId: tokenBrokerClientId(),
+                    path,
+                    requestBody,
+                    coralAccessToken: token,
+                    nxapiAccessToken,
+                    naId,
+                    zncaVersion: version,
+                    locale: typeof window.nsoCurrentLocale === 'function' ? window.nsoCurrentLocale() : 'en-GB',
+                    platform: options.platform !== false,
+                    productVersion: options.productVersion !== false
+                })
+            });
+            observeServiceResponse(response, { provider: response.ok ? 'nintendo-coral' : 'nxapi-znca', operation: `Coral ${path}` });
+            let data = await response.json().catch(() => ({}));
+            let effectiveResponse = response;
+            if (response.status === 401 && data?.error === 'broker_session_missing') {
+                // A restored session can outlive the broker session cookie. Preserve
+                // functionality by falling back to the older three-hop relay only in
+                // this edge case; normal sessions stay on the one-invocation route.
+                const legacy = await legacyCoralRequest(path, requestBody, token, options);
+                effectiveResponse = legacy.response;
+                data = legacy.data;
+            }
+            if (effectiveResponse.status === 401 && data?.error === 'nxapi_invalid_token') clearNxapiAuthSession();
+            if (data?.error === 'nxapi_version_context_mismatch' || nxapiVersionContextMismatch(effectiveResponse.status, data)) {
+                // Do not automatically retry an nxapi HTTP response. Clearing only
+                // the memory token lets the next explicit user action acquire a
+                // fresh token for the session's pinned app version.
+                clearNxapiAuthSession();
+            }
+            if (effectiveResponse.status === 429) {
+                const until = parseRetryAfter(effectiveResponse.headers.get('Retry-After')) || (Date.now() + 60000);
+                setRateLimitUntil('encrypt', until);
+            }
+            if (!effectiveResponse.ok || !data || data.status !== 0 || !Object.prototype.hasOwnProperty.call(data, 'result')) {
+                const status = data?.status ?? effectiveResponse.status;
+                const message = data?.errorMessage || data?.error_description || data?.error || `Nintendo API request failed (${status}).`;
+                const error = new Error(message);
+                error.status = effectiveResponse.status;
+                error.coralStatus = data?.status;
+                error.code = data?.error || data?.nso_error || 'coral_request_failed';
+                throw error;
+            }
+            const result = data.result;
+            if (ttlMs) writeCoralDataCache(path, requestBody, result);
+            else invalidateAfterCoralMutation(path);
+            return result;
+        } catch (error) {
+            if (ttlMs && options.allowStaleOnError !== false) {
+                const stale = readCoralDataCache(path, requestBody, 0, staleIfErrorMs);
+                if (stale) return stale.value;
+            }
+            throw error;
+        }
+    })();
+
+    coralRequestFlights.set(flightKey, promise);
+    try { return await promise; }
+    finally { if (coralRequestFlights.get(flightKey) === promise) coralRequestFlights.delete(flightKey); }
+}
+
+// Load Live Friends with shared per-account caching/single-flight. A fresh cache hit
+// renders without contacting Cloudflare; presence data is refreshed after 45 seconds.
+async function loadLiveFriendsList(options = {}) {
+    if (!userSession) return;
+    const friendContainers = ['homeFriendsGrid', 'friendsGrid'].map(id => document.getElementById(id)).filter(Boolean);
+    const cached = readCoralDataCache('/v4/Friend/List', { parameter: {} }, CORAL_READ_TTLS['/v4/Friend/List']);
+    if (!cached) {
+        friendContainers.forEach(container => {
+            container.innerHTML = Array.from({ length: 6 }, () => '<div class="friend-loading-tile"><i></i><span></span></div>').join('');
+        });
+    }
+    try {
+        const result = await coralCall('/v4/Friend/List', {}, {
+            platform: true,
+            productVersion: true,
+            forceRefresh: options.forceRefresh === true
+        });
+        const friends = Array.isArray(result) ? result : (result?.friends || []);
+        renderFriendsList(friends);
+    } catch (e) {
+        friendContainers.forEach(container => {
+            console.error('[Friends] load failed', e);
+            container.innerHTML = `<p class="service-status error">${escapeHtml(trKey('Common_Loading_Failed'))}</p>`;
+        });
+    }
 }
 
 async function loadGameServices() {
@@ -4515,16 +4743,9 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
      * Existing project calls are intentionally not monkey-patched, so working
      * game services and auth remain untouched.
      */
-    async function coralExact(name, parameter = undefined, bodyOverride = undefined) {
+    async function coralExact(name, parameter = undefined, bodyOverride = undefined, callOptions = {}) {
         const meta = ENDPOINTS[name];
         if (!meta) throw new Error(`Blocked unknown Coral operation: ${name}`);
-        const token = coralToken();
-        if (!token) throw new Error('No Coral access token is available. Sign in again.');
-        if (typeof nxapiEncryptRequest !== 'function' || typeof proxyFetch !== 'function' || typeof parseCoralResponse !== 'function') {
-            throw new Error('The Coral encryption bridge is not ready.');
-        }
-
-        const url = BASE + meta.path;
         let body;
         if (bodyOverride !== undefined) {
             body = bodyOverride;
@@ -4533,34 +4754,21 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         } else {
             body = { parameter: parameter === undefined ? {} : parameter };
         }
-
-        const encrypted = await nxapiEncryptRequest(url, token, JSON.stringify(body));
-        const headers = {
-            'Content-Type': 'application/octet-stream',
-            'Accept': 'application/octet-stream,application/json',
-            'Accept-Language': currentAppLocale(),
-            'Authorization': `Bearer ${token}`,
-            'User-Agent': typeof zncaUserAgent === 'function' ? zncaUserAgent() : 'com.nintendo.znca/3.4.1(Android/12)',
-            'Pragma': 'no-cache',
-            'Cache-Control': 'no-cache'
-        };
-        if (meta.platform) headers['X-Platform'] = typeof ZNCA_PLATFORM !== 'undefined' ? ZNCA_PLATFORM : 'Android';
-        if (meta.productVersion) headers['X-ProductVersion'] = typeof ZNCA_VERSION !== 'undefined' ? ZNCA_VERSION : '3.4.1';
-
-        const response = await proxyFetch(url, {
-            method: 'POST',
-            headers,
-            bodyBase64: encrypted
+        return coralCall(meta.path, parameter === undefined ? {} : parameter, {
+            body,
+            // Preserve the exact endpoint-specific Android flags. The generic legacy
+            // Coral helper defaults both headers on, while this controller intentionally
+            // sends only the headers recovered for each endpoint.
+            platform: meta.platform === true,
+            productVersion: meta.productVersion === true,
+            cache: callOptions.cache,
+            cacheTtlMs: callOptions.cacheTtlMs,
+            forceRefresh: callOptions.forceRefresh === true,
+            allowStaleOnError: callOptions.allowStaleOnError,
+            staleIfErrorMs: callOptions.staleIfErrorMs,
+            signal: callOptions.signal,
+            cancelKey: callOptions.cancelKey
         });
-        const data = await parseCoralResponse(response);
-        if (!response.ok || !data || data.status !== 0 || !Object.prototype.hasOwnProperty.call(data, 'result')) {
-            const status = data?.status ?? response.status;
-            const message = data?.errorMessage || data?.error || `Nintendo API request failed (${status}).`;
-            const error = new Error(message);
-            error.coralStatus = data?.status;
-            throw error;
-        }
-        return data.result;
     }
 
     function toast(message) {
