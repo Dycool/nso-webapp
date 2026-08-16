@@ -1347,7 +1347,9 @@ body.dark-theme { background: #1b1b1b; }
 @keyframes service-launch-spin { to { transform: rotate(360deg); } }
 .service-loading-tile { flex: 0 0 clamp(176px, 18.4vw, 300px); aspect-ratio: 1; border-radius: 8px; }
 .service-status { align-self: center; color: #a9a9ad; }
-.home-content-section .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin: 0; }
+.home-content-section .media-grid { display: flex; gap: 10px; min-height: 0; margin: 0; justify-content: center; justify-content: safe center; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; scrollbar-width: none; padding-bottom: 2px; }
+.home-content-section .media-grid::-webkit-scrollbar { display: none; }
+.home-content-section .media-item, .home-content-section .media-loading-tile { position: relative; display: flex; flex-direction: column; flex: 0 0 clamp(180px, calc((100% - 40px) / 5), 320px); width: auto; min-width: 0; min-height: 0; scroll-snap-align: start; }
 .home-dock { position: fixed; z-index: 120; left: 50%; bottom: 15px; display: flex; width: min(450px, calc(100vw - 40px)); height: 50px; padding: 0 28px; align-items: center; justify-content: space-between; border-radius: 9999px; background: #464648; transform: translateX(-50%); box-shadow: 0 8px 24px rgba(0,0,0,.32); }
 .home-dock button { display: flex; align-items: center; justify-content: center; width: 56px; height: 44px; border: 0; border-radius: 12px; background: transparent; cursor: pointer; padding: 0; }
 .dock-svg-icon { width: 26px; height: 26px; display: block; transition: transform .12s ease; }
@@ -1682,8 +1684,8 @@ body.webview-active {
     .game-services-catalog { gap: 8px; }
     .game-services-catalog { justify-content: flex-start; }
     .service-launch-card, .service-loading-tile { flex-basis: 176px; }
-    .home-content-section .media-grid { display: flex; overflow-x: auto; }
-    .home-content-section .media-item { flex: 0 0 190px; }
+    .home-content-section .media-grid { justify-content: flex-start; gap: 8px; }
+    .home-content-section .media-item, .home-content-section .media-loading-tile { flex: 0 0 clamp(170px, 46vw, 220px); }
     .native-tab-page { padding-top: 16px; }
     .native-page-heading h1 { font-size: 21px; }
     .friends-page-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
