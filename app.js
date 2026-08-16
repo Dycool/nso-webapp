@@ -185,12 +185,19 @@ async function prepareNxapi() {
     await refreshNxapiConfig();
 }
 
+function throwIfAborted(signal) {
+    if (!signal?.aborted) return;
+    throw new DOMException('The operation was aborted.', 'AbortError');
+}
+
 async function proxyFetch(targetUrl, options = {}) {
+    throwIfAborted(options.signal);
     const proxyPayload = {
         targetUrl: targetUrl,
         method: options.method || 'GET',
         headers: options.headers || {}
     };
+    if (options.cancelKey) proxyPayload.cancelKey = String(options.cancelKey);
     if (options.bodyBase64) {
         proxyPayload.dataBase64 = options.bodyBase64;
     } else {
@@ -200,7 +207,8 @@ async function proxyFetch(targetUrl, options = {}) {
     return fetch(`${WORKER_URL}/api/nso/proxy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(proxyPayload)
+        body: JSON.stringify(proxyPayload),
+        signal: options.signal
     });
 }
 
@@ -212,7 +220,8 @@ function nxapiUrl(path) {
  * Single-flight in-memory nxapi token acquisition adhering strictly to public terms.
  * Never persists nxapi tokens to storage.
  */
-async function getNxapiAccessToken() {
+async function getNxapiAccessToken(options = {}) {
+    throwIfAborted(options.signal);
     const rateLimitUntil = getRateLimitUntil();
     if (rateLimitUntil > Date.now()) {
         const timeStr = new Date(rateLimitUntil).toLocaleTimeString();
@@ -242,7 +251,9 @@ async function getNxapiAccessToken() {
         if (!nxapiAuthMetadata) {
             const apiOrigin = new URL(NXAPI_ZNCA_API_URL).origin;
             const protectedResourceResp = await proxyFetch(`${apiOrigin}/.well-known/oauth-protected-resource`, {
-                headers: { Accept: 'application/json' }
+                headers: { Accept: 'application/json' },
+                signal: options.signal,
+                cancelKey: options.cancelKey
             });
             const protectedResource = await protectedResourceResp.json().catch(() => ({}));
             if (!protectedResourceResp.ok || !protectedResource.authorization_servers?.[0]) {
@@ -252,7 +263,11 @@ async function getNxapiAccessToken() {
             const authorizationServer = new URL(protectedResource.authorization_servers[0]);
             const authorizationMetadataResp = await proxyFetch(
                 `${authorizationServer.origin}/.well-known/oauth-authorization-server`,
-                { headers: { Accept: 'application/json' } }
+                {
+                    headers: { Accept: 'application/json' },
+                    signal: options.signal,
+                    cancelKey: options.cancelKey
+                }
             );
             nxapiAuthMetadata = await authorizationMetadataResp.json().catch(() => ({}));
             if (!authorizationMetadataResp.ok || !nxapiAuthMetadata.token_endpoint) {
@@ -277,7 +292,9 @@ async function getNxapiAccessToken() {
                 'Content-Type': 'application/x-www-form-urlencoded',
                 Accept: 'application/json'
             },
-            body: new URLSearchParams(tokenRequest).toString()
+            body: new URLSearchParams(tokenRequest).toString(),
+            signal: options.signal,
+            cancelKey: options.cancelKey
         });
 
         if (tokenResp.status === 429) {
@@ -318,7 +335,8 @@ async function getNxapiAccessToken() {
 }
 
 async function nxapiFetch(path, options = {}) {
-    const token = await getNxapiAccessToken();
+    throwIfAborted(options.signal);
+    const token = await getNxapiAccessToken({ signal: options.signal, cancelKey: options.cancelKey });
     const response = await proxyFetch(nxapiUrl(path), {
         ...options,
         headers: {
@@ -363,14 +381,16 @@ async function refreshNxapiConfig() {
     }
 }
 
-async function nxapiGenerateF(method, token, userData = {}) {
+async function nxapiGenerateF(method, token, userData = {}, requestOptions = {}) {
     // Keep f-generation on the proven nxapi-auth path. The Worker already relays
     // these requests, so adding a second Worker-owned OAuth client path only adds
     // another failure mode without making the remote attestation itself faster.
     const response = await nxapiFetch('f', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ hash_method: String(method), token, ...userData })
+        body: JSON.stringify({ hash_method: String(method), token, ...userData }),
+        signal: requestOptions.signal,
+        cancelKey: requestOptions.cancelKey
     });
 
     let data = {};
@@ -399,11 +419,13 @@ async function nxapiGenerateF(method, token, userData = {}) {
     return { f: data.f, timestamp: Number(data.timestamp), requestId: data.request_id };
 }
 
-async function nxapiEncryptRequest(url, bearerToken, body) {
+async function nxapiEncryptRequest(url, bearerToken, body, requestOptions = {}) {
     const response = await nxapiFetch('encrypt-request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ url, token: bearerToken || null, data: body })
+        body: JSON.stringify({ url, token: bearerToken || null, data: body }),
+        signal: requestOptions.signal,
+        cancelKey: requestOptions.cancelKey
     });
     let data = {};
     try {
@@ -431,11 +453,13 @@ async function nxapiEncryptRequest(url, bearerToken, body) {
     return data.data.replace(/-/g, '+').replace(/_/g, '/');
 }
 
-async function nxapiDecryptResponse(encryptedBase64) {
+async function nxapiDecryptResponse(encryptedBase64, requestOptions = {}) {
     const response = await nxapiFetch('decrypt-response', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'text/plain' },
-        body: JSON.stringify({ data: encryptedBase64 })
+        body: JSON.stringify({ data: encryptedBase64 }),
+        signal: requestOptions.signal,
+        cancelKey: requestOptions.cancelKey
     });
     const data = await response.text();
     if (!response.ok) {
@@ -467,7 +491,8 @@ function arrayBufferToBase64(buffer) {
     return btoa(binary);
 }
 
-async function parseCoralResponse(response) {
+async function parseCoralResponse(response, requestOptions = {}) {
+    throwIfAborted(requestOptions.signal);
     const buffer = await response.arrayBuffer();
     const text = new TextDecoder().decode(buffer);
     const trimmed = text.trimStart();
@@ -479,7 +504,7 @@ async function parseCoralResponse(response) {
         }
     }
     const encryptedBase64 = arrayBufferToBase64(buffer);
-    const decrypted = await nxapiDecryptResponse(encryptedBase64);
+    const decrypted = await nxapiDecryptResponse(encryptedBase64, requestOptions);
     return JSON.parse(decrypted);
 }
 
@@ -1600,8 +1625,11 @@ async function coralCall(path, parameter = {}, options = {}) {
     if (!token) throw new Error('No Coral access token is available. Sign in again.');
 
     const url = `https://api-lp1.znc.srv.nintendo.net${path}`;
+    throwIfAborted(options.signal);
     const requestBody = options.body || { parameter };
-    const encrypted = await nxapiEncryptRequest(url, token, JSON.stringify(requestBody));
+    const requestOptions = { signal: options.signal, cancelKey: options.cancelKey };
+    const encrypted = await nxapiEncryptRequest(url, token, JSON.stringify(requestBody), requestOptions);
+    throwIfAborted(options.signal);
     const response = await proxyFetch(url, {
         method: 'POST',
         headers: {
@@ -1613,9 +1641,11 @@ async function coralCall(path, parameter = {}, options = {}) {
             'X-Platform': ZNCA_PLATFORM,
             'User-Agent': zncaUserAgent()
         },
-        bodyBase64: encrypted
+        bodyBase64: encrypted,
+        signal: options.signal,
+        cancelKey: options.cancelKey
     });
-    const data = await parseCoralResponse(response);
+    const data = await parseCoralResponse(response, requestOptions);
     if (!response.ok || !data?.result) {
         throw new Error(data?.errorMessage || data?.error || `Nintendo API request failed (HTTP ${response.status}).`);
     }

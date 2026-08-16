@@ -25,14 +25,16 @@ class GenericWebViewAdapter {
             whiteList: Array.isArray(service.whiteList) ? service.whiteList : (Array.isArray(service.whitelist) ? service.whitelist : []),
             token: token,
             language: userLanguage,
-            country: userCountry
+            country: userCountry,
+            launchId: options.launchId || undefined
         };
 
         const response = await fetch(`${workerUrl}/api/nso/service/session/create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include', // Includes Partitioned / HttpOnly cookies
-            body: JSON.stringify(createPayload)
+            body: JSON.stringify(createPayload),
+            signal: options.signal
         });
 
         if (!response.ok) {
@@ -64,7 +66,7 @@ class GenericWebViewAdapter {
         return this.currentSession;
     }
 
-    async renewToken(newToken) {
+    async renewToken(newToken, options = {}) {
         if (!this.currentSession?.id) return;
         const workerUrl = this.manager.getWorkerUrl();
 
@@ -72,7 +74,8 @@ class GenericWebViewAdapter {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ token: newToken })
+            body: JSON.stringify({ token: newToken }),
+            signal: options.signal
         });
 
         if (!response.ok) {

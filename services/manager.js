@@ -30,6 +30,9 @@ class WebServiceManager {
         this.launchEpoch = 0;
         this.launchTransitionTimer = null;
         this.loadingFallbackTimer = null;
+        this.activeLaunchController = null;
+        this.activeLaunchId = null;
+        this.cancelInFlight = null;
 
         // No background nxapi/f prewarming: first-use attestation is intentionally on demand.
 
@@ -88,7 +91,7 @@ class WebServiceManager {
      * Valid Nintendo web-service tokens are still cached in memory and concurrent
      * requests for the same service remain single-flight.
      */
-    async getGameWebServiceToken(serviceId, traceId, forceFresh = false) {
+    async getGameWebServiceToken(serviceId, traceId, forceFresh = false, options = {}) {
         const idStr = String(serviceId);
         if (!forceFresh) {
             const cached = this.getCachedGameWebServiceToken(idStr);
@@ -98,9 +101,16 @@ class WebServiceManager {
             }
         }
 
-        if (this.tokenInFlight.has(idStr)) {
-            console.log(`[LaunchTrace:${traceId || 'anon'}] Deduplicating concurrent token request for service ${idStr}`);
-            return await this.tokenInFlight.get(idStr);
+        const existingFlight = this.tokenInFlight.get(idStr);
+        if (existingFlight) {
+            const sameLaunch = !options.cancelKey || !existingFlight.cancelKey || existingFlight.cancelKey === options.cancelKey;
+            if (sameLaunch) {
+                console.log(`[LaunchTrace:${traceId || 'anon'}] Deduplicating concurrent token request for service ${idStr}`);
+                return await existingFlight.promise;
+            }
+            // A cancelled launch may still be unwinding for a few milliseconds. Never
+            // attach a new click to that old AbortSignal/cancellation key.
+            console.log(`[LaunchTrace:${traceId || 'anon'}] Ignoring stale token flight for service ${idStr}`);
         }
 
         const fetchPromise = (async () => {
@@ -113,20 +123,28 @@ class WebServiceManager {
             }
             const coralUserId = String(userSession?.result?.user?.id || userSession?.user?.id || '');
 
+            if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
             const fStartedAt = performance.now();
             const attestation = await nxapiGenerateF(2, token, {
                 na_id: naId,
                 coral_user_id: coralUserId
+            }, {
+                signal: options.signal,
+                cancelKey: options.cancelKey
             });
             console.log(`[LaunchTrace:${traceId || 'anon'}] stage=nxapi_f_method_2 source=on_demand durationMs=${Math.round(performance.now() - fStartedAt)}`);
 
             const tokenStart = performance.now();
+            if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
             const result = await coralCall('/v4/Game/GetWebServiceToken', {
                 id: Number(serviceId),
                 registrationToken: '',
                 f: attestation.f,
                 timestamp: attestation.timestamp,
                 requestId: attestation.requestId
+            }, {
+                signal: options.signal,
+                cancelKey: options.cancelKey
             });
             console.log(`[LaunchTrace:${traceId || 'anon'}] stage=get_web_service_token durationMs=${Math.round(performance.now() - tokenStart)} path=canonical`);
 
@@ -142,12 +160,44 @@ class WebServiceManager {
             return result.accessToken;
         })();
 
-        this.tokenInFlight.set(idStr, fetchPromise);
+        const flight = { promise: fetchPromise, cancelKey: options.cancelKey || null };
+        this.tokenInFlight.set(idStr, flight);
         try {
             return await fetchPromise;
         } finally {
-            this.tokenInFlight.delete(idStr);
+            if (this.tokenInFlight.get(idStr) === flight) this.tokenInFlight.delete(idStr);
         }
+    }
+
+    isLaunchCancellation(error) {
+        return error?.name === 'AbortError' || error?.code === 'NSO_LAUNCH_CANCELLED';
+    }
+
+    async cancelCloudflareLaunch(launchId) {
+        if (!launchId) return;
+        if (this.cancelInFlight?.launchId === launchId) return this.cancelInFlight.promise;
+
+        const promise = fetch(`${this.getWorkerUrl()}/api/nso/service/launch/${encodeURIComponent(launchId)}/cancel`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { Accept: 'application/json' }
+        }).then(async (response) => {
+            if (!response.ok) {
+                let detail = '';
+                try { detail = (await response.json())?.error || ''; } catch (e) {}
+                throw new Error(detail || `Cloudflare launch cancellation failed (HTTP ${response.status}).`);
+            }
+        }).catch((error) => {
+            // The local AbortController and iframe teardown already stop browser-side work.
+            // Keep this warning visible because the explicit Worker/DO cancellation is what
+            // guarantees an already-running nxapi/Nintendo fetch is aborted server-side.
+            console.warn('[WebServiceManager] Cloudflare launch cancellation warning:', error);
+        }).finally(() => {
+            if (this.cancelInFlight?.launchId === launchId) this.cancelInFlight = null;
+        });
+
+        this.cancelInFlight = { launchId, promise };
+        return promise;
     }
 
     setCatalogLocked(locked, activeButton = null) {
@@ -306,6 +356,10 @@ class WebServiceManager {
         if (!service || this.launchLocked || this.activeAdapter?.currentSession) return;
 
         const adapter = this.getAdapter(service);
+        const launchId = crypto.randomUUID();
+        const launchController = new AbortController();
+        this.activeLaunchId = launchId;
+        this.activeLaunchController = launchController;
         this.activeAdapter = adapter;
         this.activeService = service;
         this.launchingButton = buttonElement;
@@ -319,9 +373,12 @@ class WebServiceManager {
         let succeeded = false;
 
         try {
-            console.log(`[LaunchTrace:${traceId}] Launching ${service.name || 'Game Service'} via ${adapter.constructor.name}`);
-            const token = await this.getGameWebServiceToken(service.id, traceId);
-            if (launchEpoch !== this.launchEpoch || !this.launchLocked) {
+            console.log(`[LaunchTrace:${traceId}] Launching ${service.name || 'Game Service'} via ${adapter.constructor.name} launchId=${launchId}`);
+            const token = await this.getGameWebServiceToken(service.id, traceId, false, {
+                signal: launchController.signal,
+                cancelKey: launchId
+            });
+            if (launchController.signal.aborted || launchEpoch !== this.launchEpoch || !this.launchLocked) {
                 const cancelled = new Error('Launch cancelled');
                 cancelled.code = 'NSO_LAUNCH_CANCELLED';
                 throw cancelled;
@@ -332,9 +389,13 @@ class WebServiceManager {
             const country = userProfile?.country || 'GB';
 
             const sessionStart = performance.now();
-            await adapter.launch(service, token, { language, country });
-            if (launchEpoch !== this.launchEpoch || !this.launchLocked) {
-                await adapter.close().catch(() => {});
+            await adapter.launch(service, token, {
+                language,
+                country,
+                signal: launchController.signal,
+                launchId
+            });
+            if (launchController.signal.aborted || launchEpoch !== this.launchEpoch || !this.launchLocked) {
                 const cancelled = new Error('Launch cancelled');
                 cancelled.code = 'NSO_LAUNCH_CANCELLED';
                 throw cancelled;
@@ -347,21 +408,29 @@ class WebServiceManager {
             const totalDuration = Math.round(performance.now() - overallStart);
             console.log(`[LaunchTrace:${traceId}] stage=total_launch durationMs=${totalDuration}`);
         } catch (e) {
-            const cancelled = e?.code === 'NSO_LAUNCH_CANCELLED';
+            const cancelled = this.isLaunchCancellation(e) || launchController.signal.aborted || launchEpoch !== this.launchEpoch;
             if (!cancelled) {
                 console.error(`[LaunchTrace:${traceId}] Launch failed:`, e);
+                launchController.abort();
+                await this.cancelCloudflareLaunch(launchId);
                 await this.cancelNativeServiceLaunch();
                 alert(`Could not open ${service.name || 'service'}: ${e.message}`);
+            } else {
+                console.log(`[LaunchTrace:${traceId}] launch_cancelled`);
             }
         } finally {
             buttonElement?.closest('.service-launch-card')?.classList.remove('launching-service');
-            if (!succeeded) {
+            const stillOwnsLaunch = launchEpoch === this.launchEpoch;
+            if (!succeeded && stillOwnsLaunch) {
                 this.activeAdapter = null;
                 this.activeService = null;
                 this.launchingButton = null;
+                this.activeLaunchController = null;
+                this.activeLaunchId = null;
                 this.setCatalogLocked(false);
             }
             // On success the catalog intentionally remains locked until closeActiveService().
+            // If Back cancelled the launch, closeActiveService() owns final cleanup instead.
         }
     }
 
@@ -370,8 +439,16 @@ class WebServiceManager {
      * deletes the Cloudflare session without exposing the Home screen mid-frame.
      */
     async closeActiveService() {
-        if (!this.activeAdapter && !this.launchLocked) return;
+        if (!this.activeAdapter && !this.launchLocked && !this.activeLaunchId) return;
+
+        // Invalidate the async launch pipeline first. AbortController stops the browser
+        // request immediately; the explicit launch cancel endpoint aborts matching
+        // nxapi/Nintendo fetches inside the launch-scoped Durable Object as well.
         this.launchEpoch++;
+        const launchId = this.activeLaunchId;
+        const launchController = this.activeLaunchController;
+        if (launchController && !launchController.signal.aborted) launchController.abort();
+        const cloudflareCancel = this.cancelCloudflareLaunch(launchId);
 
         if (this.launchTransitionTimer) {
             clearTimeout(this.launchTransitionTimer);
@@ -386,6 +463,12 @@ class WebServiceManager {
         const frame = document.getElementById('inAppGameWebviewFrame');
         const surfaces = this.getLaunchBackgroundSurfaces();
 
+        // about:blank is set at the instant Back is pressed so the browser cancels
+        // the Nintendo document/subresource waterfall instead of continuing it behind
+        // the 400 ms APK-style back animation.
+        if (frame) frame.src = 'about:blank';
+        document.getElementById('gwsNativeLoading')?.classList.add('hidden');
+
         document.documentElement.classList.remove('webview-active');
         document.body.classList.remove('webview-active');
         document.documentElement.classList.add('gws-transition-active');
@@ -398,23 +481,24 @@ class WebServiceManager {
         overlay?.classList.add('nso-apk-transition-foreground', 'nso-apk-back-exit');
 
         const adapter = this.activeAdapter;
-        const closePromise = adapter ? adapter.close().catch(() => {}) : Promise.resolve();
+        // The Worker cancel route clears the launch/session and cookies. Drop the local
+        // adapter handle now so a late session-create response cannot resurrect the WebView.
+        if (adapter?.currentSession) adapter.currentSession = null;
 
         await new Promise((resolve) => setTimeout(resolve, 430));
         this.clearLaunchTransitionClasses();
         overlay?.classList.add('hidden');
-        if (frame) frame.src = 'about:blank';
-        document.getElementById('gwsNativeLoading')?.classList.add('hidden');
 
         document.documentElement.classList.remove('gws-transition-active');
         document.body.classList.remove('gws-transition-active');
 
-        await closePromise;
+        await cloudflareCancel;
         this.activeAdapter = null;
         this.activeService = null;
         this.launchingButton = null;
+        this.activeLaunchController = null;
+        this.activeLaunchId = null;
         this.setCatalogLocked(false);
-
     }
 
     /**
@@ -449,11 +533,14 @@ class WebServiceManager {
                 const serviceId = data.serviceId || this.activeService?.id;
                 try {
                     console.log(`[WebServiceManager] Received fresh token request for service ${serviceId}`);
-                    const freshToken = await this.getGameWebServiceToken(serviceId);
+                    const freshToken = await this.getGameWebServiceToken(serviceId, undefined, false, {
+                        signal: this.activeLaunchController?.signal,
+                        cancelKey: this.activeLaunchId
+                    });
 
                     // Update Worker/DO session
                     if (this.activeAdapter) {
-                        await this.activeAdapter.renewToken(freshToken);
+                        await this.activeAdapter.renewToken(freshToken, { signal: this.activeLaunchController?.signal });
                     }
 
                     // Send fresh token back into isolated iframe context
