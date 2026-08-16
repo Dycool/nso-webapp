@@ -54,37 +54,45 @@ let currentFriends = [];
 let currentMedia = [];
 
 // Rate Limit & Retry-After Utilities
+const NXAPI_RATE_LIMIT_SCOPES = ['auth', 'f1', 'f2', 'encrypt', 'decrypt'];
+const NXAPI_RATE_LIMIT_LABELS = {
+    auth: 'nxapi authentication',
+    f1: 'Coral authentication (method 1)',
+    f2: 'Game service authentication (method 2)',
+    encrypt: 'request encryption',
+    decrypt: 'response decryption'
+};
+
 function parseRetryAfter(headerValue) {
     if (!headerValue) return null;
     const trimmed = String(headerValue).trim();
     const seconds = Number(trimmed);
-    if (!isNaN(seconds) && seconds >= 0) {
-        return Date.now() + seconds * 1000;
-    }
+    if (!isNaN(seconds) && seconds >= 0) return Date.now() + seconds * 1000;
     const parsedDate = Date.parse(trimmed);
-    if (!isNaN(parsedDate) && parsedDate > Date.now()) {
-        return parsedDate;
-    }
-    return null;
+    return !isNaN(parsedDate) && parsedDate > Date.now() ? parsedDate : null;
 }
 
-function getRateLimitUntil() {
+function getRateLimitUntil(scope = null) {
     try {
-        const val = localStorage.getItem('nxapi_rate_limit_until');
-        const num = Number(val);
-        return !isNaN(num) && num > Date.now() ? num : 0;
+        // Remove the legacy global limiter. A method-2 429 must never block
+        // unrelated nxapi-auth, encryption, or method-1 requests.
+        localStorage.removeItem('nxapi_rate_limit_until');
+        const read = (name) => {
+            const num = Number(localStorage.getItem(`nxapi_rate_limit_until_${name}`));
+            return !isNaN(num) && num > Date.now() ? num : 0;
+        };
+        if (scope) return read(scope);
+        return Math.max(0, ...NXAPI_RATE_LIMIT_SCOPES.map(read));
     } catch (e) {
         return 0;
     }
 }
 
-function setRateLimitUntil(timestamp) {
+function setRateLimitUntil(scope, timestamp) {
     try {
-        if (timestamp > Date.now()) {
-            localStorage.setItem('nxapi_rate_limit_until', String(timestamp));
-        } else {
-            localStorage.removeItem('nxapi_rate_limit_until');
-        }
+        const key = `nxapi_rate_limit_until_${scope}`;
+        if (timestamp > Date.now()) localStorage.setItem(key, String(timestamp));
+        else localStorage.removeItem(key);
         updateRateLimitBanner();
     } catch (e) {}
 }
@@ -93,26 +101,27 @@ let rateLimitTimer = null;
 function updateRateLimitBanner() {
     const banner = document.getElementById('rateLimitBanner');
     const bannerText = document.getElementById('rateLimitBannerText');
-    const until = getRateLimitUntil();
+    const active = NXAPI_RATE_LIMIT_SCOPES
+        .map(scope => ({ scope, until: getRateLimitUntil(scope) }))
+        .filter(item => item.until > Date.now())
+        .sort((a, b) => a.until - b.until);
 
     if (rateLimitTimer) {
         clearTimeout(rateLimitTimer);
         rateLimitTimer = null;
     }
 
-    if (until > Date.now()) {
+    if (active.length) {
         if (banner) banner.classList.remove('hidden');
-        const remainingSec = Math.ceil((until - Date.now()) / 1000);
-        const timeStr = new Date(until).toLocaleTimeString();
+        const first = active[0];
+        const remainingSec = Math.ceil((first.until - Date.now()) / 1000);
+        const timeStr = new Date(first.until).toLocaleTimeString();
         if (bannerText) {
-            bannerText.textContent = `nxapi authentication temporarily rate-limited. Retry after ${timeStr} (${remainingSec}s remaining).`;
+            bannerText.textContent = `${NXAPI_RATE_LIMIT_LABELS[first.scope] || first.scope} is temporarily rate-limited. Retry after ${timeStr} (${remainingSec}s remaining).`;
         }
-        rateLimitTimer = setTimeout(() => {
-            updateRateLimitBanner();
-        }, 1000);
+        rateLimitTimer = setTimeout(updateRateLimitBanner, 1000);
     } else {
         if (banner) banner.classList.add('hidden');
-        try { localStorage.removeItem('nxapi_rate_limit_until'); } catch (e) {}
     }
 }
 
@@ -125,14 +134,23 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function checkStartupSession() {
-    const stored = localStorage.getItem('nso_user_session');
+    // Coral credentials are never kept in persistent browser storage unless the
+    // user has explicitly opted into Remember Me. Migrate one legacy localStorage
+    // session only when that opt-in flag exists, then remove the persistent copy.
+    let stored = sessionStorage.getItem('nso_user_session');
+    const legacy = localStorage.getItem('nso_user_session');
+    if (!stored && legacy && localStorage.getItem('nso_has_remembered_account') === 'true') {
+        stored = legacy;
+        try { sessionStorage.setItem('nso_user_session', legacy); } catch (e) {}
+    }
+    if (legacy) localStorage.removeItem('nso_user_session');
+
     if (stored) {
         try {
             const parsed = JSON.parse(stored);
             const expiresAt = Number(parsed?.nsoWebapp?.coralExpiresAt || 0);
             const token = parsed?.result?.webApiServerCredential?.accessToken;
 
-            // Only reuse if token exists and expiration derived from Coral is strictly in the future
             if (token && expiresAt > Date.now() + 60000) {
                 userSession = parsed;
                 showAuthenticatedUI(parsed);
@@ -141,7 +159,7 @@ function checkStartupSession() {
         } catch (e) {
             console.warn('[Startup] Invalid cached session structure:', e);
         }
-        localStorage.removeItem('nso_user_session');
+        sessionStorage.removeItem('nso_user_session');
         userSession = null;
     }
 
@@ -169,6 +187,131 @@ function updateRememberedUI() {
         }
     }
 }
+
+
+let tokenBrokerHeartbeatTimer = null;
+
+function tokenBrokerClientId() {
+    const key = 'nso_token_broker_client_id';
+    let value = null;
+    try { value = sessionStorage.getItem(key); } catch (e) {}
+    if (!value) {
+        value = crypto.randomUUID().replace(/-/g, '_');
+        try { sessionStorage.setItem(key, value); } catch (e) {}
+    }
+    return value;
+}
+
+window.nsoTokenBrokerClientId = tokenBrokerClientId;
+
+async function startTokenBrokerSession(nintendoAccessToken) {
+    if (!nintendoAccessToken) return null;
+    const response = await fetch(`${WORKER_URL}/api/nso/cache/session/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+            nintendoAccessToken,
+            clientId: tokenBrokerClientId()
+        })
+    });
+    let data = {};
+    try { data = await response.json(); } catch (e) {}
+    if (!response.ok) {
+        const error = new Error(data?.error_description || data?.error || `Token broker session failed (HTTP ${response.status}).`);
+        error.status = response.status;
+        throw error;
+    }
+    return data;
+}
+
+function validBrokerCoralSession(entry, expectedNaId) {
+    const session = entry?.session || entry;
+    const expiresAt = Number(entry?.expiresAt || session?.nsoWebapp?.coralExpiresAt || 0);
+    return Boolean(
+        session?.result?.webApiServerCredential?.accessToken &&
+        expiresAt > Date.now() + 60000 &&
+        (!expectedNaId || String(session?.nsoWebapp?.naId || '') === String(expectedNaId))
+    );
+}
+
+async function generateCoralViaTokenBroker({ idToken, naId, language, country, birthday }) {
+    const nxapiAccessToken = await getNxapiAccessToken();
+    const response = await fetch(`${WORKER_URL}/api/nso/cache/coral/get-or-create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+            clientId: tokenBrokerClientId(),
+            idToken,
+            nxapiAccessToken,
+            naId,
+            language,
+            country,
+            birthday,
+            zncaVersion: ZNCA_VERSION
+        })
+    });
+    let data = {};
+    try { data = await response.json(); } catch (e) {}
+    if (response.status === 429) {
+        const until = parseRetryAfter(response.headers.get('Retry-After')) || (Date.now() + 60000);
+        setRateLimitUntil('f1', until);
+    }
+    if (response.status === 401 && data?.error === 'nxapi_invalid_token') {
+        nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 };
+    }
+    if (!response.ok || !validBrokerCoralSession(data?.coral, naId)) {
+        const message = data?.error_description || data?.error || `Cloudflare token broker could not create Coral session (HTTP ${response.status}).`;
+        throw new AuthStageError(
+            data?.error === 'nxapi_rate_limited' ? 'NXAPI_F_METHOD_1' : 'CORAL_ACCOUNT_LOGIN',
+            message,
+            null,
+            response.status
+        );
+    }
+    return data.coral.session;
+}
+
+function startTokenBrokerHeartbeat() {
+    if (tokenBrokerHeartbeatTimer) clearInterval(tokenBrokerHeartbeatTimer);
+    const beat = () => {
+        if (!userSession) return;
+        fetch(`${WORKER_URL}/api/nso/cache/heartbeat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ clientId: tokenBrokerClientId() })
+        }).catch(() => {});
+    };
+    beat();
+    tokenBrokerHeartbeatTimer = setInterval(beat, 45_000);
+}
+
+function stopTokenBrokerHeartbeat() {
+    if (tokenBrokerHeartbeatTimer) clearInterval(tokenBrokerHeartbeatTimer);
+    tokenBrokerHeartbeatTimer = null;
+}
+
+function releaseTokenBrokerSession(options = {}) {
+    stopTokenBrokerHeartbeat();
+    const payload = JSON.stringify({ clientId: tokenBrokerClientId() });
+    return fetch(`${WORKER_URL}/api/nso/cache/session/release`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: payload,
+        keepalive: options.keepalive === true
+    }).catch(() => {});
+}
+
+window.addEventListener('pagehide', (event) => {
+    if (!event.persisted) releaseTokenBrokerSession({ keepalive: true });
+});
+
+window.addEventListener('pageshow', () => {
+    if (userSession) startTokenBrokerHeartbeat();
+});
 
 function nxapiClientId() {
     return NXAPI_AUTH_CLIENT_ID.trim();
@@ -222,7 +365,7 @@ function nxapiUrl(path) {
  */
 async function getNxapiAccessToken(options = {}) {
     throwIfAborted(options.signal);
-    const rateLimitUntil = getRateLimitUntil();
+    const rateLimitUntil = getRateLimitUntil('auth');
     if (rateLimitUntil > Date.now()) {
         const timeStr = new Date(rateLimitUntil).toLocaleTimeString();
         const remainingSec = Math.ceil((rateLimitUntil - Date.now()) / 1000);
@@ -300,7 +443,7 @@ async function getNxapiAccessToken(options = {}) {
         if (tokenResp.status === 429) {
             const retryAfterHeader = tokenResp.headers.get('Retry-After');
             const until = parseRetryAfter(retryAfterHeader) || (Date.now() + 60000);
-            setRateLimitUntil(until);
+            setRateLimitUntil('auth', until);
             const timeStr = new Date(until).toLocaleTimeString();
             throw new AuthStageError('NXAPI_AUTH', `nxapi authentication rate-limited (HTTP 429). Retry after ${timeStr}.`, null, 429);
         }
@@ -348,20 +491,6 @@ async function nxapiFetch(path, options = {}) {
         }
     });
 
-    if (response.status === 429) {
-        const retryAfterHeader = response.headers.get('Retry-After');
-        const until = parseRetryAfter(retryAfterHeader) || (Date.now() + 60000);
-        setRateLimitUntil(until);
-        const timeStr = new Date(until).toLocaleTimeString();
-        const sec = Math.ceil((until - Date.now()) / 1000);
-        throw new AuthStageError(
-            'NXAPI_AUTH',
-            `nxapi authentication temporarily rate-limited (HTTP 429). Retry after ${timeStr} (${sec}s remaining).`,
-            null,
-            429
-        );
-    }
-
     if (response.status === 401) {
         nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 };
     }
@@ -403,7 +532,7 @@ async function nxapiGenerateF(method, token, userData = {}, requestOptions = {})
         if (response.status === 429 || errorMsg.toLowerCase().includes('too many attempts') || errorMsg.toLowerCase().includes('rate limit')) {
             const retryAfterHeader = response.headers.get('Retry-After');
             const until = parseRetryAfter(retryAfterHeader) || (Date.now() + 60000);
-            setRateLimitUntil(until);
+            setRateLimitUntil(method === 1 ? 'f1' : 'f2', until);
             const timeStr = new Date(until).toLocaleTimeString();
             const sec = Math.ceil((until - Date.now()) / 1000);
             throw new AuthStageError(
@@ -437,7 +566,7 @@ async function nxapiEncryptRequest(url, bearerToken, body, requestOptions = {}) 
         if (response.status === 429 || errorMsg.toLowerCase().includes('too many attempts') || errorMsg.toLowerCase().includes('rate limit')) {
             const retryAfterHeader = response.headers.get('Retry-After');
             const until = parseRetryAfter(retryAfterHeader) || (Date.now() + 60000);
-            setRateLimitUntil(until);
+            setRateLimitUntil('encrypt', until);
             const timeStr = new Date(until).toLocaleTimeString();
             const sec = Math.ceil((until - Date.now()) / 1000);
             throw new AuthStageError(
@@ -466,7 +595,7 @@ async function nxapiDecryptResponse(encryptedBase64, requestOptions = {}) {
         if (response.status === 429 || data.toLowerCase().includes('too many attempts') || data.toLowerCase().includes('rate limit')) {
             const retryAfterHeader = response.headers.get('Retry-After');
             const until = parseRetryAfter(retryAfterHeader) || (Date.now() + 60000);
-            setRateLimitUntil(until);
+            setRateLimitUntil('decrypt', until);
             const timeStr = new Date(until).toLocaleTimeString();
             const sec = Math.ceil((until - Date.now()) / 1000);
             throw new AuthStageError(
@@ -1009,6 +1138,7 @@ function showAuthenticatedUI(session) {
     document.getElementById('openAuthModalBtn').classList.add('hidden');
     resetTabNavigationState();
     showAppPage('home');
+    startTokenBrokerHeartbeat();
 
     if (session && session.result && session.result.user) {
         const user = session.result.user;
@@ -1044,6 +1174,8 @@ function showAuthenticatedUI(session) {
 function logout() {
     window.webServiceManager?.closeActiveService();
     window.nsoCloseAppScreens?.();
+    releaseTokenBrokerSession({ keepalive: true });
+    sessionStorage.removeItem('nso_user_session');
     localStorage.removeItem('nso_user_session');
     localStorage.removeItem('nso_pkce_verifier');
     localStorage.removeItem('nso_auth_state');
@@ -1206,7 +1338,7 @@ async function performFullAuthentication(options = {}) {
                             coralExpiresAt: Date.now() + expiresIn * 1000
                         };
                         userSession = jsonSession;
-                        localStorage.setItem('nso_user_session', JSON.stringify(jsonSession));
+                        sessionStorage.setItem('nso_user_session', JSON.stringify(jsonSession));
                         showAuthenticatedUI(jsonSession);
                         return;
                     } catch (e) {}
@@ -1337,88 +1469,130 @@ async function performFullAuthentication(options = {}) {
             const naCountry = userInfo.country;
             const naBirthday = userInfo.birthday;
 
-            // Step 4: Request nxapi method-1 attestation
-            setAuthButtonsDisabled(true, 'Step 3/3: Requesting nxapi attestation...');
-            setAuthGateHint('Generating Coral attestation f-token with nxapi…');
-
-            let attestation;
+            // First ask the Cloudflare account broker. A cached Coral credential is
+            // shared across this Nintendo Account's active devices, and survives a
+            // browser close only when a Remember Me grant exists server-side.
+            let data = null;
+            let brokerReady = false;
             try {
-                attestation = await nxapiGenerateF(1, idToken, { na_id: naId });
-            } catch (err) {
-                if (err instanceof AuthStageError) throw err;
-                throw new AuthStageError('NXAPI_F_METHOD_1', `nxapi attestation failed: ${err.message}`, err);
-            }
-
-            const { f: fToken, timestamp: timestampMs, requestId } = attestation;
-
-            // Step 5: Encrypt Coral Account/Login payload
-            setAuthButtonsDisabled(true, 'Step 3/3: Encrypting Coral login...');
-            setAuthGateHint('Encrypting Coral login request…');
-
-            const coralLoginUrl = 'https://api-lp1.znc.srv.nintendo.net/v4/Account/Login';
-            const coralLoginBody = JSON.stringify({
-                parameter: {
-                    f: fToken,
-                    naIdToken: idToken,
-                    timestamp: timestampMs,
-                    requestId: requestId,
-                    language,
-                    naCountry,
-                    naBirthday
+                setAuthGateHint('Checking secure Cloudflare token cache…');
+                const brokerSession = await startTokenBrokerSession(accessToken);
+                brokerReady = true;
+                if (validBrokerCoralSession(brokerSession?.coral, naId)) {
+                    data = brokerSession.coral.session;
+                    console.log('[AccountTokenBroker] Coral cache hit; method-1 f-generation skipped.');
                 }
-            });
-
-            let encryptedLoginBody;
-            try {
-                encryptedLoginBody = await nxapiEncryptRequest(coralLoginUrl, null, coralLoginBody);
-            } catch (err) {
-                if (err instanceof AuthStageError) throw err;
-                throw new AuthStageError('NXAPI_ENCRYPT_ACCOUNT_LOGIN', `nxapi login encryption failed: ${err.message}`, err);
+            } catch (error) {
+                // Backward compatibility / temporary Worker outage: only then use the
+                // canonical client-side path. Never fall back after an nxapi/Coral
+                // response from the broker, which would double-spend authentication.
+                console.warn('[AccountTokenBroker] Session unavailable; using canonical Coral login path:', error);
             }
 
-            // Step 6: Post to Coral /v4/Account/Login
-            setAuthButtonsDisabled(true, 'Logging into Coral Account...');
-            setAuthGateHint('Connecting to Nintendo Switch Online Coral service…');
-
-            const coralResp = await proxyFetch(coralLoginUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/octet-stream',
-                    'Accept': 'application/octet-stream,application/json',
-                    'Accept-Language': 'en-GB',
-                    'Pragma': 'no-cache',
-                    'Cache-Control': 'no-cache',
-                    'X-ProductVersion': ZNCA_VERSION,
-                    'X-Platform': ZNCA_PLATFORM,
-                    'User-Agent': zncaUserAgent()
-                },
-                bodyBase64: encryptedLoginBody
-            });
-
-            let data;
-            try {
-                data = await parseCoralResponse(coralResp);
-            } catch (err) {
-                throw new AuthStageError('NXAPI_DECRYPT_ACCOUNT_LOGIN', `Could not decrypt Coral response: ${err.message}`, err);
+            if (!data && brokerReady) {
+                setAuthButtonsDisabled(true, 'Step 3/3: Creating Coral session...');
+                setAuthGateHint('Cloudflare cache miss — requesting one nxapi Coral attestation…');
+                data = await generateCoralViaTokenBroker({
+                    idToken,
+                    naId,
+                    language,
+                    country: naCountry,
+                    birthday: naBirthday
+                });
+                console.log('[AccountTokenBroker] Coral cache filled from one method-1 generation.');
             }
 
-            if (!coralResp.ok || !data?.result) {
-                throw new AuthStageError(
-                    'CORAL_ACCOUNT_LOGIN',
-                    `Coral login failed (${data?.status || 'Error'}): ${data?.errorMessage || data?.error || 'Authentication rejected'} (HTTP ${coralResp.status})`,
-                    null,
-                    coralResp.status
-                );
+            if (!data) {
+                // Step 4: Request nxapi method-1 attestation
+                setAuthButtonsDisabled(true, 'Step 3/3: Requesting nxapi attestation...');
+                setAuthGateHint('Generating Coral attestation f-token with nxapi…');
+
+                let attestation;
+                try {
+                    attestation = await nxapiGenerateF(1, idToken, { na_id: naId });
+                } catch (err) {
+                    if (err instanceof AuthStageError) throw err;
+                    throw new AuthStageError('NXAPI_F_METHOD_1', `nxapi attestation failed: ${err.message}`, err);
+                }
+
+                const { f: fToken, timestamp: timestampMs, requestId } = attestation;
+
+                // Step 5: Encrypt Coral Account/Login payload
+                setAuthButtonsDisabled(true, 'Step 3/3: Encrypting Coral login...');
+                setAuthGateHint('Encrypting Coral login request…');
+
+                const coralLoginUrl = 'https://api-lp1.znc.srv.nintendo.net/v4/Account/Login';
+                const coralLoginBody = JSON.stringify({
+                    parameter: {
+                        f: fToken,
+                        naIdToken: idToken,
+                        timestamp: timestampMs,
+                        requestId: requestId,
+                        language,
+                        naCountry,
+                        naBirthday
+                    }
+                });
+
+                let encryptedLoginBody;
+                try {
+                    encryptedLoginBody = await nxapiEncryptRequest(coralLoginUrl, null, coralLoginBody);
+                } catch (err) {
+                    if (err instanceof AuthStageError) throw err;
+                    throw new AuthStageError('NXAPI_ENCRYPT_ACCOUNT_LOGIN', `nxapi login encryption failed: ${err.message}`, err);
+                }
+
+                // Step 6: Post to Coral /v4/Account/Login
+                setAuthButtonsDisabled(true, 'Logging into Coral Account...');
+                setAuthGateHint('Connecting to Nintendo Switch Online Coral service…');
+
+                const coralResp = await proxyFetch(coralLoginUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/octet-stream',
+                        'Accept': 'application/octet-stream,application/json',
+                        'Accept-Language': 'en-GB',
+                        'Pragma': 'no-cache',
+                        'Cache-Control': 'no-cache',
+                        'X-ProductVersion': ZNCA_VERSION,
+                        'X-Platform': ZNCA_PLATFORM,
+                        'User-Agent': zncaUserAgent()
+                    },
+                    bodyBase64: encryptedLoginBody
+                });
+
+                data = null;
+                try {
+                    data = await parseCoralResponse(coralResp);
+                } catch (err) {
+                    throw new AuthStageError('NXAPI_DECRYPT_ACCOUNT_LOGIN', `Could not decrypt Coral response: ${err.message}`, err);
+                }
+
+                if (!coralResp.ok || !data?.result) {
+                    throw new AuthStageError(
+                        'CORAL_ACCOUNT_LOGIN',
+                        `Coral login failed (${data?.status || 'Error'}): ${data?.errorMessage || data?.error || 'Authentication rejected'} (HTTP ${coralResp.status})`,
+                        null,
+                        coralResp.status
+                    );
+                }
+
             }
 
             // Authentication succeeded! Derive expiresAt strictly from Coral's webApiServerCredential.expiresIn
             const expiresInSec = Number(data.result?.webApiServerCredential?.expiresIn || 7200);
+            const brokerExpiresAt = Number(data?.nsoWebapp?.coralExpiresAt || 0);
             data.nsoWebapp = {
+                ...(data.nsoWebapp || {}),
                 naId,
-                coralExpiresAt: Date.now() + expiresInSec * 1000
+                // A broker cache hit carries the original absolute expiry. Never
+                // extend it merely because another device reused the same token.
+                coralExpiresAt: brokerExpiresAt > Date.now()
+                    ? brokerExpiresAt
+                    : Date.now() + expiresInSec * 1000
             };
             userSession = data;
-            localStorage.setItem('nso_user_session', JSON.stringify(data));
+            sessionStorage.setItem('nso_user_session', JSON.stringify(data));
 
             // Persist Remember Me ONLY after complete Coral Account/Login flow succeeds!
             const rememberCheckbox = document.getElementById('rememberMeCheckbox');
@@ -1443,11 +1617,31 @@ async function performFullAuthentication(options = {}) {
                 } catch (e) {
                     console.warn('[RememberMe] Save error:', e);
                 }
+            } else {
+                // Treat an unchecked Remember Me box as an explicit opt-out for
+                // this browser. Revoke any older remember grant/cookie so the
+                // account broker cannot remain persistent because of stale local
+                // consent from a previous sign-in on this browser.
+                localStorage.removeItem('nso_has_remembered_account');
+                try {
+                    await fetch(`${WORKER_URL}/api/nso/remember/forget`, {
+                        method: 'POST',
+                        credentials: 'include'
+                    });
+                } catch (e) {
+                    console.warn('[RememberMe] Could not revoke an older remember grant:', e);
+                }
+                updateRememberedUI();
             }
 
             setAuthGateHint('');
             showAuthenticatedUI(data);
         } catch (err) {
+            // If authentication failed after opening an ephemeral broker lease,
+            // release it immediately. Without Remember Me this causes the account
+            // cache to be purged now instead of waiting for the 90-second crash
+            // fail-safe lease timeout.
+            if (!userSession) releaseTokenBrokerSession({ keepalive: true });
             console.error('[Auth Error]', err);
             let displayMsg = err.message || 'An unknown error occurred during sign-in.';
             if (err instanceof AuthStageError) {
@@ -4433,7 +4627,9 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             // encrypted through nxapi, so browser notifications must not become a request storm.
             if (browserNotificationSupport().enabled && coralToken()) {
                 const steadyDelay = document.hidden ? 10 * 60_000 : 15 * 60_000;
-                const rateLimitUntil = typeof getRateLimitUntil === 'function' ? getRateLimitUntil() : 0;
+                const rateLimitUntil = typeof getRateLimitUntil === 'function'
+                    ? Math.max(getRateLimitUntil('auth'), getRateLimitUntil('encrypt'), getRateLimitUntil('decrypt'))
+                    : 0;
                 const rateLimitDelay = rateLimitUntil > Date.now() ? (rateLimitUntil - Date.now() + 2000) : 0;
                 scheduleBrowserNotificationPoll(Math.max(steadyDelay, rateLimitDelay));
             }

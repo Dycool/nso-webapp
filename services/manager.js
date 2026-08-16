@@ -81,22 +81,156 @@ class WebServiceManager {
         return null;
     }
 
+    tokenBrokerClientId() {
+        return typeof window.nsoTokenBrokerClientId === 'function'
+            ? window.nsoTokenBrokerClientId()
+            : null;
+    }
+
+    async requestBrokerCachedToken(serviceId, options = {}) {
+        const clientId = this.tokenBrokerClientId();
+        if (!clientId) return { unavailable: true };
+        const coralUserId = String(userSession?.result?.user?.id || userSession?.user?.id || '');
+        const response = await fetch(`${this.getWorkerUrl()}/api/nso/service/token/cache`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            credentials: 'include',
+            signal: options.signal,
+            body: JSON.stringify({
+                clientId,
+                serviceId: String(serviceId),
+                coralUserId,
+                forceFresh: options.forceFresh === true
+            })
+        });
+        let data = {};
+        try { data = await response.json(); } catch (e) {}
+        if (response.ok && data?.token?.token) {
+            return { token: data.token.token, expiresAt: Number(data.token.expiresAt || 0), source: data.source || 'cache' };
+        }
+        if (response.status === 404 && data?.error === 'cache_miss') return { miss: true };
+        if (response.status === 401 && data?.error === 'broker_session_missing') return { unavailable: true };
+        const error = new Error(data?.error_description || data?.error || `Cloudflare token cache failed (HTTP ${response.status}).`);
+        error.status = response.status;
+        error.code = data?.error || 'broker_cache_error';
+        throw error;
+    }
+
+    async requestBrokerGeneratedToken(serviceId, traceId, options = {}) {
+        const clientId = this.tokenBrokerClientId();
+        if (!clientId) return { unavailable: true };
+        const coralToken = coralAccessToken();
+        const naId = userSession?.nsoWebapp?.naId;
+        const coralUserId = String(userSession?.result?.user?.id || userSession?.user?.id || '');
+        if (!coralToken || !naId) return { unavailable: true };
+
+        // Only acquire an nxapi bearer after Cloudflare has positively reported a
+        // cache miss. Cache hits therefore make zero nxapi-auth or /f requests.
+        const nxapiAccessToken = await getNxapiAccessToken({
+            signal: options.signal,
+            cancelKey: options.cancelKey
+        });
+        const startedAt = performance.now();
+        const response = await fetch(`${this.getWorkerUrl()}/api/nso/service/token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            credentials: 'include',
+            signal: options.signal,
+            body: JSON.stringify({
+                clientId,
+                serviceId: String(serviceId),
+                coralAccessToken: coralToken,
+                nxapiAccessToken,
+                naId: String(naId),
+                coralUserId,
+                zncaVersion: typeof ZNCA_VERSION === 'string' ? ZNCA_VERSION : undefined,
+                forceFresh: options.forceFresh === true,
+                cancelKey: options.cancelKey || undefined
+            })
+        });
+        let data = {};
+        try { data = await response.json(); } catch (e) {}
+        if (response.ok && data?.token?.token) {
+            console.log(
+                `[LaunchTrace:${traceId || 'anon'}] stage=get_web_service_token durationMs=${Math.round(performance.now() - startedAt)} ` +
+                `path=cloudflare_broker source=${data.source || 'generated'}`
+            );
+            return { token: data.token.token, expiresAt: Number(data.token.expiresAt || 0), source: data.source || 'generated' };
+        }
+        if (response.status === 401 && data?.error === 'broker_session_missing') return { unavailable: true };
+        if (response.status === 401 && data?.error === 'nxapi_invalid_token') {
+            try { nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 }; } catch (e) {}
+        }
+        if (response.status === 429 && typeof parseRetryAfter === 'function' && typeof setRateLimitUntil === 'function') {
+            const until = parseRetryAfter(response.headers.get('Retry-After')) || (Date.now() + 60000);
+            setRateLimitUntil('f2', until);
+        }
+        if (response.status === 499 || data?.error === 'launch_cancelled') {
+            const error = new DOMException('The operation was aborted.', 'AbortError');
+            throw error;
+        }
+        const error = new Error(data?.error_description || data?.error || `Cloudflare token broker failed (HTTP ${response.status}).`);
+        error.status = response.status;
+        error.code = data?.error || 'broker_generation_error';
+        throw error;
+    }
+
+    async getGameWebServiceTokenCanonical(serviceId, traceId, options = {}) {
+        const token = coralAccessToken();
+        if (!token) throw new Error('No Coral access token available. Please sign in again.');
+        const naId = userSession?.nsoWebapp?.naId;
+        if (!naId) throw new Error('Nintendo Account ID missing in session. Please sign out and sign in again.');
+        const coralUserId = String(userSession?.result?.user?.id || userSession?.user?.id || '');
+
+        if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+        const fStartedAt = performance.now();
+        const attestation = await nxapiGenerateF(2, token, {
+            na_id: naId,
+            coral_user_id: coralUserId
+        }, {
+            signal: options.signal,
+            cancelKey: options.cancelKey
+        });
+        console.log(`[LaunchTrace:${traceId || 'anon'}] stage=nxapi_f_method_2 source=canonical_fallback durationMs=${Math.round(performance.now() - fStartedAt)}`);
+
+        if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+        const tokenStart = performance.now();
+        const result = await coralCall('/v4/Game/GetWebServiceToken', {
+            id: Number(serviceId),
+            registrationToken: '',
+            f: attestation.f,
+            timestamp: attestation.timestamp,
+            requestId: attestation.requestId
+        }, {
+            signal: options.signal,
+            cancelKey: options.cancelKey
+        });
+        console.log(`[LaunchTrace:${traceId || 'anon'}] stage=get_web_service_token durationMs=${Math.round(performance.now() - tokenStart)} path=canonical_fallback`);
+        if (!result?.accessToken) throw new Error('Nintendo did not return a valid GameWebServiceToken.');
+        const expiresInSec = Number.isFinite(Number(result.expiresIn)) ? Number(result.expiresIn) : 7200;
+        return {
+            token: result.accessToken,
+            expiresAt: Date.now() + Math.max(60, expiresInSec) * 1000,
+            source: 'canonical_fallback'
+        };
+    }
+
     /**
-     * Canonical, on-demand GameWebServiceToken acquisition.
+     * Account-wide GameWebServiceToken acquisition.
      *
-     * This intentionally does not prime every service in the catalog and does not
-     * acquire nxapi credentials in the background. One method-2 attestation is
-     * requested only when the user actually opens a service, matching the stable
-     * pre-optimization behavior and greatly reducing nxapi rate-limit pressure.
-     * Valid Nintendo web-service tokens are still cached in memory and concurrent
-     * requests for the same service remain single-flight.
+     * 1. Reuse this tab's in-memory copy when valid.
+     * 2. Ask the Cloudflare account broker (zero nxapi calls on a hit).
+     * 3. Only on a miss, acquire an in-memory nxapi bearer and let the account DO
+     *    single-flight one method-2 generation across every active device.
+     * 4. Fall back to the canonical browser path only when the broker session itself
+     *    is unavailable; never retry after an upstream nxapi/Nintendo response.
      */
     async getGameWebServiceToken(serviceId, traceId, forceFresh = false, options = {}) {
         const idStr = String(serviceId);
         if (!forceFresh) {
             const cached = this.getCachedGameWebServiceToken(idStr);
             if (cached) {
-                console.log(`[LaunchTrace:${traceId || 'anon'}] Reusing active GameWebServiceToken for service ${idStr}`);
+                console.log(`[LaunchTrace:${traceId || 'anon'}] Reusing tab-local GameWebServiceToken for service ${idStr}`);
                 return cached;
             }
         }
@@ -108,56 +242,40 @@ class WebServiceManager {
                 console.log(`[LaunchTrace:${traceId || 'anon'}] Deduplicating concurrent token request for service ${idStr}`);
                 return await existingFlight.promise;
             }
-            // A cancelled launch may still be unwinding for a few milliseconds. Never
-            // attach a new click to that old AbortSignal/cancellation key.
-            console.log(`[LaunchTrace:${traceId || 'anon'}] Ignoring stale token flight for service ${idStr}`);
         }
 
         const fetchPromise = (async () => {
-            const token = coralAccessToken();
-            if (!token) throw new Error('No Coral access token available. Please sign in again.');
-
-            const naId = userSession?.nsoWebapp?.naId;
-            if (!naId) {
-                throw new Error('Nintendo Account ID missing in session. Please sign out and sign in again.');
-            }
-            const coralUserId = String(userSession?.result?.user?.id || userSession?.user?.id || '');
-
-            if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
-            const fStartedAt = performance.now();
-            const attestation = await nxapiGenerateF(2, token, {
-                na_id: naId,
-                coral_user_id: coralUserId
-            }, {
-                signal: options.signal,
-                cancelKey: options.cancelKey
-            });
-            console.log(`[LaunchTrace:${traceId || 'anon'}] stage=nxapi_f_method_2 source=on_demand durationMs=${Math.round(performance.now() - fStartedAt)}`);
-
-            const tokenStart = performance.now();
-            if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
-            const result = await coralCall('/v4/Game/GetWebServiceToken', {
-                id: Number(serviceId),
-                registrationToken: '',
-                f: attestation.f,
-                timestamp: attestation.timestamp,
-                requestId: attestation.requestId
-            }, {
-                signal: options.signal,
-                cancelKey: options.cancelKey
-            });
-            console.log(`[LaunchTrace:${traceId || 'anon'}] stage=get_web_service_token durationMs=${Math.round(performance.now() - tokenStart)} path=canonical`);
-
-            if (!result?.accessToken) {
-                throw new Error('Nintendo did not return a valid GameWebServiceToken.');
+            let result;
+            if (!forceFresh) {
+                result = await this.requestBrokerCachedToken(idStr, {
+                    signal: options.signal,
+                    forceFresh: false
+                });
+                if (result?.token) {
+                    console.log(`[LaunchTrace:${traceId || 'anon'}] stage=get_web_service_token durationMs=0 path=cloudflare_cache`);
+                }
+            } else {
+                result = { miss: true };
             }
 
-            const expiresInSec = Number.isFinite(Number(result.expiresIn)) ? Number(result.expiresIn) : 7200;
+            if (!result?.token && !result?.unavailable) {
+                result = await this.requestBrokerGeneratedToken(idStr, traceId, {
+                    signal: options.signal,
+                    cancelKey: options.cancelKey,
+                    forceFresh
+                });
+            }
+
+            if (!result?.token && result?.unavailable) {
+                result = await this.getGameWebServiceTokenCanonical(idStr, traceId, options);
+            }
+            if (!result?.token) throw new Error('Could not obtain a GameWebServiceToken.');
+
             this.tokenCache.set(idStr, {
-                token: result.accessToken,
-                expiresAt: Date.now() + Math.max(60, expiresInSec) * 1000
+                token: result.token,
+                expiresAt: Number(result.expiresAt || (Date.now() + 2 * 60 * 60 * 1000))
             });
-            return result.accessToken;
+            return result.token;
         })();
 
         const flight = { promise: fetchPromise, cancelKey: options.cancelKey || null };
@@ -533,7 +651,7 @@ class WebServiceManager {
                 const serviceId = data.serviceId || this.activeService?.id;
                 try {
                     console.log(`[WebServiceManager] Received fresh token request for service ${serviceId}`);
-                    const freshToken = await this.getGameWebServiceToken(serviceId, undefined, false, {
+                    const freshToken = await this.getGameWebServiceToken(serviceId, undefined, true, {
                         signal: this.activeLaunchController?.signal,
                         cancelKey: this.activeLaunchId
                     });
