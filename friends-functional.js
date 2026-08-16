@@ -18,7 +18,8 @@
         sentRequests: [],
         blockedUsers: [],
         permissions: null,
-        qrLibraryPromise: null
+        qrLibraryPromise: null,
+        chatCandidates: []
     };
 
     const $ = (id) => document.getElementById(id);
@@ -846,6 +847,96 @@
         }
     }
 
+    function normalizeChatCandidate(candidate) {
+        if (!candidate || typeof candidate !== 'object') return null;
+
+        // Nintendo Switch App 3.4.1 serializes ChatParticipants as:
+        // NintendoServiceAccountId, ChatHistoryId, imageUri, name, lastSeenAt.
+        const normalized = {
+            nsaId: candidate.nsaId || candidate.friendNsaId || '',
+            chatHistoryId: candidate.chatHistoryId || '',
+            imageUri: candidate.imageUri || candidate.image2Uri || '',
+            name: candidate.name || 'Switch Player',
+            lastSeenAt: candidate.lastSeenAt || null
+        };
+        return normalized.nsaId ? normalized : null;
+    }
+
+    function renderVoiceChattedFriends(candidates) {
+        const view = $('chattedUsersView');
+        const body = view?.querySelector('.chatted-users-body');
+        if (!view || !body) return;
+
+        body.querySelectorAll('.friends-functional-user-row').forEach((row) => row.remove());
+        const empty = body.querySelector('.chatted-users-empty');
+        empty?.classList.add('hidden');
+
+        if (!candidates.length) {
+            if (empty) {
+                empty.textContent = "You have not chatted with any users who can be added as friends at this time.";
+                empty.classList.remove('hidden');
+            }
+            return;
+        }
+
+        for (const candidate of candidates) {
+            const row = document.createElement('div');
+            row.className = 'friends-functional-user-row';
+            row.dataset.nsaId = candidate.nsaId;
+            if (candidate.chatHistoryId) row.dataset.chatHistoryId = candidate.chatHistoryId;
+
+            const lastSeen = formatDate(candidate.lastSeenAt);
+            row.innerHTML = `
+                <img src="${escapeHtml(candidate.imageUri)}" alt="" onerror="this.style.visibility='hidden'">
+                <div>
+                    <strong>${escapeHtml(candidate.name)}</strong>
+                    <span>${escapeHtml(lastSeen ? `Last chatted ${lastSeen}` : 'GameChat user')}</span>
+                </div>
+                <button type="button" class="friends-functional-chat-add">Add Friend</button>`;
+
+            row.querySelector('.friends-functional-chat-add')?.addEventListener('click', async (event) => {
+                const button = event.currentTarget;
+                try {
+                    await runButton(button, async () => {
+                        await coral('/v4/FriendRequest/Create', {
+                            nsaId: candidate.nsaId,
+                            // CAMPUS is Coral's route channel for GameChat-origin friend requests.
+                            channel: 'CAMPUS'
+                        });
+                    }, 'Friend request sent.');
+                    button.textContent = 'Sent';
+                    button.disabled = true;
+                    loadFriendRequestLists().catch(() => {});
+                } catch (error) {
+                    alert(`Could not send friend request: ${error.message}`);
+                }
+            });
+
+            body.appendChild(row);
+        }
+    }
+
+    async function openVoiceChattedFriends() {
+        const view = $('chattedUsersView');
+        const body = view?.querySelector('.chatted-users-body');
+        if (!view || !body) return;
+
+        view.classList.remove('hidden');
+        body.querySelectorAll('.friends-functional-user-row').forEach((row) => row.remove());
+        const empty = body.querySelector('.chatted-users-empty');
+        if (empty) {
+            empty.textContent = 'Loading GameChat users…';
+            empty.classList.remove('hidden');
+        }
+
+        const result = await coral('/v5/Chat/FriendCandidate/List');
+        const rawCandidates = Array.isArray(result)
+            ? result
+            : (result?.chatParticipants || result?.friendCandidates || []);
+        state.chatCandidates = rawCandidates.map(normalizeChatCandidate).filter(Boolean);
+        renderVoiceChattedFriends(state.chatCandidates);
+    }
+
     function installViewLoaders() {
         $('openAddFriendBtn')?.addEventListener('click', () => {
             loadFriendRequestLists().catch((error) => {
@@ -871,11 +962,15 @@
         $('openNotifySettingBtn')?.addEventListener('click', updateNotifySettingsSummary);
         $('openMyCodeQrBtn')?.addEventListener('click', showMyFriendCode);
 
-        // nxapi currently does not expose enough request/response information for
-        // Chat/FriendCandidate/List to implement this safely. Make the existing
-        // button explain that limitation instead of appearing broken.
+        $('closeChattedUsersBtn')?.addEventListener('click', () => {
+            $('chattedUsersView')?.classList.add('hidden');
+        });
+
         $('openVoiceChattedFriendsBtn')?.addEventListener('click', () => {
-            alert('Users You\'ve Chatted With is not available yet because the current nxapi Coral implementation does not define the Chat/FriendCandidate/List request/response format.');
+            openVoiceChattedFriends().catch((error) => {
+                console.warn('[FriendsFunctional] Could not load GameChat friend candidates', error);
+                alert(`Could not load users you've chatted with: ${error.message}`);
+            });
         });
     }
 
