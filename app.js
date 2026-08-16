@@ -679,13 +679,50 @@ function initNavigation() {
     preloadDockLottie();
 }
 
-function showAppPage(pageName = 'home') {
+// Tab Stack State Management
+const navTabStacks = {
+    home: 'home', // 'home' | 'profile' | 'notifications'
+    friends: 'list', // 'list' | 'detail'
+    album: 'album' // 'album'
+};
+
+let activeFriendDetailData = null;
+
+function applyTabViewState(tabName = 'home') {
+    // Hide all base tab pages and overlay views first
     document.querySelectorAll('.tab-page').forEach(page => page.classList.remove('active'));
+    document.getElementById('profileView')?.classList.add('hidden');
+    document.getElementById('notificationView')?.classList.add('hidden');
+    document.getElementById('friendDetailView')?.classList.add('hidden');
+
+    if (tabName === 'home') {
+        const homeState = navTabStacks.home;
+        if (homeState === 'profile') {
+            document.getElementById('profileView')?.classList.remove('hidden');
+        } else if (homeState === 'notifications') {
+            document.getElementById('notificationView')?.classList.remove('hidden');
+        } else {
+            document.getElementById('page-home')?.classList.add('active');
+        }
+    } else if (tabName === 'friends') {
+        const friendsState = navTabStacks.friends;
+        if (friendsState === 'detail' && activeFriendDetailData) {
+            document.getElementById('friendDetailView')?.classList.remove('hidden');
+        } else {
+            navTabStacks.friends = 'list';
+            document.getElementById('page-friends')?.classList.add('active');
+        }
+    } else if (tabName === 'album') {
+        document.getElementById('page-album')?.classList.add('active');
+    }
+}
+
+function showAppPage(pageName = 'home') {
     document.querySelectorAll('#homeDock button').forEach(button => {
         button.classList.toggle('active', button.dataset.page === pageName);
     });
-    document.getElementById(`page-${pageName}`)?.classList.add('active');
     switchDockTab(pageName);
+    applyTabViewState(pageName);
     window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
@@ -785,13 +822,14 @@ async function forgetRememberedAccount() {
 }
 
 function openProfile() {
-    document.getElementById('profileView').classList.remove('hidden');
+    navTabStacks.home = 'profile';
+    showAppPage('home');
 }
 
 async function openNotifications() {
-    const view = document.getElementById('notificationView');
+    navTabStacks.home = 'notifications';
+    showAppPage('home');
     const list = document.getElementById('notificationList');
-    view.classList.remove('hidden');
     list.innerHTML = '<div class="notification-item"><div></div><div><strong>Loading notifications…</strong></div></div>';
     try {
         const result = await coralCall('/v4/Announcement/List');
@@ -1819,7 +1857,42 @@ function renderFriendsInto(container, friends) {
     });
 }
 
+function formatBecameFriendsRoute(route) {
+    if (!route) return 'By exchanging friend codes.';
+    const channel = typeof route === 'string' ? route : (route.channel || '');
+    switch (channel) {
+        case 'NX_FACED':
+            return 'By searching for local users.';
+        case 'IN_APP':
+            return route.userName ? `In-Game Name: ${route.userName}` : "By playing together in a game.";
+        case '3DS':
+            return 'Nintendo 3DS';
+        case 'NNID':
+            return 'Wii U';
+        case 'CAMPUS':
+            return 'GameChat';
+        case 'NINTENDO_ACCOUNT':
+            return route.appName || 'Nintendo Account';
+        case 'FRIEND_CODE':
+        default:
+            return 'By exchanging friend codes.';
+    }
+}
+
+function formatBecameFriendsDate(timestamp) {
+    if (!timestamp) return '—';
+    let ms = Number(timestamp);
+    if (isNaN(ms) || ms <= 0) return '—';
+    if (ms < 1e11) ms *= 1000;
+    const d = new Date(ms);
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 async function openFriendDetail(friend) {
+    activeFriendDetailData = friend;
+    navTabStacks.friends = 'detail';
+
     const isOnline = ['ONLINE', 'PLAYING'].includes(friend.presence?.state || friend.state) || friend.isOnline;
     const presence = friend.presence?.name || friend.presence?.game?.name || '';
     document.getElementById('friendDetailAvatar').src = friend.imageUri || friend.image_url || '';
@@ -1827,19 +1900,31 @@ async function openFriendDetail(friend) {
     document.getElementById('friendDetailName').textContent = friend.name || 'Friend';
     document.getElementById('friendDetailPresence').textContent = isOnline ? (presence ? `Playing ${presence}` : 'Online now') : 'Offline';
 
+    // Populate How / When you became friends metadata
+    const howBecameEl = document.getElementById('friendDetailHowBecame');
+    if (howBecameEl) {
+        howBecameEl.textContent = formatBecameFriendsRoute(friend.route || friend.howBecameFriend);
+    }
+    const whenBecameEl = document.getElementById('friendDetailWhenBecame');
+    if (whenBecameEl) {
+        whenBecameEl.textContent = formatBecameFriendsDate(friend.friendCreatedAt || friend.becameFriendAt || friend.createdAt);
+    }
+
     const activity = document.getElementById('friendDetailActivity');
-    activity.innerHTML = '<div style="color:#aaaab0;font-size:13px">Loading play activity…</div>';
-    document.getElementById('friendDetailView').classList.remove('hidden');
+    activity.innerHTML = '<div style="color:#aaaab0;font-size:13px;padding:12px 0">Loading play activity…</div>';
+    showAppPage('friends');
 
     try {
         if (!friend.nsaId) {
             if (presence) {
                 activity.innerHTML = `
-                    <div class="friend-activity-row">
-                        <img src="${friend.presence?.imageUri || friend.presence?.game?.imageUri || friend.imageUri || friend.image_url || ''}" alt="">
-                        <div>
-                            <strong>${presence}</strong>
-                            <span>${isOnline ? 'Playing now' : 'Recently played'}</span>
+                    <div class="friend-activity-list">
+                        <div class="friend-activity-row">
+                            <img src="${friend.presence?.imageUri || friend.presence?.game?.imageUri || friend.imageUri || friend.image_url || ''}" alt="">
+                            <div>
+                                <strong>${presence}</strong>
+                                <span class="${isOnline ? 'playtime-highlight' : 'playtime-normal'}">${isOnline ? 'Playing now' : 'Recently played'}</span>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -1852,28 +1937,36 @@ async function openFriendDetail(friend) {
         const result = await coralCall('/v4/User/PlayLog/Show', { nsaId: friend.nsaId });
         const playLogs = Array.isArray(result) ? result : (result?.playLogs || []);
         if (playLogs.length > 0) {
-            activity.innerHTML = '<div style="display:flex;flex-direction:column;gap:12px"></div>';
+            activity.innerHTML = '<div class="friend-activity-list"></div>';
             const list = activity.firstElementChild;
             playLogs.forEach(log => {
                 const hours = Math.round((log.totalPlayTime || 0) / 60);
+                const isOver50 = hours >= 50;
+                let playText = 'Played for a little while';
+                if (hours > 0) {
+                    playText = `Played for ${hours} hour(s) or more`;
+                }
+
                 const row = document.createElement('div');
                 row.className = 'friend-activity-row';
                 row.innerHTML = `
                     <img src="${log.imageUri || ''}" alt="" onerror="this.style.display='none'">
                     <div>
                         <strong>${log.name || 'Game'}</strong>
-                        <span>${hours > 0 ? `Played for ${hours} hours or more` : 'First played recently'}</span>
+                        <span class="${isOver50 ? 'playtime-highlight' : 'playtime-normal'}">${playText}</span>
                     </div>
                 `;
                 list.appendChild(row);
             });
         } else if (presence) {
             activity.innerHTML = `
-                <div class="friend-activity-row">
-                    <img src="${friend.presence?.imageUri || friend.presence?.game?.imageUri || friend.imageUri || friend.image_url || ''}" alt="">
-                    <div>
-                        <strong>${presence}</strong>
-                        <span>${isOnline ? 'Playing now' : 'Recently played'}</span>
+                <div class="friend-activity-list">
+                    <div class="friend-activity-row">
+                        <img src="${friend.presence?.imageUri || friend.presence?.game?.imageUri || friend.imageUri || friend.image_url || ''}" alt="">
+                        <div>
+                            <strong>${presence}</strong>
+                            <span class="${isOnline ? 'playtime-highlight' : 'playtime-normal'}">${isOnline ? 'Playing now' : 'Recently played'}</span>
+                        </div>
                     </div>
                 </div>
             `;
@@ -1883,11 +1976,13 @@ async function openFriendDetail(friend) {
     } catch (e) {
         if (presence) {
             activity.innerHTML = `
-                <div class="friend-activity-row">
-                    <img src="${friend.presence?.imageUri || friend.presence?.game?.imageUri || friend.imageUri || friend.image_url || ''}" alt="">
-                    <div>
-                        <strong>${presence}</strong>
-                        <span>${isOnline ? 'Playing now' : 'Recently played'}</span>
+                <div class="friend-activity-list">
+                    <div class="friend-activity-row">
+                        <img src="${friend.presence?.imageUri || friend.presence?.game?.imageUri || friend.imageUri || friend.image_url || ''}" alt="">
+                        <div>
+                            <strong>${presence}</strong>
+                            <span class="${isOnline ? 'playtime-highlight' : 'playtime-normal'}">${isOnline ? 'Playing now' : 'Recently played'}</span>
+                        </div>
                     </div>
                 </div>
             `;
@@ -1908,20 +2003,20 @@ document.getElementById('mediaInfoBtn').addEventListener('click', showActiveMedi
 document.getElementById('mediaShareBtn').addEventListener('click', shareActiveMedia);
 document.getElementById('mediaDownloadBtn').addEventListener('click', downloadActiveMedia);
 
-document.getElementById('closeFriendDetailBtn').addEventListener('click', () => {
-    document.getElementById('friendDetailView').classList.add('hidden');
+document.getElementById('closeFriendDetailBtn')?.addEventListener('click', () => {
+    navTabStacks.friends = 'list';
+    activeFriendDetailData = null;
+    applyTabViewState('friends');
 });
 
-document.getElementById('closeFriendDetailHomeBtn').addEventListener('click', () => {
-    document.getElementById('friendDetailView').classList.add('hidden');
+document.getElementById('closeNotificationBtn')?.addEventListener('click', () => {
+    navTabStacks.home = 'home';
+    applyTabViewState('home');
 });
 
-document.getElementById('closeNotificationBtn').addEventListener('click', () => {
-    document.getElementById('notificationView').classList.add('hidden');
-});
-
-document.getElementById('closeProfileBtn').addEventListener('click', () => {
-    document.getElementById('profileView').classList.add('hidden');
+document.getElementById('closeProfileBtn')?.addEventListener('click', () => {
+    navTabStacks.home = 'home';
+    applyTabViewState('home');
 });
 
 // Friend Settings Screen Navigation (Screenshots 2, 3, 4, 5)

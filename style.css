@@ -1349,9 +1349,9 @@ body.dark-theme { background: #1b1b1b; }
 .service-status { align-self: center; color: #a9a9ad; }
 .home-content-section .media-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; width: 100%; margin: 0; box-sizing: border-box; }
 .home-content-section .media-item, .home-content-section .media-loading-tile { position: relative; display: flex; flex-direction: column; width: 100%; min-width: 0; min-height: 0; box-sizing: border-box; }
-.home-dock { position: fixed; z-index: 120; left: 50%; bottom: 18px; display: flex; flex-direction: row; justify-content: space-around; align-items: center; width: min(545px, calc(100vw - 32px)); height: 62px; padding: 0 20px; border-radius: 9999px; background: #464648; transform: translateX(-50%); box-shadow: 0 10px 28px rgba(0,0,0,.4); backdrop-filter: blur(12px); }
+.home-dock { position: fixed; z-index: 300; left: 50%; bottom: 18px; display: flex; flex-direction: row; justify-content: space-around; align-items: center; width: min(545px, calc(100vw - 32px)); height: 62px; padding: 0 20px; border-radius: 9999px; background: #464648; transform: translateX(-50%); box-shadow: 0 10px 28px rgba(0,0,0,.4); backdrop-filter: blur(12px); }
 .home-dock .dock-tab-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 72px; height: 52px; border-radius: 9999px; border: 0; background: transparent; cursor: pointer; padding: 0; transition: background .25s ease, transform .15s ease; }
-.home-dock .dock-tab-btn:active, .friend-detail-dock button:active .dock-svg-icon { transform: scale(0.92); }
+.home-dock .dock-tab-btn:active { transform: scale(0.92); }
 .home-dock .dock-tab-btn[data-page="home"]:hover { background: rgba(235, 61, 71, 0.2); }
 .home-dock .dock-tab-btn[data-page="friends"]:hover { background: rgba(245, 142, 30, 0.2); }
 .home-dock .dock-tab-btn[data-page="album"]:hover { background: rgba(46, 150, 234, 0.2); }
@@ -1604,26 +1604,23 @@ body.webview-active {
 .friend-detail-actions i { margin-right: 11px; color: #cacace; font-size: 19px; vertical-align: -2px; }
 .friend-detail-presence { margin: 0; padding: 28px 0; border-top: 1px solid #3a3a3b; border-bottom: 1px solid #3a3a3b; color: #b5b5b9; font-size: 13px; }
 .friend-detail-activity { margin-top: 39px; text-align: left; }
-.friend-detail-activity h3 { margin: 0 0 13px 15px; color: #dadade; font: 700 14px var(--font-heading); }
-#friendDetailActivity { min-height: 48px; padding: 15px; background: #353537; color: #aaaab0; font-size: 13px; }
-.friend-activity-row { display: flex; align-items: center; gap: 15px; }
-.friend-activity-row img { width: 54px; height: 54px; border-radius: 5px; object-fit: cover; }
-.friend-activity-row strong, .friend-activity-row span { display: block; }
-.friend-activity-row strong { color: #e1e1e3; font-size: 14px; }
-.friend-activity-row span { margin-top: 3px; color: #00b7ef; font-size: 12px; }
-.friend-detail-dock { position: fixed; bottom: 18px; left: 50%; display: flex; width: min(545px, calc(100vw - 32px)); height: 62px; padding: 0 20px; align-items: center; justify-content: space-around; border-radius: 9999px; background: #464648; transform: translateX(-50%); box-shadow: 0 10px 28px rgba(0,0,0,.4); backdrop-filter: blur(12px); }
-.friend-detail-dock button { display: flex; align-items: center; justify-content: center; width: 72px; height: 52px; border: 0; border-radius: 9999px; background: transparent; cursor: pointer; padding: 0; transition: background .25s ease, transform .15s ease; }
-.friend-detail-dock button:disabled { cursor: default; }
-.friend-detail-dock button:nth-child(1) { color: #eb3d47; }
-.friend-detail-dock button:nth-child(2) { color: #f58e1e; }
-.friend-detail-dock button:nth-child(3) { color: #2e96ea; }
-.friend-detail-dock button:nth-child(1):hover { background: rgba(235, 61, 71, 0.2); }
-.friend-detail-dock button:nth-child(2):hover { background: rgba(245, 142, 30, 0.2); }
-.friend-detail-dock button:nth-child(3):hover { background: rgba(46, 150, 234, 0.2); }
+.friend-detail-activity h3 { margin: 0 0 4px; color: #dadade; font: 700 14px var(--font-heading); }
+#friendDetailActivity { min-height: 48px; padding: 0; background: transparent; color: #aaaab0; font-size: 13px; }
+.friend-activity-list { display: flex; flex-direction: column; width: 100%; }
+.friend-activity-row { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid #2e2e30; }
+.friend-activity-row img { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; flex-shrink: 0; background: #2e2e30; }
+.friend-activity-row div { min-width: 0; }
+.friend-activity-row strong { display: block; color: #ffffff; font-size: 14px; font-weight: 700; line-height: 1.3; }
+.friend-activity-row span { display: block; margin-top: 4px; font-size: 13px; line-height: 1.3; }
+.friend-activity-row span.playtime-highlight { color: #00b7ef; font-weight: 500; }
+.friend-activity-row span.playtime-normal { color: #949498; font-weight: 400; }
 
+.friend-detail-meta { margin-top: 28px; text-align: left; display: flex; flex-direction: column; gap: 18px; }
+.friend-meta-item h4 { margin: 0 0 4px; color: #dedee0; font: 700 14px var(--font-heading); }
+.friend-meta-item p { margin: 0; color: #949498; font-size: 14px; line-height: 1.4; }
 .notification-view { position: fixed; z-index: 230; inset: 0; overflow-y: auto; background: #1b1b1b; color: #dedee0; }
 .notification-back { position: fixed; z-index: 1; top: 17px; left: 29px; border: 0; background: transparent; color: #eee; font-size: 22px; cursor: pointer; }
-.notification-panel { width: min(720px, calc(100vw - 40px)); margin: 88px auto 60px; }
+.notification-panel { width: min(720px, calc(100vw - 40px)); margin: 88px auto 100px; padding-bottom: 30px; }
 .notification-panel h2 { margin: 0 0 24px; font: 700 24px var(--font-heading); }
 .notification-list { display: grid; gap: 2px; overflow: hidden; border-radius: 8px; }
 .notification-item { display: grid; grid-template-columns: 64px 1fr; gap: 15px; min-height: 82px; padding: 12px; background: #313133; }
@@ -1635,7 +1632,7 @@ body.webview-active {
 
 .profile-view { position: fixed; z-index: 240; inset: 0; overflow-y: auto; background: #1b1b1b; color: #dedee0; }
 .profile-back { position: fixed; z-index: 1; top: 17px; left: 29px; border: 0; background: transparent; color: #eee; font-size: 22px; cursor: pointer; }
-.profile-panel { width: min(520px, calc(100vw - 40px)); margin: 100px auto 60px; text-align: center; }
+.profile-panel { width: min(520px, calc(100vw - 40px)); margin: 100px auto 100px; padding-bottom: 30px; text-align: center; }
 .profile-panel > img { width: 104px; height: 104px; border-radius: 50%; object-fit: cover; background: #333; }
 .profile-panel h2 { margin-top: 12px; font: 700 24px var(--font-heading); }
 .profile-panel > p { margin-top: 5px; color: #aaaab0; font-size: 13px; letter-spacing: .06em; }
@@ -1697,8 +1694,8 @@ body.webview-active {
     .friends-page-grid .friend-game, .friends-page-grid .friend-time { font-size: 10px; }
     .album-page-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .profile-back { left: 16px; }
-    .home-dock, .friend-detail-dock { bottom: 12px; height: 58px; padding: 0 12px; width: min(420px, calc(100vw - 28px)); }
-    .home-dock .dock-tab-btn, .friend-detail-dock button { width: 62px; height: 48px; }
+    .home-dock { bottom: 12px; height: 58px; padding: 0 12px; width: min(420px, calc(100vw - 28px)); }
+    .home-dock .dock-tab-btn { width: 62px; height: 48px; }
     .dock-lottie-wrap { width: 38px; height: 38px; }
     .friend-detail-back { left: 16px; }
     .friend-detail-more { right: 16px; }

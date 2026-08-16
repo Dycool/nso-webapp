@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css?v=20260816-v20">
+    <link rel="stylesheet" href="style.css?v=20260816-v22">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
@@ -409,29 +409,17 @@
                 <h3>Play Activity</h3>
                 <div id="friendDetailActivity"></div>
             </section>
+            <section class="friend-detail-meta" id="friendDetailMeta">
+                <div class="friend-meta-item">
+                    <h4>How You Became Friends:</h4>
+                    <p id="friendDetailHowBecame">—</p>
+                </div>
+                <div class="friend-meta-item">
+                    <h4>When You Became Friends:</h4>
+                    <p id="friendDetailWhenBecame">—</p>
+                </div>
+            </section>
         </div>
-        <nav class="friend-detail-dock" aria-label="Friend navigation">
-            <button id="closeFriendDetailHomeBtn" type="button" aria-label="Home">
-                <svg class="dock-svg-icon" viewBox="0 0 24 24"><path d="M12 3.2 L20.5 10.4 V20.8 H14.6 V14.4 H9.4 V20.8 H3.5 V10.4 Z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round"/></svg>
-            </button>
-            <button type="button" class="active" aria-label="Friends" disabled>
-                <svg class="dock-svg-icon" viewBox="0 0 24 24">
-                    <mask id="friendsDetailMask">
-                        <rect width="24" height="24" fill="#fff"/>
-                        <rect x="8.2" y="8.8" width="2" height="3.2" rx="1" fill="#000"/>
-                        <rect x="13.8" y="8.8" width="2" height="3.2" rx="1" fill="#000"/>
-                        <path d="M8 14.2 Q12 18 16 14.2" fill="none" stroke="#000" stroke-width="2.2" stroke-linecap="round"/>
-                    </mask>
-                    <rect x="2.5" y="2.5" width="19" height="19" rx="5.5" fill="currentColor" mask="url(#friendsDetailMask)"/>
-                </svg>
-            </button>
-            <button type="button" aria-label="Album" disabled>
-                <svg class="dock-svg-icon" viewBox="0 0 24 24">
-                    <rect x="2.8" y="4.2" width="18.4" height="15.6" rx="3.2" fill="none" stroke="currentColor" stroke-width="2.1"/>
-                    <path d="M4.5 18 C5.6 13.8 8.2 13.5 9.8 15.6 C11.2 13.6 13.6 13.6 15 16.6 C15.6 17.8 16 18.2 17.2 18.2" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
-                </svg>
-            </button>
-        </nav>
     </section>
 
     <section class="notification-view hidden" id="notificationView" aria-label="Notifications">
@@ -456,7 +444,7 @@
 
     <script src="services/adapters.js?v=20260815-v15"></script>
     <script src="services/manager.js?v=20260815-v15"></script>
-    <script src="app.js?v=20260816-v16"></script>
-    <script src="friends-functional.js?v=20260816-v3"></script>
+    <script src="app.js?v=20260816-v18"></script>
+    <script src="friends-functional.js?v=20260816-v4"></script>
 </body>
 </html>

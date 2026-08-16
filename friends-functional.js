@@ -345,6 +345,14 @@
                         .then((full) => {
                             state.activeFriend = { ...friend, ...(full || {}) };
                             updateFriendDetailControls(state.activeFriend);
+                            if (typeof formatBecameFriendsRoute === 'function') {
+                                const howEl = $('friendDetailHowBecame');
+                                if (howEl) howEl.textContent = formatBecameFriendsRoute(state.activeFriend.route);
+                            }
+                            if (typeof formatBecameFriendsDate === 'function') {
+                                const whenEl = $('friendDetailWhenBecame');
+                                if (whenEl) whenEl.textContent = formatBecameFriendsDate(state.activeFriend.friendCreatedAt);
+                            }
                         })
                         .catch((error) => {
                             console.debug('[FriendsFunctional] Friend/Show unavailable; using Friend/List data.', error);
