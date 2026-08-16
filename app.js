@@ -129,16 +129,17 @@ function updateRateLimitBanner() {
 // ---------------------------------------------------------------------------
 // Service Health / Diagnostics
 // ---------------------------------------------------------------------------
-// Diagnostics are deliberately triggered only after an error (or manually). They
-// never retry the failed Nintendo/nxapi operation. This respects nxapi's public API
-// terms while still giving the user a useful answer when a transient 5xx occurs.
+// Diagnostics are background-only. A failed dependency request starts one
+// single-flight health pass; the UI is only notified after that pass confirms a
+// real service problem. Healthy/transient results stay silent.
 const SERVICE_DIAGNOSTICS_COOLDOWN_MS = 15_000;
 const SERVICE_CIRCUIT_DEFAULT_MS = 30_000;
+const SERVICE_HEALTH_TOAST_MS = 9_000;
 let serviceDiagnosticsInFlight = null;
 let lastServiceDiagnosticsAt = 0;
 let lastServiceDiagnostics = null;
 let serviceIssueCircuit = { provider: null, until: 0, reason: '', status: 0 };
-let serviceHealthDismissedAt = 0;
+let serviceHealthToastTimer = null;
 
 function serviceProviderForTarget(targetUrl) {
     try {
@@ -169,13 +170,11 @@ function openServiceCircuit(provider, reason, status = 503, durationMs = SERVICE
         status: Number(status || 503),
         until: Date.now() + Math.max(5_000, Number(durationMs || SERVICE_CIRCUIT_DEFAULT_MS))
     };
-    updateServiceHealthBanner();
 }
 
 function clearServiceCircuit(provider = null) {
     if (provider && serviceIssueCircuit.provider !== provider) return;
     serviceIssueCircuit = { provider: null, until: 0, reason: '', status: 0 };
-    updateServiceHealthBanner();
 }
 
 function serviceHealthSummary(diag = lastServiceDiagnostics) {
@@ -194,72 +193,78 @@ function serviceHealthSummary(diag = lastServiceDiagnostics) {
     };
 }
 
-function updateServiceHealthBanner() {
+function hideServiceHealthWarning() {
+    if (serviceHealthToastTimer) {
+        clearTimeout(serviceHealthToastTimer);
+        serviceHealthToastTimer = null;
+    }
+    document.getElementById('serviceHealthBanner')?.classList.add('hidden');
+}
+
+function showServiceHealthWarning(titleText, message, detailText = '', severity = 'is-warning') {
     const banner = document.getElementById('serviceHealthBanner');
     const title = document.getElementById('serviceHealthTitle');
     const text = document.getElementById('serviceHealthText');
     const details = document.getElementById('serviceHealthDetails');
     if (!banner) return;
 
-    const circuit = serviceIssueCircuit.until > Date.now() ? serviceIssueCircuit : null;
-    const summary = serviceHealthSummary();
-    const hasRecentDiagnostic = lastServiceDiagnostics && (Date.now() - lastServiceDiagnosticsAt < 120_000);
-
-    if (!circuit && !hasRecentDiagnostic) {
-        banner.classList.add('hidden');
-        return;
-    }
-    if (serviceHealthDismissedAt && serviceHealthDismissedAt >= Math.max(lastServiceDiagnosticsAt, circuit ? circuit.until - SERVICE_CIRCUIT_DEFAULT_MS : 0)) {
-        banner.classList.add('hidden');
-        return;
-    }
-
+    if (serviceHealthToastTimer) clearTimeout(serviceHealthToastTimer);
     banner.classList.remove('hidden', 'is-ok', 'is-warning', 'is-error');
-    let titleText = 'Service diagnostics';
-    let message = circuit?.reason || 'A service issue was detected.';
-    let detailText = '';
-    let severity = 'is-warning';
-
-    if (summary) {
-        const cf = summary.cloudflareStatus;
-        const zn = summary.zncaStatus;
-        if (cf !== 'ok') {
-            titleText = 'Cloudflare backend issue';
-            message = 'The nso-webapp backend health check is not healthy. Requests are not being retried automatically.';
-            severity = 'is-error';
-        } else if (['unavailable', 'error', 'degraded'].includes(zn)) {
-            titleText = 'nxapi ZNCA temporarily unavailable';
-            message = summary.zncaDescription || circuit?.reason || 'nxapi reported a service/worker problem. Requests are not being retried automatically.';
-            severity = 'is-error';
-        } else if (zn === 'ok') {
-            titleText = circuit ? 'Transient upstream error detected' : 'Diagnostics healthy';
-            message = circuit
-                ? 'Cloudflare and nxapi health checks are currently healthy. The failed request may have been a transient upstream 5xx; retry it manually.'
-                : 'Cloudflare and nxapi health checks are healthy.';
-            severity = circuit ? 'is-warning' : 'is-ok';
-        }
-        const bits = [`Cloudflare: ${cf}`, `nxapi ZNCA: ${zn}`];
-        if (summary.requestedWorkerCount !== null) bits.push(`matching workers: ${summary.requestedWorkerCount}`);
-        if (summary.zncaHttpStatus) bits.push(`HTTP ${summary.zncaHttpStatus}`);
-        if (summary.traceId) bits.push(`trace ${summary.traceId}`);
-        detailText = bits.join(' · ');
-    } else if (circuit) {
-        titleText = isNxapiZncaProvider(circuit.provider) ? 'nxapi issue detected' : 'Service issue detected';
-        if (circuit.status) detailText = `HTTP ${circuit.status} · diagnostics running…`;
-        severity = 'is-error';
-    }
-
     banner.classList.add(severity);
     if (title) title.textContent = titleText;
     if (text) text.textContent = message;
     if (details) details.textContent = detailText;
+    serviceHealthToastTimer = setTimeout(() => {
+        serviceHealthToastTimer = null;
+        banner.classList.add('hidden');
+    }, SERVICE_HEALTH_TOAST_MS);
+}
+
+function updateServiceHealthBanner() {
+    const summary = serviceHealthSummary();
+    const hasRecentDiagnostic = lastServiceDiagnostics && (Date.now() - lastServiceDiagnosticsAt < 120_000);
+    if (!summary || !hasRecentDiagnostic) {
+        hideServiceHealthWarning();
+        return;
+    }
+
+    const bits = [];
+    if (summary.cloudflareStatus) bits.push(`Cloudflare: ${summary.cloudflareStatus}`);
+    if (summary.zncaStatus) bits.push(`nxapi ZNCA: ${summary.zncaStatus}`);
+    if (summary.requestedWorkerCount !== null) bits.push(`matching workers: ${summary.requestedWorkerCount}`);
+    if (summary.zncaHttpStatus) bits.push(`HTTP ${summary.zncaHttpStatus}`);
+    if (summary.traceId) bits.push(`trace ${summary.traceId}`);
+
+    if (summary.cloudflareStatus !== 'ok') {
+        showServiceHealthWarning(
+            'Cloudflare backend issue',
+            'The nso-webapp backend health check is not healthy. Some features may be temporarily unavailable.',
+            bits.join(' · '),
+            'is-error'
+        );
+        return;
+    }
+
+    if (['unavailable', 'error', 'degraded'].includes(summary.zncaStatus)) {
+        showServiceHealthWarning(
+            'nxapi temporarily unavailable',
+            summary.zncaDescription || 'nxapi ZNCA reported a service or worker problem. The app will try again when appropriate.',
+            bits.join(' · '),
+            'is-error'
+        );
+        return;
+    }
+
+    // A one-off 500 followed by healthy diagnostics is a normal transient. Do not
+    // put a diagnostics window in front of the user for something that recovered.
+    hideServiceHealthWarning();
 }
 
 function syntheticCircuitResponse(circuit) {
     return new Response(JSON.stringify({
         error: 'service_circuit_open',
         nso_error: 'service_circuit_open',
-        error_description: `${circuit.reason} A recent health check/error opened a short circuit breaker to avoid hammering the unavailable service.`,
+        error_description: `${circuit.reason} A recent health check confirmed the dependency is unavailable.`,
         provider: circuit.provider,
         retry_after_ms: Math.max(0, circuit.until - Date.now())
     }), {
@@ -290,7 +295,7 @@ async function runServiceDiagnostics(options = {}) {
     serviceDiagnosticsInFlight = (async () => {
         const result = {
             timestamp: new Date().toISOString(),
-            reason: options.reason || 'manual',
+            reason: options.reason || 'automatic',
             cloudflare: { status: 'unknown' },
             nxapi: { auth: { status: 'not_checked' }, znca: { status: 'not_checked' }, config: { status: 'not_checked' } }
         };
@@ -354,27 +359,22 @@ async function runServiceDiagnostics(options = {}) {
 
         lastServiceDiagnostics = result;
         lastServiceDiagnosticsAt = Date.now();
-        serviceHealthDismissedAt = 0;
 
         const summary = serviceHealthSummary(result);
         if (summary?.cloudflareStatus === 'ok' && summary?.zncaStatus === 'ok') {
-            // A one-off 500 can happen even when health is currently green. Keep a very
-            // short warning circuit so a burst of concurrent UI requests does not hammer it.
-            if (serviceIssueCircuit.provider === 'nxapi-znca') {
-                serviceIssueCircuit.until = Math.min(serviceIssueCircuit.until, Date.now() + 5_000);
-            }
+            clearServiceCircuit('nxapi-znca');
         } else if (summary?.cloudflareStatus === 'ok' && ['unavailable', 'error', 'degraded'].includes(summary?.zncaStatus)) {
             openServiceCircuit('nxapi-znca', summary.zncaDescription || 'nxapi ZNCA health check is not healthy.', summary.zncaHttpStatus || 503, 30_000);
+        } else if (summary?.cloudflareStatus && summary.cloudflareStatus !== 'ok') {
+            openServiceCircuit('cloudflare', 'The nso-webapp backend health check is not healthy.', Number(result.cloudflare?.httpStatus || 503), 15_000);
         }
 
-        console.info('[ServiceDiagnostics]', result);
         updateServiceHealthBanner();
         return result;
     })().finally(() => {
         serviceDiagnosticsInFlight = null;
     });
 
-    updateServiceHealthBanner();
     return serviceDiagnosticsInFlight;
 }
 
@@ -395,26 +395,17 @@ function observeServiceResponse(response, context = {}) {
         const description = data?.error_description || data?.error_message || data?.error || `HTTP ${status}`;
         const looksUnavailable = failureLooksLikeWorkerUnavailable(status, data);
         const isZnca = isNxapiZncaProvider(provider) || context.provider === 'nxapi-znca' || errorCode.startsWith('nxapi_');
-
-        // 406 normally means unsupported_version in nxapi. Do not call that an outage
-        // unless the body explicitly says workers/service are unavailable.
         const isUnsupportedVersion = status === 406 && (errorCode.includes('unsupported_version') || String(description).toLowerCase().includes('unsupported version'));
-        if (isZnca && looksUnavailable && !isUnsupportedVersion) {
-            openServiceCircuit('nxapi-znca', String(description), status || 503, status === 500 ? 15_000 : 30_000);
-            void runServiceDiagnostics({ reason: context.operation || `nxapi HTTP ${status}` });
-        } else if (isZnca && isUnsupportedVersion) {
-            serviceHealthDismissedAt = 0;
-            lastServiceDiagnostics = {
-                status: 'degraded',
-                cloudflare: { status: 'ok' },
-                nxapi: {
-                    auth: { status: 'unknown' },
-                    znca: { status: 'degraded', httpStatus: status, error_description: String(description) },
-                    config: { status: 'unknown' }
-                }
-            };
-            lastServiceDiagnosticsAt = Date.now();
-            void runServiceDiagnostics({ reason: 'nxapi version mismatch', force: true });
+
+        // Do not show anything while diagnostics are running and do not open a
+        // circuit on the raw response alone. A transient 500 should be allowed to
+        // recover. The circuit/warning is only created if diagnostics confirms an
+        // unhealthy dependency.
+        if (isZnca && (looksUnavailable || isUnsupportedVersion)) {
+            void runServiceDiagnostics({
+                reason: context.operation || (isUnsupportedVersion ? 'nxapi version mismatch' : `nxapi HTTP ${status}`),
+                force: isUnsupportedVersion
+            });
         } else if (provider === 'cloudflare' && [500, 502, 503, 504].includes(status)) {
             void runServiceDiagnostics({ reason: context.operation || `Cloudflare HTTP ${status}` });
         }
@@ -430,7 +421,7 @@ function serviceFailureMessage(data, response, fallback) {
     const description = data?.error_description || data?.error_message || data?.error || fallback;
     if (code === 'service_circuit_open') return String(description);
     if ([500, 502, 503, 504].includes(status) || code === 'nxapi_service_unavailable' || code === 'nxapi_upstream_error') {
-        return `${description || fallback} (HTTP ${status}). Diagnostics are running; the failed request was not automatically retried.`;
+        return `${description || fallback} (HTTP ${status}).`;
     }
     return String(description || fallback);
 }
@@ -441,13 +432,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initAuthGate();
     updateRateLimitBanner();
     updateServiceHealthBanner();
-    document.getElementById('runServiceDiagnosticsBtn')?.addEventListener('click', () => {
-        void runServiceDiagnostics({ force: true, reason: 'manual' });
-    });
-    document.getElementById('dismissServiceHealthBtn')?.addEventListener('click', () => {
-        serviceHealthDismissedAt = Date.now();
-        document.getElementById('serviceHealthBanner')?.classList.add('hidden');
-    });
     checkStartupSession();
 });
 

@@ -111,12 +111,36 @@ class WebServiceManager {
         if (response.ok && data?.token?.token) {
             return { token: data.token.token, expiresAt: Number(data.token.expiresAt || 0), source: data.source || 'cache' };
         }
-        if (response.status === 404 && data?.error === 'cache_miss') return { miss: true };
+        if ((response.ok && data?.miss === true) || (response.status === 404 && data?.error === 'cache_miss')) return { miss: true };
         if (response.status === 401 && data?.error === 'broker_session_missing') return { unavailable: true };
         const error = new Error(data?.error_description || data?.error || `Cloudflare token cache failed (HTTP ${response.status}).`);
         error.status = response.status;
         error.code = data?.error || 'broker_cache_error';
         throw error;
+    }
+
+    setLoadingStatus(message = '') {
+        const status = document.querySelector('#gwsNativeLoading .gws-native-loading-status');
+        if (!status) return;
+        const text = String(message || '').trim();
+        status.textContent = text;
+        status.classList.toggle('hidden', !text);
+    }
+
+    waitForRetry(delayMs, signal) {
+        if (signal?.aborted) return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => {
+                signal?.removeEventListener('abort', onAbort);
+                resolve();
+            }, Math.max(0, Number(delayMs || 0)));
+            const onAbort = () => {
+                clearTimeout(timer);
+                signal?.removeEventListener('abort', onAbort);
+                reject(new DOMException('The operation was aborted.', 'AbortError'));
+            };
+            signal?.addEventListener('abort', onAbort, { once: true });
+        });
     }
 
     async requestBrokerGeneratedToken(serviceId, traceId, options = {}) {
@@ -133,49 +157,73 @@ class WebServiceManager {
             signal: options.signal,
             cancelKey: options.cancelKey
         });
-        const startedAt = performance.now();
-        const response = await fetch(`${this.getWorkerUrl()}/api/nso/service/token`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-            credentials: 'include',
-            signal: options.signal,
-            body: JSON.stringify({
-                clientId,
-                serviceId: String(serviceId),
-                coralAccessToken: coralToken,
-                nxapiAccessToken,
-                naId: String(naId),
-                coralUserId,
-                zncaVersion: typeof ZNCA_VERSION === 'string' ? ZNCA_VERSION : undefined,
-                forceFresh: options.forceFresh === true,
-                cancelKey: options.cancelKey || undefined
-            })
-        });
-        if (typeof window.nsoObserveServiceResponse === 'function') {
-            window.nsoObserveServiceResponse(response, { provider: 'nxapi-znca', operation: 'Game service token generation' });
-        }
-        let data = {};
-        try { data = await response.json(); } catch (e) {}
-        if (response.ok && data?.token?.token) {
-            
-            return { token: data.token.token, expiresAt: Number(data.token.expiresAt || 0), source: data.source || 'generated' };
-        }
-        if (response.status === 401 && data?.error === 'broker_session_missing') return { unavailable: true };
-        if (response.status === 401 && data?.error === 'nxapi_invalid_token') {
-            try { nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 }; } catch (e) {}
-        }
-        if (response.status === 429 && typeof parseRetryAfter === 'function' && typeof setRateLimitUntil === 'function') {
-            const until = parseRetryAfter(response.headers.get('Retry-After')) || (Date.now() + 60000);
-            setRateLimitUntil('f2', until);
-        }
-        if (response.status === 499 || data?.error === 'launch_cancelled') {
-            const error = new DOMException('The operation was aborted.', 'AbortError');
+
+        // nxapi occasionally emits an isolated HTTP 500 while a worker is otherwise
+        // healthy. Keep the native loading surface visible and retry that specific
+        // transient once. Other statuses (especially 429/401/406) are never blindly
+        // retried. Background diagnostics are started by nsoObserveServiceResponse.
+        const maxAttempts = 2;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+            const response = await fetch(`${this.getWorkerUrl()}/api/nso/service/token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                credentials: 'include',
+                signal: options.signal,
+                body: JSON.stringify({
+                    clientId,
+                    serviceId: String(serviceId),
+                    coralAccessToken: coralToken,
+                    nxapiAccessToken,
+                    naId: String(naId),
+                    coralUserId,
+                    zncaVersion: typeof ZNCA_VERSION === 'string' ? ZNCA_VERSION : undefined,
+                    forceFresh: options.forceFresh === true,
+                    cancelKey: options.cancelKey || undefined
+                })
+            });
+            if (typeof window.nsoObserveServiceResponse === 'function') {
+                window.nsoObserveServiceResponse(response, { provider: 'nxapi-znca', operation: 'Game service token generation' });
+            }
+
+            let data = {};
+            try { data = await response.json(); } catch (e) {}
+            if (response.ok && data?.token?.token) {
+                this.setLoadingStatus('');
+                return { token: data.token.token, expiresAt: Number(data.token.expiresAt || 0), source: data.source || 'generated' };
+            }
+            if (response.status === 401 && data?.error === 'broker_session_missing') {
+                this.setLoadingStatus('');
+                return { unavailable: true };
+            }
+            if (response.status === 401 && data?.error === 'nxapi_invalid_token') {
+                try { nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 }; } catch (e) {}
+            }
+            if (response.status === 429 && typeof parseRetryAfter === 'function' && typeof setRateLimitUntil === 'function') {
+                const until = parseRetryAfter(response.headers.get('Retry-After')) || (Date.now() + 60000);
+                setRateLimitUntil('f2', until);
+            }
+            if (response.status === 499 || data?.error === 'launch_cancelled') {
+                this.setLoadingStatus('');
+                throw new DOMException('The operation was aborted.', 'AbortError');
+            }
+
+            const shouldRetry500 = response.status === 500 && attempt < maxAttempts;
+            if (shouldRetry500) {
+                this.setLoadingStatus('Retrying…');
+                await this.waitForRetry(1000, options.signal);
+                continue;
+            }
+
+            this.setLoadingStatus('');
+            const error = new Error(data?.error_description || data?.error || `Cloudflare token broker failed (HTTP ${response.status}).`);
+            error.status = response.status;
+            error.code = data?.error || 'broker_generation_error';
             throw error;
         }
-        const error = new Error(data?.error_description || data?.error || `Cloudflare token broker failed (HTTP ${response.status}).`);
-        error.status = response.status;
-        error.code = data?.error || 'broker_generation_error';
-        throw error;
+
+        this.setLoadingStatus('');
+        throw new Error('Could not obtain a GameWebServiceToken.');
     }
 
     async getGameWebServiceTokenCanonical(serviceId, traceId, options = {}) {
@@ -226,7 +274,8 @@ class WebServiceManager {
      * 3. Only on a miss, acquire an in-memory nxapi bearer and let the account DO
      *    single-flight one method-2 generation across every active device.
      * 4. Fall back to the canonical browser path only when the broker session itself
-     *    is unavailable; never retry after an upstream nxapi/Nintendo response.
+     *    is unavailable. An isolated broker/nxapi HTTP 500 gets one bounded retry while
+     *    the native loading screen remains visible; all other failures stay fail-fast.
      */
     async getGameWebServiceToken(serviceId, traceId, forceFresh = false, options = {}) {
         const idStr = String(serviceId);
@@ -361,8 +410,10 @@ class WebServiceManager {
                 ${image}
                 <span class="gws-native-loading-spinner" aria-hidden="true"></span>
                 <strong class="gws-native-loading-title">${this.escapeText(service?.name || 'Game Service')}</strong>
+                <span class="gws-native-loading-status hidden" aria-live="polite"></span>
             </div>`;
         loading.classList.remove('hidden', 'is-complete');
+        this.setLoadingStatus('');
         return loading;
     }
 
@@ -423,6 +474,7 @@ class WebServiceManager {
     markServiceLoaded() {
         const loading = document.getElementById('gwsNativeLoading');
         if (!loading || loading.classList.contains('hidden')) return;
+        this.setLoadingStatus('');
         loading.classList.add('is-complete');
         if (this.loadingFallbackTimer) {
             clearTimeout(this.loadingFallbackTimer);
@@ -465,6 +517,7 @@ class WebServiceManager {
         overlay?.classList.add('hidden');
         document.documentElement.classList.remove('gws-transition-active');
         document.body.classList.remove('gws-transition-active');
+        this.setLoadingStatus('');
         document.getElementById('gwsNativeLoading')?.classList.add('hidden');
     }
 
