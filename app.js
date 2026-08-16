@@ -529,7 +529,140 @@ async function openNintendoOAuth() {
     window.open(oauthUrl, '_blank');
 }
 
-// Navigation Tabs
+// Navigation Tabs & CrewVue-style Lottie Dock Bar
+const DOCK_LOTTIE_CONFIG = {
+    tabs: ['home', 'friends', 'album'],
+    containers: {
+        home: 'dockLottieHome',
+        friends: 'dockLottieFriends',
+        album: 'dockLottieAlbum'
+    },
+    paths: {
+        home: {
+            dark: { on: 'assets/lottie/home_dark_on.json', off: 'assets/lottie/home_dark_off.json' },
+            light: { on: 'assets/lottie/home_light_on.json', off: 'assets/lottie/home_light_off.json' }
+        },
+        friends: {
+            dark: { on: 'assets/lottie/friend_dark_on.json', off: 'assets/lottie/friend_dark_off.json' },
+            light: { on: 'assets/lottie/friend_light_on.json', off: 'assets/lottie/friend_light_off.json' }
+        },
+        album: {
+            dark: { on: 'assets/lottie/album_dark_on.json', off: 'assets/lottie/album_dark_off.json' },
+            light: { on: 'assets/lottie/album_light_on.json', off: 'assets/lottie/album_light_off.json' }
+        }
+    }
+};
+
+let dockLottieCache = {};
+let dockLottiePlayers = {};
+let currentActiveDockTab = 'home';
+
+async function preloadDockLottie() {
+    if (typeof lottie === 'undefined') return;
+    const mode = document.body.classList.contains('dark-theme') ? 'dark' : 'light';
+    const fetches = [];
+    for (const tab of DOCK_LOTTIE_CONFIG.tabs) {
+        for (const m of ['dark', 'light']) {
+            for (const state of ['on', 'off']) {
+                const path = DOCK_LOTTIE_CONFIG.paths[tab][m][state];
+                fetches.push(
+                    fetch(path)
+                        .then(r => r.json())
+                        .then(data => { dockLottieCache[`${tab}_${m}_${state}`] = data; })
+                        .catch(err => console.warn(`[Lottie] Failed to load ${path}:`, err))
+                );
+            }
+        }
+    }
+    await Promise.allSettled(fetches);
+    initDockLottiePlayers();
+}
+
+function getDockLottieData(tab, state) {
+    const mode = document.body.classList.contains('dark-theme') ? 'dark' : 'light';
+    return dockLottieCache[`${tab}_${mode}_${state}`] || dockLottieCache[`${tab}_dark_${state}`];
+}
+
+function initDockLottiePlayers() {
+    if (typeof lottie === 'undefined') return;
+    for (const tab of DOCK_LOTTIE_CONFIG.tabs) {
+        const container = document.getElementById(DOCK_LOTTIE_CONFIG.containers[tab]);
+        if (!container) continue;
+        container.innerHTML = '';
+        const isSelected = tab === currentActiveDockTab;
+        const animData = getDockLottieData(tab, isSelected ? 'on' : 'off');
+        if (!animData) continue;
+
+        try {
+            const player = lottie.loadAnimation({
+                container,
+                renderer: 'svg',
+                loop: false,
+                autoplay: false,
+                animationData: animData
+            });
+            dockLottiePlayers[tab] = { player, state: isSelected ? 'on' : 'off' };
+            player.addEventListener('DOMLoaded', () => {
+                const lastFrame = (player.totalFrames || animData.op || 1) - 1;
+                player.goToAndStop(lastFrame, true);
+            });
+        } catch (e) {
+            console.warn(`[Lottie] Error initializing ${tab}:`, e);
+        }
+    }
+}
+
+function playDockTabAnimation(tab, targetState, animate = true) {
+    if (typeof lottie === 'undefined') return;
+    const container = document.getElementById(DOCK_LOTTIE_CONFIG.containers[tab]);
+    if (!container) return;
+
+    const animData = getDockLottieData(tab, targetState);
+    if (!animData) return;
+
+    if (dockLottiePlayers[tab]?.player) {
+        try { dockLottiePlayers[tab].player.destroy(); } catch (e) {}
+    }
+
+    container.innerHTML = '';
+    const player = lottie.loadAnimation({
+        container,
+        renderer: 'svg',
+        loop: false,
+        autoplay: false,
+        animationData: animData
+    });
+
+    dockLottiePlayers[tab] = { player, state: targetState };
+
+    player.addEventListener('DOMLoaded', () => {
+        const lastFrame = (player.totalFrames || animData.op || 1) - 1;
+        if (animate) {
+            player.goToAndPlay(0, true);
+        } else {
+            player.goToAndStop(lastFrame, true);
+        }
+    });
+
+    if (targetState === 'on') {
+        player.addEventListener('complete', () => {
+            const lastFrame = (player.totalFrames || animData.op || 1) - 1;
+            player.goToAndStop(lastFrame, true);
+        });
+    }
+}
+
+function switchDockTab(tabName) {
+    if (currentActiveDockTab === tabName) return;
+    const prevTab = currentActiveDockTab;
+    currentActiveDockTab = tabName;
+
+    if (prevTab) {
+        playDockTabAnimation(prevTab, 'off', true);
+    }
+    playDockTabAnimation(tabName, 'on', true);
+}
+
 function initNavigation() {
     document.getElementById('logoutBtn').addEventListener('click', logout);
     document.getElementById('openAuthModalBtn').addEventListener('click', showLoginGate);
@@ -542,6 +675,8 @@ function initNavigation() {
             showAppPage(button.dataset.page);
         });
     });
+
+    preloadDockLottie();
 }
 
 function showAppPage(pageName = 'home') {
@@ -550,6 +685,7 @@ function showAppPage(pageName = 'home') {
         button.classList.toggle('active', button.dataset.page === pageName);
     });
     document.getElementById(`page-${pageName}`)?.classList.add('active');
+    switchDockTab(pageName);
     window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
