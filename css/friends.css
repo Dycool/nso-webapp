@@ -1,0 +1,568 @@
+/* Friend settings, add-friend/search flows, webview shell and friend detail views. */
+
+/* Friend Settings Screens (Screenshots 2, 3, 4, 5) */
+.friend-settings-screen { position: fixed; z-index: 220; inset: 0; overflow-y: auto; background: #1b1b1b; color: #dedee0; padding-bottom: 90px; }
+.settings-top-header { position: fixed; top: 0; left: 0; right: 0; height: 60px; display: flex; align-items: center; padding: 0 24px; gap: 16px; background: #1b1b1b; z-index: 10; }
+.settings-back-btn { border: 0; background: transparent; color: #fff; font-size: 20px; cursor: pointer; padding: 4px 8px 4px 0; }
+.settings-top-header h2 { font: 700 18px var(--font-heading); color: #fff; margin: 0; }
+.settings-content-panel { width: min(620px, calc(100vw - 40px)); margin: 80px auto 40px; }
+.settings-menu-list { display: flex; flex-direction: column; }
+.settings-menu-row { display: flex; justify-content: space-between; align-items: center; height: 56px; padding: 0 8px; border: 0; background: transparent; color: #dedee0; font: 500 15px var(--font-heading); text-align: left; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.06); width: 100%; transition: color .15s; }
+.settings-menu-row:hover { color: #fff; }
+.settings-menu-row i { color: #666; font-size: 13px; }
+.settings-subtext { color: #99999e; font-size: 13px; margin-bottom: 30px; line-height: 1.5; }
+.settings-section-divider { border-bottom: 1px solid #333; padding-bottom: 8px; margin-bottom: 30px; }
+.settings-section-divider span { color: #dedee0; font-size: 14px; font-weight: 500; }
+.settings-status-label { color: #dedee0; font-size: 14px; text-align: center; margin: 40px 0; }
+.btn-cyan-action { width: min(320px, 100%); height: 48px; margin: 0 auto; display: block; border-radius: 6px; border: 0; background: #22b8f0; color: #000; font: 700 15px var(--font-heading); cursor: pointer; transition: opacity .15s; }
+.btn-cyan-action:hover { opacity: .9; }
+.settings-toggle-row { display: flex; justify-content: space-between; align-items: center; margin-top: 40px; padding: 0 4px; }
+.toggle-row-copy strong { display: block; color: #dedee0; font-size: 15px; font-weight: 500; margin-bottom: 3px; }
+.toggle-row-copy span { display: block; color: #88888c; font-size: 12px; }
+.native-switch { position: relative; display: inline-block; width: 50px; height: 28px; }
+.native-switch input { opacity: 0; width: 0; height: 0; }
+.native-slider { position: absolute; cursor: pointer; inset: 0; background-color: #444; transition: .25s; border-radius: 28px; }
+.native-slider:before { position: absolute; content: ""; height: 22px; width: 22px; left: 3px; bottom: 3px; background-color: #fff; transition: .25s; border-radius: 50%; }
+.native-switch input:checked + .native-slider { background-color: #22b8f0; }
+.native-switch input:checked + .native-slider:before { transform: translateX(22px); }
+.empty-blocked-text { color: #88888c; font-size: 14px; margin-top: 60px; text-align: center; }
+
+/* Add Friend Screen (Screenshots 1 & 5) */
+.add-friend-panel { width: min(680px, calc(100vw - 40px)); margin: 80px auto 40px; }
+.add-friend-top-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.add-friend-top-card { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 106px; background: #303032; border: 0; border-radius: 9px; color: #dedee0; cursor: pointer; gap: 9px; font: 600 13px var(--font-heading); transition: background .15s; }
+.add-friend-top-card:hover { background: #38383a; }
+.fc-badge-icon { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 26px; border: 1.5px solid #dedee0; border-radius: 4px; font-weight: 700; font-size: 13px; letter-spacing: -0.5px; }
+.add-friend-full-card { display: flex; align-items: center; justify-content: center; height: 52px; background: #303032; border: 0; border-radius: 9px; color: #dedee0; cursor: pointer; width: 100%; gap: 10px; font: 600 14px var(--font-heading); margin-bottom: 36px; transition: background .15s; }
+.add-friend-full-card:hover { background: #38383a; }
+.coral-badge-icon { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1.5px solid #e66012; border-radius: 4px; color: #e66012; font-weight: 700; font-size: 12px; }
+.add-friend-section { margin-bottom: 28px; }
+.add-friend-section h3 { font: 700 14px var(--font-heading); color: #dedee0; margin-bottom: 10px; }
+.add-friend-section p { color: #88888c; font-size: 13px; margin: 0; }
+.sent-requests-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.sent-request-card { display: flex; align-items: center; gap: 14px; padding: 12px 16px; background: #303032; border-radius: 8px; cursor: pointer; transition: background .15s; border: 0; width: 100%; text-align: left; }
+.sent-request-card:hover { background: #38383a; }
+.sent-request-avatar { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
+.sent-request-info strong { display: block; color: #dedee0; font: 700 14px var(--font-heading); }
+.sent-request-info span { display: block; color: #88888c; font-size: 12px; margin-top: 2px; }
+
+/* Sent Friend Request Detail Screen (From Print) */
+.sent-req-detail-screen { position: fixed; z-index: 235; inset: 0; overflow-y: auto; background: #1b1b1b; color: #dedee0; padding-bottom: 90px; }
+.req-detail-top-header { position: fixed; top: 0; left: 0; right: 0; height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; background: #1b1b1b; z-index: 10; }
+.req-detail-back-btn, .req-detail-more-btn { border: 0; background: transparent; color: #fff; font-size: 20px; cursor: pointer; padding: 6px; }
+.req-detail-menu-wrap { position: relative; }
+.req-detail-dropdown { position: absolute; top: calc(100% + 6px); right: 0; min-width: 148px; background: #2d2d30; border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.5); padding: 4px 0; z-index: 50; border: 1px solid rgba(255,255,255,.07); animation: nso-fade-in .12s ease; }
+@keyframes nso-fade-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+.dropdown-item-delete { width: 100%; padding: 12px 18px; border: 0; background: transparent; color: #f05c48; font: 500 14px var(--font-heading); text-align: left; cursor: pointer; transition: background .12s; }
+.dropdown-item-delete:hover { background: rgba(255,255,255,.06); }
+.req-detail-panel { width: min(680px, calc(100vw - 40px)); margin: 70px auto 40px; text-align: left; }
+.req-detail-avatar { width: 86px; height: 86px; border-radius: 50%; object-fit: cover; display: block; margin: 0 auto 10px; }
+.req-detail-panel h2 { font: 700 19px var(--font-heading); color: #dedee0; text-align: center; margin: 0 0 34px; }
+.req-detail-meta-block { margin-bottom: 24px; }
+.req-detail-meta-block strong { display: block; color: #e1e1e3; font: 700 13px var(--font-heading); margin-bottom: 4px; }
+.req-detail-meta-block p { color: #b8b8bc; font-size: 13px; margin: 0; }
+.req-detail-activity-block { margin-top: 32px; }
+.req-detail-activity-block h3 { font: 700 13px var(--font-heading); color: #e1e1e3; margin-bottom: 12px; }
+.req-detail-activity-list { background: #323235; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; }
+.req-activity-item { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,.05); }
+.req-activity-item:last-child { border-bottom: 0; }
+.req-activity-item img { width: 50px; height: 50px; border-radius: 4px; object-fit: cover; }
+.req-activity-item-info strong { display: block; color: #fff; font: 700 13px var(--font-heading); margin-bottom: 3px; }
+.req-activity-item-info span { display: block; color: #00b7ef; font-size: 12px; }
+.req-activity-item-info span.muted { color: #99999e; }
+
+/* Search by Friend Code Screen (Screenshots 2, 3, 4) */
+.fc-search-screen { position: fixed; z-index: 240; inset: 0; background: #1b1b1b; color: #dedee0; display: flex; flex-direction: column; }
+.fc-search-header { height: 60px; display: flex; align-items: center; padding: 0 24px; gap: 16px; background: #1b1b1b; z-index: 10; }
+.fc-search-close-btn { border: 0; background: transparent; color: #fff; font-size: 22px; cursor: pointer; padding: 4px 8px 4px 0; }
+.fc-search-header h2 { font: 700 18px var(--font-heading); color: #fff; margin: 0; }
+.fc-search-panel { width: min(520px, calc(100vw - 40px)); margin: 100px auto 0; text-align: center; }
+.fc-input-box { display: flex; align-items: center; width: 100%; height: 56px; background: #2b2b2d; border-radius: 8px; border: 2px solid transparent; padding: 0 16px; gap: 14px; transition: border-color .2s; }
+.fc-input-box.active-focused { border-color: #22b8f0; }
+.fc-prefix { color: #88888c; font-weight: 700; font-size: 16px; letter-spacing: .5px; }
+.fc-input { flex: 1; background: transparent; border: 0; color: #fff; font: 700 20px var(--font-heading); letter-spacing: 1.5px; outline: none; padding: 0; }
+.fc-input::placeholder { color: #555558; font-weight: 400; }
+.fc-subtext { color: #88888c; font-size: 12px; margin: 12px 0 30px; text-align: center; }
+.btn-fc-search.disabled { background: #2f3b42; color: #5e717c; cursor: not-allowed; }
+.btn-fc-search:not(.disabled) { background: #22b8f0; color: #000; cursor: pointer; }
+.fc-result-sheet { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: min(560px, 100vw); background: #262628; border-radius: 18px 18px 0 0; padding: 18px 24px 34px; text-align: center; box-shadow: 0 -10px 40px rgba(0,0,0,.6); z-index: 30; animation: sheet-slide-up .25s ease-out; }
+@keyframes sheet-slide-up { from { transform: translate(-50%, 100%); } to { transform: translate(-50%, 0); } }
+.fc-sheet-handle { width: 38px; height: 4px; background: #555; border-radius: 2px; margin: 0 auto 16px; }
+.fc-result-avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; margin: 0 auto 10px; display: block; }
+.fc-result-name { color: #dedee0; font: 700 18px var(--font-heading); margin: 0 0 4px; }
+.fc-result-label { display: block; color: #88888c; font-size: 11px; margin-bottom: 2px; }
+.fc-result-code { display: block; color: #dedee0; font-size: 13px; font-weight: 600; margin-bottom: 24px; }
+
+/* In-App Game Web Service Fullscreen Overlay */
+html.webview-active,
+body.webview-active {
+    overflow: hidden !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    touch-action: none;
+}
+
+html.webview-active #homeDock,
+body.webview-active #homeDock {
+    display: none !important;
+}
+
+.inapp-game-webview {
+    position: fixed;
+    z-index: 280;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.inapp-webview-header {
+    height: 52px;
+    min-height: 52px;
+    max-height: 52px;
+    background: #222223;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+    color: #fff;
+    z-index: 2;
+    box-sizing: border-box;
+    flex-shrink: 0;
+}
+
+.inapp-webview-header h2 {
+    font: 700 15px var(--font-heading);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin: 0 14px;
+}
+
+.webview-back-btn, .webview-reload-btn {
+    border: 0;
+    background: transparent;
+    color: #fff;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 6px;
+}
+
+.inapp-webview-frame-wrap {
+    flex: 1 1 auto;
+    width: 100%;
+    height: calc(100% - 52px);
+    max-height: calc(100% - 52px);
+    background: #000;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.inapp-webview-frame-wrap iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+}
+
+@keyframes nso-loading-pulse { from { opacity: .72; } to { opacity: 1; } }
+
+/* Nintendo Switch App APK activity transitions.
+   Values mirror res/anim/anim_cmn_android_transition_*:
+   ease-out path (0.16,1,0.3,1), forward 150 ms offset + 400 ms scale,
+   50/150 ms alpha phases, and 400 ms back transition. */
+@keyframes nso-apk-go-enter-scale {
+    from { transform: scale(.85); }
+    to { transform: scale(1); }
+}
+@keyframes nso-apk-go-enter-alpha {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes nso-apk-go-exit-scale {
+    from { transform: scale(1); }
+    to { transform: scale(1.05); }
+}
+@keyframes nso-apk-go-exit-alpha {
+    from { opacity: 1; }
+    to { opacity: .5; }
+}
+@keyframes nso-apk-back-enter-scale {
+    from { transform: scale(1.1); }
+    to { transform: scale(1); }
+}
+@keyframes nso-apk-back-exit-scale {
+    from { transform: scale(1); }
+    to { transform: scale(.9); }
+}
+@keyframes nso-apk-back-exit-alpha {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+
+/* The home dock is centered with translateX(-50%). Generic activity-scale
+   keyframes overwrite that transform and make the dock jump right. Preserve
+   the centering transform while applying the same APK scale values. */
+@keyframes nso-apk-go-exit-dock-scale {
+    from { transform: translateX(-50%) scale(1); }
+    to { transform: translateX(-50%) scale(1.05); }
+}
+@keyframes nso-apk-back-enter-dock-scale {
+    from { transform: translateX(-50%) scale(1.1); }
+    to { transform: translateX(-50%) scale(1); }
+}
+
+.nso-apk-go-enter {
+    transform-origin: 50% 50%;
+    animation:
+        nso-apk-go-enter-scale 400ms cubic-bezier(.16, 1, .3, 1) 150ms both,
+        nso-apk-go-enter-alpha 50ms linear 200ms both !important;
+    pointer-events: none !important;
+}
+.nso-apk-go-exit {
+    transform-origin: 50% 50%;
+    animation:
+        nso-apk-go-exit-scale 400ms cubic-bezier(.16, 1, .3, 1) 150ms both,
+        nso-apk-go-exit-alpha 150ms linear 200ms both !important;
+    pointer-events: none !important;
+}
+.nso-apk-back-enter {
+    transform-origin: 50% 50%;
+    animation: nso-apk-back-enter-scale 400ms cubic-bezier(.16, 1, .3, 1) both !important;
+    pointer-events: none !important;
+}
+.nso-apk-back-exit {
+    transform-origin: 50% 50%;
+    animation:
+        nso-apk-back-exit-scale 400ms cubic-bezier(.16, 1, .3, 1) both,
+        nso-apk-back-exit-alpha 50ms linear 50ms both !important;
+    pointer-events: none !important;
+}
+
+
+#homeDock.nso-apk-go-exit {
+    transform-origin: 50% 50%;
+    animation:
+        nso-apk-go-exit-dock-scale 400ms cubic-bezier(.16, 1, .3, 1) 150ms both,
+        nso-apk-go-exit-alpha 150ms linear 200ms both !important;
+}
+#homeDock.nso-apk-back-enter {
+    transform-origin: 50% 50%;
+    animation: nso-apk-back-enter-dock-scale 400ms cubic-bezier(.16, 1, .3, 1) both !important;
+}
+.nso-apk-transition-background { z-index: 294 !important; }
+.nso-apk-transition-foreground { z-index: 295 !important; }
+
+html.gws-transition-active,
+body.gws-transition-active {
+    overflow: hidden !important;
+    height: 100% !important;
+}
+
+.game-services-catalog.launch-locked .service-launch-card {
+    pointer-events: none;
+}
+.game-services-catalog.launch-locked .service-launch-card:not(.launching-service) {
+    opacity: .7;
+}
+.service-launch-card button:disabled {
+    cursor: default;
+}
+
+.inapp-webview-frame-wrap {
+    position: relative;
+}
+.gws-native-loading {
+    position: absolute;
+    z-index: 3;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: #111;
+    color: #f3f3f4;
+    opacity: 1;
+    transition: opacity 120ms linear;
+}
+.gws-native-loading.hidden {
+    display: none !important;
+}
+.gws-native-loading.is-complete {
+    opacity: 0;
+    pointer-events: none;
+}
+.gws-native-loading-inner {
+    display: grid;
+    justify-items: center;
+    gap: 15px;
+    padding: 24px;
+    text-align: center;
+}
+.gws-native-loading-icon {
+    width: 76px;
+    height: 76px;
+    border-radius: 18px;
+    object-fit: cover;
+    background: #2a2a2c;
+    box-shadow: 0 8px 26px rgba(0,0,0,.28);
+}
+.gws-native-loading-spinner {
+    width: 26px;
+    height: 26px;
+    border: 3px solid rgba(255,255,255,.24);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: gws-native-spinner 700ms linear infinite;
+}
+.gws-native-loading-title {
+    max-width: min(440px, 80vw);
+    font: 700 15px var(--font-heading);
+}
+.gws-native-loading-status {
+    min-height: 17px;
+    margin-top: -7px;
+    color: rgba(243,243,244,.72);
+    font: 600 12px var(--font-body);
+}
+.gws-native-loading-status.hidden { display: none !important; }
+@keyframes gws-native-spinner { to { transform: rotate(360deg); } }
+
+.op-browser-notification-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 18px;
+    padding: 16px;
+    background: #323235;
+    border-radius: 8px;
+}
+.op-browser-notification-card > div {
+    min-width: 0;
+}
+.op-browser-notification-card b,
+.op-browser-notification-card small {
+    display: block;
+}
+.op-browser-notification-card b {
+    color: #f0f0f2;
+    font: 700 14px var(--font-heading);
+}
+.op-browser-notification-card small {
+    margin-top: 5px;
+    color: #aaaab0;
+    font-size: 12px;
+    line-height: 1.45;
+}
+.op-browser-notification-action {
+    border: 0;
+    border-radius: 999px;
+    padding: 10px 14px;
+    background: #22b8f0;
+    color: #071116;
+    font: 700 12px var(--font-heading);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.op-browser-notification-action:disabled {
+    background: #454549;
+    color: #8a8a90;
+    cursor: default;
+}
+
+@media (max-width: 620px) {
+    .op-browser-notification-card {
+        grid-template-columns: 1fr;
+    }
+    .op-browser-notification-action {
+        justify-self: start;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nso-apk-go-enter,
+    .nso-apk-go-exit,
+    .nso-apk-back-enter,
+    .nso-apk-back-exit {
+        animation-duration: 1ms !important;
+        animation-delay: 0ms !important;
+    }
+}
+
+/* Android-style fade+shift transitions for sub-views */
+@keyframes view-enter {
+    from { opacity: 0; transform: translateX(56px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes view-exit {
+    from { opacity: 1; transform: translateX(0); }
+    to   { opacity: 0; transform: translateX(56px); }
+}
+.view-slide-in {
+    animation: view-enter 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+.view-slide-out {
+    animation: view-exit 0.2s cubic-bezier(0.4, 0, 0.6, 1) forwards;
+    pointer-events: none;
+}
+
+/* Users You've Chatted With view */
+.chatted-users-view { position: fixed; z-index: 225; inset: 0; overflow-y: auto; background: #1b1b1b; color: #dedee0; }
+.chatted-users-header { position: fixed; z-index: 1; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 14px; height: 56px; padding: 0 20px; background: #1b1b1b; }
+.chatted-users-back { border: 0; background: transparent; color: #eee; font-size: 20px; cursor: pointer; padding: 4px; }
+.chatted-users-header h2 { margin: 0; color: #e8e8ea; font: 700 17px var(--font-heading); }
+.chatted-users-body { width: min(700px, calc(100vw - 40px)); margin: 80px auto 100px; }
+.chatted-users-empty { text-align: center; color: #85858b; font-size: 14px; }
+
+/* Read-only friend detail, based on the native app's centered desktop screen. */
+.friend-detail-view { position: fixed; z-index: 220; inset: 0; overflow-y: auto; background: #1b1b1b; color: #d8d8da; }
+
+/* Bottom-tab screens stay mounted while another tab is selected. Reserve the
+   native dock area so restored Add Friend/Friends submenus never sit underneath it. */
+#addFriendView,
+#friendSettingsView,
+#friendSettingsNotifyView,
+#friendSettingsRequestsView,
+#friendSettingsBlockedView,
+.sent-req-detail-screen,
+.chatted-users-view,
+.friend-detail-view {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+    scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom));
+}
+#addFriendView .settings-content-panel,
+.chatted-users-body,
+.friend-detail-panel,
+.req-detail-panel {
+    margin-bottom: calc(108px + env(safe-area-inset-bottom));
+}
+.fc-search-panel {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+}
+.friend-detail-back, .friend-detail-more { position: fixed; top: 17px; border: 0; background: transparent; color: #e4e4e5; font-size: 22px; cursor: pointer; }
+.friend-detail-back { left: 29px; }
+.friend-detail-more { right: 29px; opacity: .9; cursor: pointer; transition: opacity .15s ease, background .15s ease; border-radius: 50%; padding: 4px; display: inline-flex; align-items: center; justify-content: center; }
+.friend-detail-more:hover { opacity: 1; background: rgba(255, 255, 255, 0.08); }
+.friend-detail-panel { width: min(700px, calc(100vw - 40px)); margin: 106px auto 90px; text-align: center; }
+.friend-detail-avatar { display: block; width: 92px; height: 92px; margin: 0 auto 7px; border-radius: 50%; object-fit: cover; }
+.friend-detail-panel h2 { color: #dedee0; font: 700 20px var(--font-heading); }
+.friend-detail-note { margin-top: 2px; color: #aaaab0; font-size: 13px; cursor: pointer; }
+.friend-detail-note i { display: inline-grid; width: 21px; height: 21px; margin-right: 5px; place-items: center; border-radius: 50%; background: #3b3b3d; font-size: 10px; }
+.friend-detail-actions { display: grid; gap: 8px; width: 286px; margin: 29px auto; }
+.friend-detail-actions button { height: 52px; border: 0; border-radius: 5px; background: #38383a; color: #d8d8da; font: 700 14px var(--font-heading); cursor: pointer; transition: background .15s ease, transform .12s ease; }
+.friend-detail-actions button:hover:not(:disabled) { background: #444448; color: #fff; }
+.friend-detail-actions button:active:not(:disabled) { transform: scale(0.98); }
+.friend-detail-actions button:disabled { opacity: 1; cursor: pointer; }
+.friend-detail-actions i { margin-right: 11px; color: #cacace; font-size: 19px; vertical-align: -2px; }
+.friend-detail-presence { margin: 0; padding: 28px 0; border-top: 1px solid #3a3a3b; border-bottom: 1px solid #3a3a3b; color: #b5b5b9; font-size: 13px; }
+.friend-detail-presence.has-current-game { padding: 12px 0; }
+.friend-detail-presence-online-text { color: #1fd46a; font-weight: 700; }
+.friend-detail-presence-offline-text { color: #b5b5b9; }
+.friend-detail-current-game {
+    width: 100%;
+    min-height: 112px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 16px;
+    border: 0;
+    border-radius: 0;
+    background: #3e3e40;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background .13s ease, transform .12s ease;
+}
+.friend-detail-current-game:hover { background: #474749; }
+.friend-detail-current-game:active { background: #4d4d50; transform: scale(.996); }
+.friend-detail-current-game img {
+    width: 82px;
+    height: 82px;
+    flex: 0 0 auto;
+    border-radius: 6px;
+    object-fit: cover;
+    background: #2a2a2c;
+}
+.friend-detail-current-game img.friend-detail-current-game-image-missing { visibility: hidden; }
+.friend-detail-current-game-copy { min-width: 0; display: grid; gap: 5px; }
+.friend-detail-current-game-online { color: #1fd46a; font: 700 12px var(--font-heading); }
+.friend-detail-current-game-copy strong {
+    overflow: hidden;
+    color: #f0f0f2;
+    font: 700 16px var(--font-heading);
+    line-height: 1.24;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.friend-detail-activity { margin-top: 39px; text-align: left; }
+.friend-detail-activity h3 { margin: 0 0 4px; color: #dadade; font: 700 14px var(--font-heading); }
+#friendDetailActivity { min-height: 48px; padding: 0; background: transparent; color: #aaaab0; font-size: 13px; }
+.friend-activity-list { display: flex; flex-direction: column; width: 100%; }
+.friend-activity-row { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid #2e2e30; }
+.friend-activity-row img { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; flex-shrink: 0; background: #2e2e30; }
+.friend-activity-row div { min-width: 0; }
+.friend-activity-row strong { display: block; color: #ffffff; font-size: 14px; font-weight: 700; line-height: 1.3; }
+.friend-activity-row span { display: block; margin-top: 4px; font-size: 13px; line-height: 1.3; }
+.friend-activity-row span.playtime-highlight { color: #00b7ef; font-weight: 500; }
+.friend-activity-row span.playtime-normal { color: #949498; font-weight: 400; }
+
+.friend-detail-meta { margin-top: 28px; text-align: left; display: flex; flex-direction: column; gap: 18px; }
+.friend-meta-item h4 { margin: 0 0 4px; color: #dedee0; font: 700 14px var(--font-heading); }
+.friend-meta-item p { margin: 0; color: #949498; font-size: 14px; line-height: 1.4; }
+.notification-view { position: fixed; z-index: 230; inset: 0; overflow-y: auto; background: #1b1b1b; color: #dedee0; }
+.notification-back { position: fixed; z-index: 1; top: 17px; left: 29px; border: 0; background: transparent; color: #eee; font-size: 22px; cursor: pointer; }
+.notification-panel { width: min(720px, calc(100vw - 40px)); margin: 88px auto 100px; padding-bottom: 30px; }
+.notification-panel h2 { margin: 0 0 24px; font: 700 24px var(--font-heading); }
+.notification-list { display: grid; gap: 2px; overflow: hidden; border-radius: 8px; }
+.notification-item { display: grid; grid-template-columns: 64px 1fr; gap: 15px; min-height: 82px; padding: 12px; background: #313133; }
+.notification-item img { width: 64px; height: 58px; border-radius: 5px; object-fit: cover; background: #444; }
+.notification-item strong, .notification-item span { display: block; }
+.notification-item strong { font-size: 14px; }
+.notification-item p { margin: 5px 0; color: #b8b8bc; font-size: 12px; line-height: 1.4; }
+.notification-item span { color: #85858b; font-size: 11px; }
+
+.profile-view { position: fixed; z-index: 240; inset: 0; overflow-y: auto; background: #1b1b1b; color: #dedee0; }
+.profile-back { position: fixed; z-index: 1; top: 17px; left: 29px; border: 0; background: transparent; color: #eee; font-size: 22px; cursor: pointer; }
+.profile-panel { width: min(520px, calc(100vw - 40px)); margin: 100px auto 100px; padding-bottom: 30px; text-align: center; }
+.profile-panel > img { width: 104px; height: 104px; border-radius: 50%; object-fit: cover; background: #333; }
+.profile-panel h2 { margin-top: 12px; font: 700 24px var(--font-heading); }
+.profile-panel > p { margin-top: 5px; color: #aaaab0; font-size: 13px; letter-spacing: .06em; }
+.profile-membership { display: flex; gap: 10px; width: min(380px, 100%); margin: 34px auto 12px; padding: 17px; align-items: center; border-radius: 7px; background: #303032; color: #d7d7da; text-align: left; font-size: 13px; }
+.profile-membership i { display: grid; width: 25px; height: 25px; place-items: center; border-radius: 50%; background: #e60012; color: #fff; font-size: 11px; }
+.profile-logout { width: min(380px, 100%); height: 52px; border: 0; border-radius: 7px; background: #38383a; color: #f06c78; font: 700 14px var(--font-heading); cursor: pointer; }
+
+/* Game detail bottom sheet */
+.game-sheet-overlay { position: fixed; z-index: 400; inset: 0; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.55); }
+.game-sheet-overlay.hidden { display: none !important; }
+@keyframes sheet-slide-up {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+}
+@keyframes sheet-slide-down {
+    from { transform: translateY(0); }
+    to   { transform: translateY(100%); }
+}
+.game-sheet { position: relative; width: min(480px, 100%); max-height: 70vh; padding: 12px 28px 36px; border-radius: 18px 18px 0 0; background: #2d2d2f; text-align: center; animation: sheet-slide-up 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards; overflow-y: auto; }
+.game-sheet.sheet-closing { animation: sheet-slide-down 0.22s cubic-bezier(0.4, 0, 0.6, 1) forwards; }
+.game-sheet-handle { width: 36px; height: 4px; margin: 0 auto 22px; border-radius: 99px; background: #5a5a5c; }
+.game-sheet-img { display: block; width: 120px; height: 120px; margin: 0 auto 14px; border-radius: 16px; object-fit: cover; background: #3a3a3c; box-shadow: 0 4px 16px rgba(0,0,0,.35); }
+.game-sheet-name { margin: 0 0 16px; color: #e8e8ea; font: 700 16px var(--font-heading); }
+.game-sheet-link { display: inline-flex; align-items: center; gap: 7px; color: #00b7ef; font: 600 14px var(--font-heading); text-decoration: none; transition: opacity .15s ease; }
+.game-sheet-link:hover { opacity: .8; }
+.game-sheet-link i { font-size: 12px; }
+
+/* Make play activity rows clickable */
+.friend-activity-row.clickable { cursor: pointer; transition: background .15s ease; }
+.friend-activity-row.clickable:hover { background: rgba(255,255,255,.04); }
+

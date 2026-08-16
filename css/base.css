@@ -1,0 +1,224 @@
+/* Global page, header, navigation and profile controls. */
+
+/* ==========================================================================
+   Nintendo Switch Online WebApp Modern Styling
+   Design Palette: OLED Dark (#0f1015), Nintendo Red (#e60012), Neon Accents
+   ========================================================================== */
+
+html {
+    /* Keep the page's horizontal geometry identical when GWS launch locks scrolling. */
+    scrollbar-gutter: stable;
+}
+
+:root {
+    --bg-main: #0f1015;
+    --bg-card: #191b24;
+    --bg-card-hover: #212431;
+    --bg-input: #12141c;
+    --border-color: rgba(255, 255, 255, 0.08);
+    
+    --nintendo-red: #e60012;
+    --nintendo-red-hover: #ff1a2d;
+    --accent-blue: #00d2ff;
+    --accent-green: #00e676;
+    --accent-purple: #9c27b0;
+    --accent-orange: #ff9100;
+    
+    --text-primary: #f0f2f5;
+    --text-secondary: #8e95a5;
+    --text-muted: #5c6275;
+    
+    --font-heading: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    
+    --radius-sm: 8px;
+    --radius-md: 14px;
+    --radius-lg: 20px;
+    --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.35);
+    --shadow-red: 0 8px 25px rgba(230, 0, 18, 0.35);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    line-height: 1.5;
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+input,
+textarea {
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+/* Header & Navbar */
+.navbar {
+    background: rgba(25, 27, 36, 0.85);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.nav-container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.logo-icon {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, var(--nintendo-red), #b3000e);
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    color: #fff;
+    box-shadow: var(--shadow-red);
+}
+
+.brand-title {
+    font-family: var(--font-heading);
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+}
+
+.badge-tag {
+    background: rgba(230, 0, 18, 0.15);
+    color: var(--nintendo-red);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    border: 1px solid rgba(230, 0, 18, 0.3);
+}
+
+/* Nav Tabs */
+.nav-tabs {
+    display: flex;
+    gap: 8px;
+    background: var(--bg-input);
+    padding: 4px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+}
+
+.tab-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 8px 18px;
+    font-family: var(--font-heading);
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tab-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.tab-btn.active {
+    background: var(--nintendo-red);
+    color: #fff;
+    box-shadow: var(--shadow-red);
+}
+
+/* User Profile & Controls */
+.user-profile-menu {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.btn-login-trigger {
+    background: var(--nintendo-red);
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-heading);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: var(--shadow-red);
+}
+
+.btn-login-trigger:hover {
+    background: var(--nintendo-red-hover);
+    transform: translateY(-1px);
+}
+
+.avatar-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.avatar-box img {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--nintendo-red);
+}
+
+.user-name {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.btn-logout {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.btn-logout:hover {
+    background: rgba(230, 0, 18, 0.2);
+    color: var(--nintendo-red);
+}
+

@@ -7,13 +7,13 @@
 /**
  * Cross-module localization compatibility bridge.
  *
- * app.js contains legacy feature IIFEs that can execute before the Nintendo
+ * The app scripts contain legacy feature IIFEs that can execute before the Nintendo
  * Switch App localization/parity IIFE. The real tr()/trKey()/trVars() helpers
  * are lexical to that later IIFE, so early callers cannot see them directly.
  *
- * adapters.js is loaded before app.js, making it a safe place to expose small
+ * adapters.js is loaded before the app scripts, making it a safe place to expose small
  * global wrappers. Before localization is ready they fail open to the source
- * string instead of crashing startup; afterwards they delegate to app.js's
+ * string instead of crashing startup; afterwards they delegate to the app's
  * exported localization API.
  */
 (function installNsoI18nBridge(global) {

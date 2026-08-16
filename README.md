@@ -38,7 +38,7 @@ The webapp uses the public `nxapi-znca-api` service with its registered
 application configuration and is not editable by visitors. For local
 development, register a separate public client with the scopes
 `ca:gf ca:er ca:dr` at [nxapi-auth](https://nxapi-auth.fancy.org.uk/oauth/clients)
-and set `window.NXAPI_AUTH_CLIENT_ID` before loading `app.js`.
+and set `window.NXAPI_AUTH_CLIENT_ID` before loading the scripts in `js/`.
 
 Before sign-in, the webapp requires an explicit acknowledgement that the
 Nintendo Account ID token, Coral token, and Coral API traffic are sent to the
@@ -52,7 +52,37 @@ tokens; it never changes `X-znca-Version` underneath an active nxapi/Coral
 context.
 
 For a different nxapi ZNCA deployment, set `window.NXAPI_ZNCA_API_URL` before
-loading `app.js`. The CORS relay must explicitly allow that host.
+loading the scripts in `js/`. The CORS relay must explicitly allow that host.
+
+## Caching and request budget
+
+The browser locally caches app settings, selected language, short-lived Coral read
+results, and image/static assets so repeat navigation normally does not need to hit
+the Worker. Nintendo/Coral and nxapi authentication tokens are never written into
+that response cache. Cached account API data is removed on Sign Out. Nintendo, nxapi,
+authentication, mutation, and game-service API traffic is never placed in a shared
+browser or CDN cache.
+
+Coral request encryption, the Nintendo API call, and response decryption are grouped
+into one browser-to-Worker request when an account broker session is available. The
+Worker does not persist the request-local nxapi OAuth token. Current clients do not send periodic account-broker heartbeats. Normal broker operations
+refresh the lease, stale ephemeral leases expire server-side, and explicit Sign Out
+performs immediate destructive cleanup.
+
+## Frontend structure
+
+The browser app is intentionally split by responsibility without a build step:
+
+- `js/core.js`, `health.js`, `auth.js`, `signin.js` — shared runtime and authentication
+- `js/ui.js` — navigation, view transitions and the authenticated shell
+- `js/coral.js` — Coral API access and response caching
+- `js/album.js`, `friends.js` — feature-specific controllers
+- `js/localization.js` — all localization data and translation logic
+- `js/native.js` — cohesive Nintendo-app parity controller with private state
+- `css/` — `base`, `auth`, `layout`, `shell`, `friends`, `album` and `screens`, kept in cascade order
+
+`services/` remains separate because it owns game-specific WebView orchestration rather than the main app UI.
+
 
 ---
 
@@ -70,18 +100,3 @@ and are not granted under this project's MIT License.
 A software license governs reuse of this project's own code; it does not waive
 or prevent any rights or claims a third party may have in its trademarks,
 copyrighted material, services, or agreements.
-
-## Caching and request budget
-
-The browser locally caches app settings, selected language, short-lived Coral read
-results, and image/static assets so repeat navigation normally does not need to hit
-the Worker. Nintendo/Coral and nxapi authentication tokens are never written into
-that response cache. Cached account API data is removed on Sign Out. Nintendo, nxapi,
-authentication, mutation, and game-service API traffic is never placed in a shared
-browser or CDN cache.
-
-Coral request encryption, the Nintendo API call, and response decryption are grouped
-into one browser-to-Worker request when an account broker session is available. The
-Worker does not persist the request-local nxapi OAuth token. Current clients do not send periodic account-broker heartbeats. Normal broker operations
-refresh the lease, stale ephemeral leases expire server-side, and explicit Sign Out
-performs immediate destructive cleanup.

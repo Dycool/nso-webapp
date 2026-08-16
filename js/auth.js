@@ -1,0 +1,626 @@
+/**
+ * Remembered-session handling, token broker, nxapi auth helpers and Nintendo OAuth.
+ * Kept in original execution order while separating this responsibility from the app shell.
+ */
+
+function checkStartupSession() {
+    // Coral credentials are never kept in persistent browser storage unless the
+    // user has explicitly opted into Remember Me. Migrate one legacy localStorage
+    // session only when that opt-in flag exists, then remove the persistent copy.
+    let stored = sessionStorage.getItem('nso_user_session');
+    const legacy = localStorage.getItem('nso_user_session');
+    if (!stored && legacy && localStorage.getItem('nso_has_remembered_account') === 'true') {
+        stored = legacy;
+        try { sessionStorage.setItem('nso_user_session', legacy); } catch (e) { }
+    }
+    if (legacy) localStorage.removeItem('nso_user_session');
+
+    if (stored) {
+        try {
+            const parsed = JSON.parse(stored);
+            const expiresAt = Number(parsed?.nsoWebapp?.coralExpiresAt || 0);
+            const token = parsed?.result?.webApiServerCredential?.accessToken;
+
+            if (token && expiresAt > Date.now() + 60000) {
+                userSession = parsed;
+                applySessionZncaVersion(parsed);
+                showAuthenticatedUI(parsed);
+                return;
+            }
+        } catch (e) {
+            console.warn('[Startup] Invalid cached session structure:', e);
+        }
+        sessionStorage.removeItem('nso_user_session');
+        userSession = null;
+    }
+
+    showLoginGate();
+    updateRememberedUI();
+}
+
+function hasRememberedAccount() {
+    const rememberedFlag = localStorage.getItem('nso_has_remembered_account') === 'true';
+    const rememberedExpiresAt = Number(localStorage.getItem('nso_remember_expires_at') || 0);
+
+    // New grants carry their absolute server expiry. Legacy grants without a local
+    // expiry are still checked against the server's hard 30-day limit at resume time.
+    if (rememberedFlag && rememberedExpiresAt > 0 && rememberedExpiresAt <= Date.now()) {
+        localStorage.removeItem('nso_has_remembered_account');
+        localStorage.removeItem('nso_remember_expires_at');
+        return false;
+    }
+    return rememberedFlag && (rememberedExpiresAt <= 0 || rememberedExpiresAt > Date.now());
+}
+
+function updateRememberedUI() {
+    const hasRemembered = hasRememberedAccount();
+    const profileForgetBtn = document.getElementById('profileForgetRememberedBtn');
+    if (profileForgetBtn) {
+        profileForgetBtn.classList.toggle('hidden', !hasRemembered);
+    }
+    return hasRemembered;
+}
+
+
+let tokenBrokerHeartbeatTimer = null;
+
+function tokenBrokerClientId() {
+    const key = 'nso_token_broker_client_id';
+    let value = null;
+    try { value = sessionStorage.getItem(key); } catch (e) { }
+    if (!value) {
+        value = crypto.randomUUID().replace(/-/g, '_');
+        try { sessionStorage.setItem(key, value); } catch (e) { }
+    }
+    return value;
+}
+
+window.nsoTokenBrokerClientId = tokenBrokerClientId;
+
+async function startTokenBrokerSession(nintendoAccessToken) {
+    if (!nintendoAccessToken) return null;
+    const response = await fetch(`${WORKER_URL}/api/nso/cache/session/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+            nintendoAccessToken,
+            clientId: tokenBrokerClientId()
+        })
+    });
+    let data = {};
+    try { data = await response.json(); } catch (e) { }
+    if (!response.ok) {
+        const error = new Error(data?.error_description || data?.error || `Token broker session failed (HTTP ${response.status}).`);
+        error.status = response.status;
+        throw error;
+    }
+    return data;
+}
+
+function validBrokerCoralSession(entry, expectedNaId) {
+    const session = entry?.session || entry;
+    const expiresAt = Number(entry?.expiresAt || session?.nsoWebapp?.coralExpiresAt || 0);
+    return Boolean(
+        session?.result?.webApiServerCredential?.accessToken &&
+        expiresAt > Date.now() + 60000 &&
+        (!expectedNaId || String(session?.nsoWebapp?.naId || '') === String(expectedNaId))
+    );
+}
+
+let nxapiLoginWarmPromise = null;
+
+async function warmNxapiForLogin() {
+    if (nxapiLoginWarmPromise) return nxapiLoginWarmPromise;
+    nxapiLoginWarmPromise = getNxapiAccessToken();
+    try {
+        return await nxapiLoginWarmPromise;
+    } finally {
+        nxapiLoginWarmPromise = null;
+    }
+}
+
+async function generateCoralViaTokenBroker({ idToken, naId, language, country, birthday }) {
+    await prepareNxapi();
+    bindNxapiCoralContext(naId, BUNDLED_ZNCA_VERSION);
+    // nxapi authentication/config are warmed as soon as the user explicitly accepts
+    // the disclosure, usually while Nintendo sign-in is open in the other tab.
+    const nxapiAccessToken = await warmNxapiForLogin();
+    const response = await fetch(`${WORKER_URL}/api/nso/cache/coral/get-or-create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+            clientId: tokenBrokerClientId(),
+            idToken,
+            nxapiAccessToken,
+            naId,
+            language,
+            country,
+            birthday,
+            zncaVersion: ZNCA_VERSION
+        })
+    });
+    observeServiceResponse(response, { provider: 'nxapi-znca', operation: 'Coral token broker' });
+    let data = {};
+    try { data = await response.json(); } catch (e) { }
+    if (response.status === 429) {
+        const until = parseRetryAfter(response.headers.get('Retry-After')) || (Date.now() + 60000);
+        setRateLimitUntil('f1', until);
+    }
+    if (response.status === 401 && data?.error === 'nxapi_invalid_token') {
+        clearNxapiAuthSession();
+    }
+    if (!response.ok || !validBrokerCoralSession(data?.coral, naId)) {
+        const message = serviceFailureMessage(data, response, `Cloudflare token broker could not create Coral session`);
+        throw new AuthStageError(
+            data?.error === 'nxapi_rate_limited' ? 'NXAPI_F_METHOD_1' : 'CORAL_ACCOUNT_LOGIN',
+            message,
+            null,
+            response.status
+        );
+    }
+    return data.coral.session;
+}
+
+// Broker operations themselves refresh the ephemeral lease. A periodic keepalive
+// would spend one Worker request + one Durable Object request (and storage/alarm
+// writes) just to keep memory warm, while Cloudflare may evict an idle DO anyway.
+// Keep the route server-side for older clients, but current clients do no background
+// broker heartbeat at all.
+function startTokenBrokerHeartbeat() {
+    stopTokenBrokerHeartbeat();
+}
+
+function stopTokenBrokerHeartbeat() {
+    if (tokenBrokerHeartbeatTimer) clearInterval(tokenBrokerHeartbeatTimer);
+    tokenBrokerHeartbeatTimer = null;
+}
+
+function releaseTokenBrokerSession(options = {}) {
+    stopTokenBrokerHeartbeat();
+    const payload = JSON.stringify({ clientId: tokenBrokerClientId() });
+    return fetch(`${WORKER_URL}/api/nso/cache/session/release`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: payload,
+        keepalive: options.keepalive === true
+    }).catch(() => { });
+}
+
+// Do not spend a Worker/DO request on ordinary pagehide/refresh. Ephemeral leases
+// expire server-side and explicit Sign Out still performs destructive cleanup.
+
+function nxapiClientId() {
+    return NXAPI_AUTH_CLIENT_ID.trim();
+}
+
+function hasNxapiConsent() {
+    return document.getElementById('nxapiConsentCheckbox')?.checked === true;
+}
+
+async function prepareNxapi() {
+    if (!hasNxapiConsent()) {
+        throw new AuthStageError('NXAPI_AUTH', 'Please accept the nxapi third-party service disclosure before continuing.');
+    }
+    // Do not put nxapi discovery/config on the critical login path. It is warmed
+    // after explicit consent and only awaited if the Coral broker actually misses.
+}
+
+function throwIfAborted(signal) {
+    if (!signal?.aborted) return;
+    throw new DOMException('The operation was aborted.', 'AbortError');
+}
+
+async function proxyFetch(targetUrl, options = {}) {
+    throwIfAborted(options.signal);
+    const provider = serviceProviderForTarget(targetUrl);
+    const circuit = currentServiceCircuit(provider);
+    if (circuit) return syntheticCircuitResponse(circuit);
+
+    const proxyPayload = {
+        targetUrl: targetUrl,
+        method: options.method || 'GET',
+        headers: options.headers || {}
+    };
+    if (options.cancelKey) proxyPayload.cancelKey = String(options.cancelKey);
+    if (options.bodyBase64) {
+        proxyPayload.dataBase64 = options.bodyBase64;
+    } else {
+        proxyPayload.data = options.body || null;
+    }
+
+    try {
+        const response = await fetch(`${WORKER_URL}/api/nso/proxy`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(proxyPayload),
+            signal: options.signal
+        });
+        observeServiceResponse(response, {
+            provider,
+            operation: options.diagnosticOperation || `${provider} ${options.method || 'GET'}`
+        });
+        return response;
+    } catch (error) {
+        if (error?.name !== 'AbortError') {
+            void runServiceDiagnostics({ reason: `Cloudflare proxy transport failure for ${provider}` });
+        }
+        throw error;
+    }
+}
+
+function nxapiUrl(path) {
+    return `${NXAPI_ZNCA_API_URL}/${path.replace(/^\//, '')}`;
+}
+
+const NXAPI_AUTH_METADATA_CACHE_KEY = 'nso_nxapi_auth_metadata_v1';
+const NXAPI_AUTH_METADATA_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function readCachedNxapiAuthMetadata() {
+    try {
+        const record = JSON.parse(localStorage.getItem(NXAPI_AUTH_METADATA_CACHE_KEY) || 'null');
+        if (!record || Number(record.expiresAt || 0) <= Date.now()) return null;
+        const endpoint = String(record.tokenEndpoint || '');
+        const url = new URL(endpoint);
+        if (url.protocol !== 'https:' || !url.hostname.endsWith('fancy.org.uk')) return null;
+        return { token_endpoint: endpoint };
+    } catch { return null; }
+}
+
+function writeCachedNxapiAuthMetadata(metadata) {
+    try {
+        const endpoint = String(metadata?.token_endpoint || '');
+        if (!endpoint) return;
+        localStorage.setItem(NXAPI_AUTH_METADATA_CACHE_KEY, JSON.stringify({
+            tokenEndpoint: endpoint,
+            expiresAt: Date.now() + NXAPI_AUTH_METADATA_MAX_AGE_MS
+        }));
+    } catch { }
+}
+
+/**
+ * Single-flight in-memory nxapi token acquisition adhering strictly to public terms.
+ * Never persists nxapi tokens to storage.
+ */
+async function getNxapiAccessToken(options = {}) {
+    throwIfAborted(options.signal);
+    const rateLimitUntil = getRateLimitUntil('auth');
+    if (rateLimitUntil > Date.now()) {
+        const timeStr = new Date(rateLimitUntil).toLocaleTimeString();
+        const remainingSec = Math.ceil((rateLimitUntil - Date.now()) / 1000);
+        throw new AuthStageError(
+            'NXAPI_AUTH',
+            `nxapi authentication temporarily rate-limited. Retry after ${timeStr} (${remainingSec}s remaining).`
+        );
+    }
+
+    // Reuse valid in-memory token (10-second safety margin)
+    if (nxapiAuthSession.accessToken && nxapiAuthSession.expiresAt > Date.now() + 10000) {
+        return nxapiAuthSession.accessToken;
+    }
+
+    // Single-flight deduplication
+    if (nxapiTokenPromise) {
+        return nxapiTokenPromise;
+    }
+
+    nxapiTokenPromise = (async () => {
+        const clientId = nxapiClientId();
+        if (!clientId) {
+            throw new AuthStageError('NXAPI_AUTH', 'Enter an nxapi-auth public client ID before signing in.');
+        }
+
+        if (!nxapiAuthMetadata) nxapiAuthMetadata = readCachedNxapiAuthMetadata();
+
+        if (!nxapiAuthMetadata) {
+            const apiOrigin = new URL(NXAPI_ZNCA_API_URL).origin;
+            const protectedResourceResp = await proxyFetch(`${apiOrigin}/.well-known/oauth-protected-resource`, {
+                headers: { Accept: 'application/json' },
+                signal: options.signal,
+                cancelKey: options.cancelKey
+            });
+            const protectedResource = await protectedResourceResp.json().catch(() => ({}));
+            if (!protectedResourceResp.ok || !protectedResource.authorization_servers?.[0]) {
+                throw new AuthStageError('NXAPI_AUTH', protectedResource.error_description || 'Could not discover nxapi authentication metadata.');
+            }
+
+            const authorizationServer = new URL(protectedResource.authorization_servers[0]);
+            const authorizationMetadataResp = await proxyFetch(
+                `${authorizationServer.origin}/.well-known/oauth-authorization-server`,
+                {
+                    headers: { Accept: 'application/json' },
+                    signal: options.signal,
+                    cancelKey: options.cancelKey
+                }
+            );
+            nxapiAuthMetadata = await authorizationMetadataResp.json().catch(() => ({}));
+            if (!authorizationMetadataResp.ok || !nxapiAuthMetadata.token_endpoint) {
+                throw new AuthStageError('NXAPI_AUTH', nxapiAuthMetadata.error_description || 'Could not discover the nxapi token endpoint.');
+            }
+            writeCachedNxapiAuthMetadata(nxapiAuthMetadata);
+        }
+
+        const isRefresh = Boolean(nxapiAuthSession.refreshToken);
+        const tokenRequest = isRefresh ? {
+            grant_type: 'refresh_token',
+            client_id: clientId,
+            refresh_token: nxapiAuthSession.refreshToken
+        } : {
+            grant_type: 'client_credentials',
+            client_id: clientId,
+            scope: NXAPI_AUTH_SCOPE
+        };
+
+        const tokenResp = await proxyFetch(nxapiAuthMetadata.token_endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                Accept: 'application/json'
+            },
+            body: new URLSearchParams(tokenRequest).toString(),
+            signal: options.signal,
+            cancelKey: options.cancelKey
+        });
+
+        if (tokenResp.status === 429) {
+            const retryAfterHeader = tokenResp.headers.get('Retry-After');
+            const until = parseRetryAfter(retryAfterHeader) || (Date.now() + 60000);
+            setRateLimitUntil('auth', until);
+            const timeStr = new Date(until).toLocaleTimeString();
+            throw new AuthStageError('NXAPI_AUTH', `nxapi authentication rate-limited (HTTP 429). Retry after ${timeStr}.`, null, 429);
+        }
+
+        let tokenData = {};
+        try {
+            tokenData = await tokenResp.json();
+        } catch (e) { }
+
+        if (!tokenResp.ok || !tokenData.access_token) {
+            if (isRefresh) {
+                clearNxapiAuthSession();
+            }
+            const errMsg = tokenData.error_description || tokenData.error || `nxapi authentication failed (HTTP ${tokenResp.status}).`;
+            throw new AuthStageError('NXAPI_AUTH', errMsg, null, tokenResp.status);
+        }
+
+        nxapiAuthSession = {
+            accessToken: tokenData.access_token,
+            expiresAt: Date.now() + Math.max(1, Number(tokenData.expires_in || 300)) * 1000,
+            refreshToken: tokenData.refresh_token || nxapiAuthSession.refreshToken || null,
+            coralNaId: nxapiAuthSession.coralNaId || null,
+            zncaVersion: nxapiAuthSession.zncaVersion || activeZncaVersion()
+        };
+
+        return nxapiAuthSession.accessToken;
+    })();
+
+    try {
+        return await nxapiTokenPromise;
+    } finally {
+        nxapiTokenPromise = null;
+    }
+}
+
+async function nxapiFetch(path, options = {}) {
+    throwIfAborted(options.signal);
+    const token = await getNxapiAccessToken({ signal: options.signal, cancelKey: options.cancelKey });
+    const response = await proxyFetch(nxapiUrl(path), {
+        ...options,
+        headers: {
+            'X-znca-Client-Version': NXAPI_CLIENT_VERSION,
+            'X-znca-Platform': ZNCA_PLATFORM,
+            'X-znca-Version': activeZncaVersion(),
+            Authorization: `Bearer ${token}`,
+            ...(options.headers || {})
+        }
+    });
+
+    if (response.status === 401) {
+        clearNxapiAuthSession();
+    }
+
+    return response;
+}
+
+// Do not dynamically change X-znca-Version after nxapi/Coral authentication.
+// nxapi associates protected API use with one Coral user/context; changing the
+// app version while reusing that context causes `X-znca-Version ... does not match token`.
+// Version changes therefore happen only when a brand-new Coral session is created.
+
+async function nxapiGenerateF(method, token, userData = {}, requestOptions = {}) {
+    if (userData?.na_id) bindNxapiCoralContext(userData.na_id, activeZncaVersion());
+    // Keep f-generation on the proven nxapi-auth path. The Worker already relays
+    // these requests, so adding a second Worker-owned OAuth client path only adds
+    // another failure mode without making the remote attestation itself faster.
+    const response = await nxapiFetch('f', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ hash_method: String(method), token, ...userData }),
+        signal: requestOptions.signal,
+        cancelKey: requestOptions.cancelKey
+    });
+
+    let data = {};
+    try {
+        data = await response.json();
+    } catch (e) { }
+
+    if (!response.ok || !data.f || !data.request_id || !Number.isFinite(Number(data.timestamp))) {
+        if (nxapiVersionContextMismatch(response.status, data)) clearNxapiAuthSession();
+        const errorMsg = serviceFailureMessage(data, response, 'nxapi did not return a complete attestation result.');
+        if (response.status === 429 || errorMsg.toLowerCase().includes('too many attempts') || errorMsg.toLowerCase().includes('rate limit')) {
+            const retryAfterHeader = response.headers.get('Retry-After');
+            const until = parseRetryAfter(retryAfterHeader) || (Date.now() + 60000);
+            setRateLimitUntil(method === 1 ? 'f1' : 'f2', until);
+            const timeStr = new Date(until).toLocaleTimeString();
+            const sec = Math.ceil((until - Date.now()) / 1000);
+            throw new AuthStageError(
+                'NXAPI_AUTH',
+                `nxapi authentication temporarily rate-limited. Retry after ${timeStr} (${sec}s remaining).`,
+                null,
+                429
+            );
+        }
+        const stage = method === 1 ? 'NXAPI_F_METHOD_1' : 'NXAPI_F_METHOD_2';
+        throw new AuthStageError(stage, errorMsg, null, response.status);
+    }
+    return { f: data.f, timestamp: Number(data.timestamp), requestId: data.request_id };
+}
+
+async function nxapiEncryptRequest(url, bearerToken, body, requestOptions = {}) {
+    if (userSession?.nsoWebapp?.naId) bindNxapiCoralContext(userSession.nsoWebapp.naId, activeZncaVersion());
+    const response = await nxapiFetch('encrypt-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ url, token: bearerToken || null, data: body }),
+        signal: requestOptions.signal,
+        cancelKey: requestOptions.cancelKey
+    });
+    let data = {};
+    try {
+        data = await response.json();
+    } catch (e) { }
+
+    if (!response.ok || !data.data) {
+        if (nxapiVersionContextMismatch(response.status, data)) clearNxapiAuthSession();
+        const errorMsg = serviceFailureMessage(data, response, 'nxapi request encryption failed.');
+        if (response.status === 429 || errorMsg.toLowerCase().includes('too many attempts') || errorMsg.toLowerCase().includes('rate limit')) {
+            const retryAfterHeader = response.headers.get('Retry-After');
+            const until = parseRetryAfter(retryAfterHeader) || (Date.now() + 60000);
+            setRateLimitUntil('encrypt', until);
+            const timeStr = new Date(until).toLocaleTimeString();
+            const sec = Math.ceil((until - Date.now()) / 1000);
+            throw new AuthStageError(
+                'NXAPI_AUTH',
+                `nxapi request encryption temporarily rate-limited. Retry after ${timeStr} (${sec}s remaining).`,
+                null,
+                429
+            );
+        }
+        throw new AuthStageError('NXAPI_ENCRYPT_ACCOUNT_LOGIN', errorMsg, null, response.status);
+    }
+    // The API returns base64url; the existing binary proxy accepts standard base64.
+    return data.data.replace(/-/g, '+').replace(/_/g, '/');
+}
+
+async function nxapiDecryptResponse(encryptedBase64, requestOptions = {}) {
+    if (userSession?.nsoWebapp?.naId) bindNxapiCoralContext(userSession.nsoWebapp.naId, activeZncaVersion());
+    const response = await nxapiFetch('decrypt-response', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'text/plain' },
+        body: JSON.stringify({ data: encryptedBase64 }),
+        signal: requestOptions.signal,
+        cancelKey: requestOptions.cancelKey
+    });
+    const data = await response.text();
+    if (!response.ok) {
+        if (nxapiVersionContextMismatch(response.status, data)) clearNxapiAuthSession();
+        if (response.status === 429 || data.toLowerCase().includes('too many attempts') || data.toLowerCase().includes('rate limit')) {
+            const retryAfterHeader = response.headers.get('Retry-After');
+            const until = parseRetryAfter(retryAfterHeader) || (Date.now() + 60000);
+            setRateLimitUntil('decrypt', until);
+            const timeStr = new Date(until).toLocaleTimeString();
+            const sec = Math.ceil((until - Date.now()) / 1000);
+            throw new AuthStageError(
+                'NXAPI_AUTH',
+                `nxapi response decryption temporarily rate-limited. Retry after ${timeStr} (${sec}s remaining).`,
+                null,
+                429
+            );
+        }
+        throw new AuthStageError('NXAPI_DECRYPT_ACCOUNT_LOGIN', data || 'nxapi response decryption failed.', null, response.status);
+    }
+    return data;
+}
+
+function arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
+}
+
+async function parseCoralResponse(response, requestOptions = {}) {
+    throwIfAborted(requestOptions.signal);
+    const buffer = await response.arrayBuffer();
+    const text = new TextDecoder().decode(buffer);
+    const trimmed = text.trimStart();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            // Some Coral encrypted responses are labelled application/json.
+        }
+    }
+    const encryptedBase64 = arrayBufferToBase64(buffer);
+    const decrypted = await nxapiDecryptResponse(encryptedBase64, requestOptions);
+    return JSON.parse(decrypted);
+}
+
+// PKCE & State Generator (Alphanumeric safe for Nintendo Account)
+function generateRandomString(length = 50) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-';
+    let result = '';
+    const randomValues = new Uint8Array(length);
+    crypto.getRandomValues(randomValues);
+    for (let i = 0; i < length; i++) {
+        result += chars[randomValues[i] % chars.length];
+    }
+    return result;
+}
+
+async function generatePKCE() {
+    const verifier = generateRandomString(50);
+    const encoder = new TextEncoder();
+    const data = encoder.encode(verifier);
+    const hash = await crypto.subtle.digest('SHA-256', data);
+
+    let binary = '';
+    const bytes = new Uint8Array(hash);
+    for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    const challenge = btoa(binary)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+
+    return { verifier, challenge };
+}
+
+function userFacingErrorMessage(error, fallbackKey = 'Error_Dialog_Message_Unknown_Error') {
+    const message = String(error?.message || '');
+    const code = String(error?.code || '');
+    const status = Number(error?.status || 0);
+    if (status === 429 || code.includes('rate_limit') || /rate.?limit/i.test(message)) return tr('nxapi is temporarily rate-limited. Please try again later.');
+    if (status === 406 || code === 'nxapi_unsupported_version' || /no matching workers/i.test(message)) return tr('nxapi is temporarily unavailable. Please try again later.');
+    return trKey(fallbackKey);
+}
+
+async function openNintendoOAuth() {
+    try {
+        await prepareNxapi();
+    } catch (e) {
+        alert(userFacingErrorMessage(e, 'Error_Dialog_Message_Login_Failed'));
+        return;
+    }
+
+    const { verifier, challenge } = await generatePKCE();
+    const state = generateRandomString(50);
+
+    localStorage.setItem('nso_pkce_verifier', verifier);
+    localStorage.setItem('nso_auth_state', state);
+
+    // EXACT 1:1 nxapi Coral auth scope. Do not request user.mii here: Coral
+    // authentication expects the smaller Nintendo Account token scope.
+    const oauthUrl = `https://accounts.nintendo.com/connect/1.0.0/authorize?state=${state}&redirect_uri=npf71b963c1b7b6d119%3A%2F%2Fauth&client_id=71b963c1b7b6d119&scope=openid+user+user.birthday+user.screenName&response_type=session_token_code&session_token_code_challenge=${challenge}&session_token_code_challenge_method=S256&theme=login_form`;
+
+    window.open(oauthUrl, '_blank');
+}
+
+// Navigation Tabs & CrewVue-style Lottie Dock Bar

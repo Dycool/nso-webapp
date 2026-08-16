@@ -1,0 +1,341 @@
+/* Login gate and authentication workflow. */
+
+/* Full-Screen Login Gate */
+.login-gate {
+    min-height: calc(100vh - 65px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: radial-gradient(circle at center, rgba(230, 0, 18, 0.12) 0%, transparent 70%);
+}
+
+.login-gate-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    width: 100%;
+    max-width: 580px;
+    padding: 36px;
+    box-shadow: var(--shadow-card);
+    text-align: center;
+}
+
+.login-logo {
+    width: 64px;
+    height: 64px;
+    background: linear-gradient(135deg, var(--nintendo-red), #b3000e);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    color: #fff;
+    margin: 0 auto 20px auto;
+    box-shadow: var(--shadow-red);
+}
+
+.login-gate-card h2 {
+    font-family: var(--font-heading);
+    font-size: 26px;
+    margin-bottom: 8px;
+}
+
+.login-gate-card p {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 28px;
+}
+
+.nxapi-disclosure {
+    margin: 20px 0;
+    padding: 0;
+    overflow: hidden;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.5;
+    text-align: left;
+    transition: border-color .16s ease, box-shadow .16s ease;
+}
+
+.nxapi-disclosure-copy { padding: 14px 15px 12px; }
+.nxapi-disclosure-copy > strong {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--text-primary);
+    font: 700 14px var(--font-heading);
+}
+.nxapi-disclosure-copy p {
+    margin: 0 !important;
+    color: var(--text-secondary) !important;
+    font-size: 12px !important;
+    line-height: 1.55;
+}
+.nxapi-disclosure a { color: var(--nintendo-red); }
+.nxapi-help-link {
+    display: inline-block;
+    margin-top: 8px;
+    font-weight: 600;
+    text-decoration: none;
+}
+.nxapi-help-link:hover { text-decoration: underline; }
+
+.nxapi-consent-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 46px;
+    padding: 10px 15px;
+    background: var(--bg-input);
+    border-top: 1px solid var(--border-color);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+.nxapi-consent-row input {
+    width: 17px;
+    height: 17px;
+    margin: 0;
+    flex: 0 0 auto;
+    accent-color: var(--nintendo-red);
+}
+.nxapi-consent-row span { font-size: 12px; font-weight: 600; }
+.nxapi-disclosure.needs-consent {
+    border-color: rgba(230,0,18,.62);
+    box-shadow: 0 0 0 3px rgba(230,0,18,.10);
+}
+
+.auth-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 24px;
+    text-align: left;
+}
+
+.step-box {
+    display: flex;
+    gap: 14px;
+    background: var(--bg-input);
+    padding: 16px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+}
+
+.step-box span {
+    width: 28px;
+    height: 28px;
+    background: var(--nintendo-red);
+    color: #fff;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.btn-nintendo-oauth {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--nintendo-red);
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    margin-top: 8px;
+    box-shadow: var(--shadow-red);
+}
+
+.step-box textarea,
+.step-box input {
+    width: 100%;
+    height: 75px;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    padding: 8px;
+    font-family: monospace;
+    font-size: 12px;
+    margin-top: 8px;
+    resize: none;
+}
+
+.step-box input {
+    height: 36px;
+}
+
+.btn-paste-token {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 9px;
+    padding: 7px 11px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.rate-limit-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: rgba(255, 152, 0, 0.15);
+    border: 1px solid rgba(255, 152, 0, 0.45);
+    color: #ffb74d;
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    animation: nso-pulse 2s infinite ease-in-out;
+}
+
+@keyframes nso-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.75; }
+}
+
+/* Background diagnostics warning toast. It only appears after a health check
+   confirms a dependency problem, and auto-dismisses without affecting layout. */
+.service-health-banner {
+    position: fixed;
+    z-index: 5200;
+    top: max(74px, calc(env(safe-area-inset-top) + 62px));
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(560px, calc(100vw - 28px));
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 11px;
+    padding: 11px 13px;
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 13px;
+    background: rgba(30,32,42,.97);
+    box-shadow: 0 12px 32px rgba(0,0,0,.34);
+    backdrop-filter: blur(16px);
+    animation: service-health-toast-in 160ms ease-out both;
+}
+.service-health-banner.hidden { display: none !important; }
+.service-health-banner.is-error { border-color: rgba(255,91,91,.48); }
+.service-health-banner.is-warning { border-color: rgba(255,183,77,.45); }
+.service-health-icon { color: #ffb74d; font-size: 17px; }
+.service-health-banner.is-error .service-health-icon { color: #ff6b6b; }
+.service-health-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.service-health-copy strong { color: var(--text-primary); font: 700 13px var(--font-heading); }
+.service-health-copy span { color: var(--text-secondary); font-size: 12px; line-height: 1.35; }
+.service-health-copy small { color: var(--text-muted); font-size: 10px; overflow-wrap: anywhere; }
+@keyframes service-health-toast-in {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 640px) {
+    .service-health-banner { top: max(66px, calc(env(safe-area-inset-top) + 58px)); }
+}
+
+
+
+
+.remember-me-option {
+    margin: 16px 0 20px;
+    padding: 12px 14px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    text-align: left;
+}
+
+.remember-me-option label {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.remember-me-option input {
+    margin-top: 4px;
+    flex-shrink: 0;
+}
+
+.remember-me-option span {
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.remember-me-option small {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 11px;
+    margin-top: 2px;
+}
+
+.btn-submit-gate {
+    width: 100%;
+    background: var(--nintendo-red);
+    color: #fff;
+    border: none;
+    padding: 14px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-heading);
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    box-shadow: var(--shadow-red);
+    transition: all 0.2s ease;
+}
+
+.btn-submit-gate:hover:not(:disabled) {
+    background: var(--nintendo-red-hover);
+    transform: translateY(-1px);
+}
+
+.btn-submit-gate:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+
+/* A remembered account never gets its own login-card UI. If its cached Coral
+   session expired, the normal Sign In flow reuses the remembered Nintendo
+   session and shows only the nxapi disclosure needed to refresh Coral. */
+#loginWorkflow.remembered-consent-only .auth-steps,
+#loginWorkflow.remembered-consent-only .remember-me-option {
+    display: none !important;
+}
+
+.profile-forget-remembered {
+    width: min(380px, 100%);
+    height: 44px;
+    border: 1px solid rgba(240, 108, 120, 0.4);
+    border-radius: 7px;
+    background: transparent;
+    color: #f06c78;
+    font: 600 13px var(--font-heading);
+    cursor: pointer;
+    margin-bottom: 10px;
+    transition: background 0.15s ease;
+}
+
+.profile-forget-remembered:hover {
+    background: rgba(240, 108, 120, 0.15);
+}
+
