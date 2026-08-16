@@ -687,10 +687,108 @@ function initNavigation() {
 
 // Tab Stack State Management
 const navTabStacks = {
-    home: 'home', // 'home' | 'profile' | 'notifications'
-    friends: 'list', // 'list' | 'detail'
-    album: 'album' // 'album'
+    home: 'home', // Legacy state used by older handlers. Persistent views are tracked separately below.
+    friends: 'list',
+    album: 'album'
 };
+
+// Nintendo Switch App-style bottom-tab state permanence. Each bottom tab owns its
+// own overlay stack. Switching tabs suspends the currently visible overlays
+// without destroying their DOM/data/scroll state, and returning to that tab
+// restores the exact screens that were left open.
+let activeAppTab = 'home';
+const tabViewSnapshots = { home: [], friends: [], album: [] };
+const tabBaseScroll = { home: 0, friends: 0, album: 0 };
+const tabViewScroll = new Map();
+const PERSISTENT_VIEW_SELECTOR = [
+    '#profileView',
+    '#notificationView',
+    '#friendDetailView',
+    '.friend-settings-screen',
+    '.sent-req-detail-screen',
+    '.fc-search-screen',
+    '.chatted-users-view',
+    '.op-screen'
+].join(',');
+
+function validAppTab(tab) {
+    return ['home', 'friends', 'album'].includes(tab) ? tab : 'home';
+}
+
+function persistentViewOwner(view) {
+    if (!view) return activeAppTab;
+    return validAppTab(view.dataset.nsoOwnerTab || activeAppTab);
+}
+
+function assignPersistentViewOwner(view, owner = activeAppTab) {
+    if (!view || !view.matches?.(PERSISTENT_VIEW_SELECTOR)) return;
+    view.dataset.nsoOwnerTab = validAppTab(owner);
+}
+
+function persistentScrollHost(view) {
+    if (!view) return null;
+    if (view.classList.contains('op-screen')) return view.querySelector('.op-scroll') || view;
+    return view;
+}
+
+function persistentViews() {
+    return [...document.querySelectorAll(PERSISTENT_VIEW_SELECTOR)];
+}
+
+function captureTabNavigationState(tab) {
+    tab = validAppTab(tab);
+    tabBaseScroll[tab] = window.scrollY || 0;
+    const visible = persistentViews().filter((view) =>
+        !view.classList.contains('hidden') && persistentViewOwner(view) === tab
+    );
+    tabViewSnapshots[tab] = visible.map((view) => view.id).filter(Boolean);
+    visible.forEach((view) => {
+        const host = persistentScrollHost(view);
+        if (host && view.id) tabViewScroll.set(view.id, host.scrollTop || 0);
+    });
+}
+
+function suspendTabNavigationState(tab) {
+    tab = validAppTab(tab);
+    persistentViews().forEach((view) => {
+        if (persistentViewOwner(view) !== tab || view.classList.contains('hidden')) return;
+        hideViewInstant(view);
+    });
+}
+
+function restoreTabNavigationState(tab) {
+    tab = validAppTab(tab);
+    const ids = tabViewSnapshots[tab] || [];
+    ids.forEach((id) => {
+        const view = document.getElementById(id);
+        if (!view || persistentViewOwner(view) !== tab) return;
+        showViewInstant(view);
+    });
+
+    requestAnimationFrame(() => {
+        if (activeAppTab !== tab) return;
+        // Restore the base page position even when an overlay is on top, so pressing
+        // Back after returning to the tab reveals the same underlying content.
+        window.scrollTo({ top: tabBaseScroll[tab] || 0, behavior: 'auto' });
+        ids.forEach((id) => {
+            const view = document.getElementById(id);
+            const host = persistentScrollHost(view);
+            if (host && tabViewScroll.has(id)) host.scrollTop = tabViewScroll.get(id);
+        });
+    });
+}
+
+function resetTabNavigationState() {
+    activeAppTab = 'home';
+    for (const tab of Object.keys(tabViewSnapshots)) {
+        tabViewSnapshots[tab] = [];
+        tabBaseScroll[tab] = 0;
+    }
+    tabViewScroll.clear();
+    persistentViews().forEach((view) => hideViewInstant(view));
+}
+
+window.nsoCurrentTab = () => activeAppTab;
 
 let activeFriendDetailData = null;
 let friendDetailOriginTab = 'friends';
@@ -698,6 +796,7 @@ let friendDetailOriginTab = 'friends';
 // --- Slide transition helpers ---
 function slideViewIn(el) {
     if (!el) return;
+    assignPersistentViewOwner(el, activeAppTab);
     el.classList.remove('hidden', 'view-slide-out');
     el.classList.add('view-slide-in');
     el.addEventListener('animationend', () => {
@@ -751,6 +850,7 @@ function clearNsoApkTransition(el) {
 
 function nsoApkForward(fromView, toView, options = {}) {
     if (!toView) return Promise.resolve();
+    assignPersistentViewOwner(toView, fromView?.dataset?.nsoOwnerTab || activeAppTab);
     const hideSource = options.hideSource !== false;
     clearNsoApkTransition(fromView);
     clearNsoApkTransition(toView);
@@ -802,42 +902,47 @@ function nsoApkBack(fromView, toView, options = {}) {
 window.nsoApkForward = nsoApkForward;
 window.nsoApkBack = nsoApkBack;
 
-function applyTabViewState(tabName = 'home') {
-    // Hide all base tab pages and overlay views instantly (tab switches don't animate)
-    document.querySelectorAll('.tab-page').forEach(page => page.classList.remove('active'));
-    hideViewInstant(document.getElementById('profileView'));
-    hideViewInstant(document.getElementById('notificationView'));
-    hideViewInstant(document.getElementById('friendDetailView'));
+function applyTabViewState(tabName = 'home', options = {}) {
+    tabName = validAppTab(tabName);
+    const restoringSnapshot = options.restoreSnapshot === true;
 
-    if (tabName === 'home') {
-        const homeState = navTabStacks.home;
-        if (homeState === 'profile') {
-            showViewInstant(document.getElementById('profileView'));
-        } else if (homeState === 'notifications') {
-            showViewInstant(document.getElementById('notificationView'));
-        } else {
-            document.getElementById('page-home')?.classList.add('active');
-        }
-    } else if (tabName === 'friends') {
-        const friendsState = navTabStacks.friends;
-        if (friendsState === 'detail' && activeFriendDetailData) {
-            showViewInstant(document.getElementById('friendDetailView'));
-        } else {
-            navTabStacks.friends = 'list';
-            document.getElementById('page-friends')?.classList.add('active');
-        }
-    } else if (tabName === 'album') {
-        document.getElementById('page-album')?.classList.add('active');
+    // When this is an in-tab state change (for example Friend Detail -> Friends),
+    // refresh the snapshot from the live DOM instead of replaying an older saved
+    // leaf screen. Cross-tab restores deliberately skip this capture.
+    if (!restoringSnapshot && tabName === activeAppTab) {
+        captureTabNavigationState(tabName);
     }
+
+    // Every tab keeps its base page mounted underneath its own overlay stack.
+    // This mirrors the native app's Fragment/back-stack behavior and prevents
+    // a one-frame Home flash when restoring a submenu.
+    document.querySelectorAll('.tab-page').forEach((page) => page.classList.remove('active'));
+    document.getElementById(`page-${tabName}`)?.classList.add('active');
+
+    persistentViews().forEach((view) => {
+        if (persistentViewOwner(view) !== tabName && !view.classList.contains('hidden')) {
+            hideViewInstant(view);
+        }
+    });
+
+    if (restoringSnapshot) restoreTabNavigationState(tabName);
 }
 
 function showAppPage(pageName = 'home') {
+    pageName = validAppTab(pageName);
+    const switchedTabs = pageName !== activeAppTab;
+
+    if (switchedTabs) {
+        captureTabNavigationState(activeAppTab);
+        suspendTabNavigationState(activeAppTab);
+        activeAppTab = pageName;
+    }
+
     document.querySelectorAll('#homeDock button').forEach(button => {
         button.classList.toggle('active', button.dataset.page === pageName);
     });
     switchDockTab(pageName);
-    applyTabViewState(pageName);
-    window.scrollTo({ top: 0, behavior: 'auto' });
+    applyTabViewState(pageName, { restoreSnapshot: switchedTabs });
 }
 
 // Game Services Tabs
@@ -877,6 +982,7 @@ function showAuthenticatedUI(session) {
     document.getElementById('notificationBtn').classList.remove('hidden');
     document.getElementById('homeDock').classList.remove('hidden');
     document.getElementById('openAuthModalBtn').classList.add('hidden');
+    resetTabNavigationState();
     showAppPage('home');
 
     if (session && session.result && session.result.user) {
@@ -904,10 +1010,6 @@ function showAuthenticatedUI(session) {
             document.getElementById('profileViewAvatar').src = session.user.imageUri;
         }
     }
-
-    // Begin method-2 attestation immediately after authentication so the expensive
-    // nxapi round trip overlaps Home/Friends/Album loading instead of the first click.
-    window.webServiceManager?.scheduleAttestationPrewarm(0);
 
     loadLiveFriendsList();
     loadGameServices();
@@ -1559,7 +1661,6 @@ async function loadGameServices() {
             card.append(image, copy, button);
             container.appendChild(card);
         });
-        window.webServiceManager?.registerCatalogServices?.(services);
     } catch (e) {
         container.innerHTML = `<p class="service-status error">Could not load game services: ${e.message}</p>`;
     }
@@ -3293,7 +3394,8 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             chatIds: new Set(),
             activeEventKey: '',
             friendOnline: new Map(),
-            lastFriendOnlineNotice: new Map()
+            lastFriendOnlineNotice: new Map(),
+            lastPollAt: 0
         },
         screensReady: false,
         refreshing: null,
@@ -3919,6 +4021,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
 
     async function openUserPage() {
         ensureScreens();
+        assignPersistentViewOwner($('opUserPage'), activeAppTab);
         const user = sessionUser() || {};
         $('opUserAvatar').src = user.imageUri || user.image2Uri || $('profileViewAvatar')?.src || '';
         $('opUserName').textContent = user.name || user.nickname || $('profileViewName')?.textContent || 'Switch Player';
@@ -4115,6 +4218,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         monitor.chatIds.clear();
         monitor.activeEventKey = '';
         monitor.friendOnline.clear();
+        monitor.lastPollAt = 0;
     }
 
     function stopBrowserNotificationMonitor() {
@@ -4142,7 +4246,19 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
     async function pollBrowserNotifications() {
         const monitor = state.browserNotifications;
         if (monitor.running || !browserNotificationSupport().enabled || !coralToken()) return;
+
+        // Coral traffic is encrypted/decrypted through nxapi. Browser notification
+        // polling must never compete with sign-in or GameWebServiceToken traffic, so
+        // foreground/background lifecycle events cannot force rapid repeated polls.
+        const minimumGap = monitor.baselineReady ? (document.hidden ? 10 * 60_000 : 15 * 60_000) : 0;
+        const elapsed = Date.now() - Number(monitor.lastPollAt || 0);
+        if (minimumGap && elapsed < minimumGap) {
+            scheduleBrowserNotificationPoll(minimumGap - elapsed);
+            return;
+        }
+
         monitor.running = true;
+        monitor.lastPollAt = Date.now();
 
         try {
             const settings = await loadPushSettings().catch(() => state.pushSettings || {});
@@ -4286,7 +4402,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             // Keep polling deliberately conservative: Coral calls are authenticated and
             // encrypted through nxapi, so browser notifications must not become a request storm.
             if (browserNotificationSupport().enabled && coralToken()) {
-                const steadyDelay = document.hidden ? 90_000 : 300_000;
+                const steadyDelay = document.hidden ? 10 * 60_000 : 15 * 60_000;
                 const rateLimitUntil = typeof getRateLimitUntil === 'function' ? getRateLimitUntil() : 0;
                 const rateLimitDelay = rateLimitUntil > Date.now() ? (rateLimitUntil - Date.now() + 2000) : 0;
                 scheduleBrowserNotificationPoll(Math.max(steadyDelay, rateLimitDelay));
@@ -4300,7 +4416,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             return;
         }
         if (resetBaseline) resetBrowserNotificationBaseline();
-        scheduleBrowserNotificationPoll(immediate ? 0 : (document.hidden ? 90_000 : 300_000));
+        scheduleBrowserNotificationPoll(immediate ? 0 : (document.hidden ? 10 * 60_000 : 15 * 60_000));
     }
 
     async function toggleBrowserNotifications() {
@@ -5716,6 +5832,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             }
 
             addFriend.dataset.nsoReturnTarget = 'opUserPage';
+            assignPersistentViewOwner(addFriend, userPage?.dataset?.nsoOwnerTab || activeAppTab);
             if (userPage && typeof nsoApkForward === 'function') {
                 // Keep the User Page painted underneath until Add Friend completely covers
                 // it. This removes the one-frame Home flash from the old hide-then-open path.
@@ -5745,14 +5862,16 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             }
         }, { capture: true });
 
-        // The real app keeps the dock visible on the User Page.
-        $('homeDock')?.addEventListener('click', () => {
+        const userPageBack = $('opUserPage')?.querySelector('.op-back');
+        userPageBack?.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopImmediatePropagation();
             const userPage = $('opUserPage');
-            if (!userPage?.classList.contains('hidden')) {
-                if (typeof hideViewInstant === 'function') hideViewInstant(userPage);
-                else userPage.classList.add('hidden');
-            }
-        }, true);
+            if (!userPage) return;
+            if (typeof slideViewOut === 'function') slideViewOut(userPage);
+            else userPage.classList.add('hidden');
+        }, { capture: true });
+
         document.addEventListener('keydown', (event) => {
             if (event.key !== 'Escape') return;
             const userPage = $('opUserPage');

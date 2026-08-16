@@ -1806,6 +1806,29 @@ body.gws-transition-active {
 
 /* Read-only friend detail, based on the native app's centered desktop screen. */
 .friend-detail-view { position: fixed; z-index: 220; inset: 0; overflow-y: auto; background: #1b1b1b; color: #d8d8da; }
+
+/* Bottom-tab screens stay mounted while another tab is selected. Reserve the
+   native dock area so restored Add Friend/Friends submenus never sit underneath it. */
+#addFriendView,
+#friendSettingsView,
+#friendSettingsNotifyView,
+#friendSettingsRequestsView,
+#friendSettingsBlockedView,
+.sent-req-detail-screen,
+.chatted-users-view,
+.friend-detail-view {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+    scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom));
+}
+#addFriendView .settings-content-panel,
+.chatted-users-body,
+.friend-detail-panel,
+.req-detail-panel {
+    margin-bottom: calc(108px + env(safe-area-inset-bottom));
+}
+.fc-search-panel {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+}
 .friend-detail-back, .friend-detail-more { position: fixed; top: 17px; border: 0; background: transparent; color: #e4e4e5; font-size: 22px; cursor: pointer; }
 .friend-detail-back { left: 29px; }
 .friend-detail-more { right: 29px; opacity: .9; cursor: pointer; transition: opacity .15s ease, background .15s ease; border-radius: 50%; padding: 4px; display: inline-flex; align-items: center; justify-content: center; }
@@ -2060,7 +2083,7 @@ body.gws-transition-active {
 
 .op-screen {
     position: fixed;
-    z-index: 910;
+    z-index: 250;
     inset: 0;
     background: #1b1b1b;
     color: #dedee0;
@@ -2104,7 +2127,7 @@ body.gws-transition-active {
 .op-scroll {
     height: calc(100dvh - 58px);
     overflow: auto;
-    padding: 22px clamp(18px, 4vw, 44px) max(80px, env(safe-area-inset-bottom));
+    padding: 22px clamp(18px, 4vw, 44px) calc(108px + env(safe-area-inset-bottom));
 }
 
 .op-profile-hero {
@@ -2765,17 +2788,24 @@ body.op-light-theme .op-dialog-actions button.primary { background: #22afe5; col
     z-index: 235 !important;
     background: #1b1b1b !important;
     color: #e1e1e3;
-    padding-bottom: 96px;
+    padding-bottom: 0;
 }
-#opUserPage .op-header { display: none !important; }
+#opUserPage .op-header {
+    display: grid !important;
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    min-height: 58px;
+    background: #1b1b1b;
+}
 #opUserPage .op-scroll {
     width: 100% !important;
     max-width: none !important;
-    height: 100% !important;
-    min-height: 100%;
+    height: calc(100dvh - 58px) !important;
+    min-height: 0;
     overflow-y: auto;
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 0 0 calc(96px + env(safe-area-inset-bottom)) !important;
     background: #1b1b1b;
 }
 body:has(#opUserPage:not(.hidden)) .home-dock {

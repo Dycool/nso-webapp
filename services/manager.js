@@ -29,24 +29,11 @@ class WebServiceManager {
         this.launchLocked = false;
         this.launchEpoch = 0;
         this.launchTransitionTimer = null;
-        this.catalogServices = [];
-        this.catalogPrimeTimer = null;
-        this.catalogPrimeRunning = false;
-        this.intentPrimeTimers = new Map();
         this.loadingFallbackTimer = null;
 
-        // Method-2 attestations are expensive on the public nxapi service. Keep one
-        // short-lived, one-shot attestation in memory so the user's first service
-        // launch usually does not sit behind the full f-generation round trip.
-        // Nothing here is persisted to localStorage/sessionStorage.
-        this.method2WarmAttestation = null;
-        this.method2WarmPromise = null;
-        this.method2WarmTtlMs = 25000;
-        this.prewarmTimer = null;
-        this.prewarmObserver = null;
+        // No background nxapi/f prewarming: first-use attestation is intentionally on demand.
 
         this.initPostMessageListener();
-        this.initAttestationPrewarm();
     }
 
     getWorkerUrl() {
@@ -83,141 +70,6 @@ class WebServiceManager {
         return this.genericAdapter;
     }
 
-    getMethod2Context() {
-        const token = coralAccessToken();
-        const naId = userSession?.nsoWebapp?.naId;
-        const coralUserId = String(userSession?.result?.user?.id || userSession?.user?.id || '');
-        if (!token || !naId) return null;
-        return { token, naId, coralUserId };
-    }
-
-    sameMethod2Context(a, b) {
-        return Boolean(a && b &&
-            a.token === b.token &&
-            a.naId === b.naId &&
-            a.coralUserId === b.coralUserId);
-    }
-
-    hasFreshWarmAttestation(context) {
-        const warm = this.method2WarmAttestation;
-        return Boolean(warm &&
-            this.sameMethod2Context(warm.context, context) &&
-            Date.now() - warm.createdAt <= this.method2WarmTtlMs);
-    }
-
-    async warmGameWebServiceAttestation() {
-        const context = this.getMethod2Context();
-        if (!context || document.hidden || document.documentElement.classList.contains('webview-active')) return null;
-        if (this.hasFreshWarmAttestation(context)) {
-            return this.method2WarmAttestation.attestation;
-        }
-        if (this.method2WarmPromise) return this.method2WarmPromise;
-
-        this.method2WarmPromise = (async () => {
-            try {
-                const attestation = await nxapiGenerateF(2, context.token, {
-                    na_id: context.naId,
-                    coral_user_id: context.coralUserId
-                });
-
-                const currentContext = this.getMethod2Context();
-                if (this.sameMethod2Context(currentContext, context)) {
-                    this.method2WarmAttestation = {
-                        context,
-                        attestation,
-                        createdAt: Date.now()
-                    };
-                }
-                return attestation;
-            } catch (error) {
-                // Background prewarming must never break sign-in or the service catalog.
-                return null;
-            } finally {
-                this.method2WarmPromise = null;
-            }
-        })();
-
-        return this.method2WarmPromise;
-    }
-
-    async consumeMethod2Attestation(traceId, context) {
-        const consumeWarm = (source = 'prewarmed', durationMs = 0) => {
-            if (!this.hasFreshWarmAttestation(context)) return null;
-            const warm = this.method2WarmAttestation;
-            this.method2WarmAttestation = null; // one-shot: never reuse an f result
-            const ageMs = Date.now() - warm.createdAt;
-            console.log(`[LaunchTrace:${traceId || 'anon'}] stage=nxapi_f_method_2 source=${source} durationMs=${durationMs} ageMs=${ageMs}`);
-            return warm.attestation;
-        };
-
-        let warm = consumeWarm();
-        if (warm) return warm;
-
-        // Join a prewarm already in flight instead of sending a duplicate request.
-        // Report the actual wait time so total launch traces are no longer misleading.
-        if (this.method2WarmPromise) {
-            const waitStartedAt = performance.now();
-            await this.method2WarmPromise;
-            warm = consumeWarm('prewarm_join', Math.round(performance.now() - waitStartedAt));
-            if (warm) return warm;
-        }
-
-        const startedAt = performance.now();
-        const attestation = await nxapiGenerateF(2, context.token, {
-            na_id: context.naId,
-            coral_user_id: context.coralUserId
-        });
-        console.log(`[LaunchTrace:${traceId || 'anon'}] stage=nxapi_f_method_2 source=live durationMs=${Math.round(performance.now() - startedAt)}`);
-        return attestation;
-    }
-
-    scheduleAttestationPrewarm(delayMs = 0) {
-        if (this.prewarmTimer) clearTimeout(this.prewarmTimer);
-        this.prewarmTimer = setTimeout(() => {
-            this.prewarmTimer = null;
-            if (document.hidden) return;
-
-            const run = () => this.warmGameWebServiceAttestation();
-            if (typeof window.requestIdleCallback === 'function') {
-                window.requestIdleCallback(run, { timeout: 1800 });
-            } else {
-                setTimeout(run, 0);
-            }
-        }, Math.max(0, delayMs));
-    }
-
-    initAttestationPrewarm() {
-        const install = () => {
-            const catalog = document.getElementById('gameServicesCatalog');
-            if (!catalog) return;
-
-            const kickIfReady = () => {
-                if (catalog.querySelector('.service-launch-card')) {
-                    this.scheduleAttestationPrewarm(0);
-                }
-            };
-
-            this.prewarmObserver = new MutationObserver(kickIfReady);
-            this.prewarmObserver.observe(catalog, { childList: true, subtree: true });
-
-            // Also warm on intent. These calls are deduplicated and a fresh warm
-            // attestation is kept only once, in memory, for 25 seconds.
-            catalog.addEventListener('pointerenter', () => this.warmGameWebServiceAttestation(), { passive: true });
-            catalog.addEventListener('focusin', () => this.warmGameWebServiceAttestation());
-            catalog.addEventListener('touchstart', () => this.warmGameWebServiceAttestation(), { passive: true, once: true });
-            document.addEventListener('visibilitychange', () => {
-                if (!document.hidden) kickIfReady();
-            });
-            kickIfReady();
-        };
-
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', install, { once: true });
-        } else {
-            install();
-        }
-    }
-
     getCachedGameWebServiceToken(serviceId) {
         const idStr = String(serviceId);
         const cached = this.tokenCache.get(idStr);
@@ -227,90 +79,16 @@ class WebServiceManager {
     }
 
     /**
-     * Mirrors nxapi's own CoralApi#getWebServiceToken fast path. The browser's
-     * existing in-memory nxapi bearer is passed to the Worker for this request
-     * only. Cloudflare never persists Nintendo or nxapi credentials.
+     * Canonical, on-demand GameWebServiceToken acquisition.
      *
-     * When a prewarmed f result exists we send it and the Worker performs only
-     * encrypt-request -> Nintendo -> decrypt-response. Otherwise the Worker asks
-     * nxapi for f + encrypted_token_request in one request, exactly like nxapi.
+     * This intentionally does not prime every service in the catalog and does not
+     * acquire nxapi credentials in the background. One method-2 attestation is
+     * requested only when the user actually opens a service, matching the stable
+     * pre-optimization behavior and greatly reducing nxapi rate-limit pressure.
+     * Valid Nintendo web-service tokens are still cached in memory and concurrent
+     * requests for the same service remain single-flight.
      */
-    async requestOptimizedGameWebServiceToken(serviceId, traceId, attestation = null, retryAuth = true) {
-        const coralToken = coralAccessToken();
-        if (!coralToken) throw new Error('No Coral access token available. Please sign in again.');
-
-        const naId = userSession?.nsoWebapp?.naId;
-        if (!naId) {
-            throw new Error('Nintendo Account ID missing in session. Please sign out and sign in again.');
-        }
-        const coralUserId = String(userSession?.result?.user?.id || userSession?.user?.id || '');
-
-        const nxapiAccessToken = await getNxapiAccessToken();
-        const startedAt = performance.now();
-        const response = await fetch(`${this.getWorkerUrl()}/api/nso/service/token`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Accept: 'application/json'
-            },
-            body: JSON.stringify({
-                serviceId: String(serviceId),
-                coralAccessToken: coralToken,
-                nxapiAccessToken,
-                naId: String(naId),
-                coralUserId,
-                zncaVersion: typeof ZNCA_VERSION === 'string' ? ZNCA_VERSION : undefined,
-                attestation: attestation ? {
-                    f: attestation.f,
-                    timestamp: Number(attestation.timestamp),
-                    requestId: String(attestation.requestId)
-                } : undefined
-            })
-        });
-
-        let data = {};
-        try { data = await response.json(); } catch (e) {}
-
-        if (response.status === 401 && data?.error === 'nxapi_invalid_token' && retryAuth) {
-            // nxapi access tokens are memory-only. Drop the expired bearer and retry
-            // once through the normal single-flight OAuth acquisition path.
-            try {
-                nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 };
-            } catch (e) {}
-            return this.requestOptimizedGameWebServiceToken(serviceId, traceId, attestation, false);
-        }
-
-        if (!response.ok || !data?.accessToken) {
-            const message = data?.error_description || data?.error ||
-                `Optimized GameWebServiceToken request failed (HTTP ${response.status}).`;
-            if (response.status === 429 && typeof parseRetryAfter === 'function' && typeof setRateLimitUntil === 'function') {
-                const until = parseRetryAfter(response.headers.get('Retry-After')) || (Date.now() + 60000);
-                setRateLimitUntil(until);
-            }
-            const error = new Error(message);
-            error.status = response.status;
-            error.code = data?.error || null;
-            throw error;
-        }
-
-        const durationMs = Math.round(performance.now() - startedAt);
-        console.log(
-            `[LaunchTrace:${traceId || 'anon'}] stage=get_web_service_token durationMs=${durationMs} ` +
-            `path=${attestation ? 'prewarmed_worker' : 'nxapi_combined_worker'}`
-        );
-
-        return {
-            accessToken: data.accessToken,
-            expiresIn: Number(data.expiresIn || 7200)
-        };
-    }
-
-    /**
-     * Canonical GameWebServiceToken acquisition.
-     * Valid tokens are cached in memory for their Nintendo lifetime and concurrent
-     * requests for the same service are single-flight.
-     */
-    async getGameWebServiceToken(serviceId, traceId, forceFresh = false, options = {}) {
+    async getGameWebServiceToken(serviceId, traceId, forceFresh = false) {
         const idStr = String(serviceId);
         if (!forceFresh) {
             const cached = this.getCachedGameWebServiceToken(idStr);
@@ -326,29 +104,41 @@ class WebServiceManager {
         }
 
         const fetchPromise = (async () => {
-            const context = this.getMethod2Context();
-            if (!context) throw new Error('Nintendo account session is incomplete. Please sign in again.');
+            const token = coralAccessToken();
+            if (!token) throw new Error('No Coral access token available. Please sign in again.');
 
-            let attestation = null;
-            const canUseWarm = options.useWarmAttestation !== false &&
-                (this.hasFreshWarmAttestation(context) || Boolean(this.method2WarmPromise));
+            const naId = userSession?.nsoWebapp?.naId;
+            if (!naId) {
+                throw new Error('Nintendo Account ID missing in session. Please sign out and sign in again.');
+            }
+            const coralUserId = String(userSession?.result?.user?.id || userSession?.user?.id || '');
 
-            if (canUseWarm) {
-                attestation = await this.consumeMethod2Attestation(traceId, context);
+            const fStartedAt = performance.now();
+            const attestation = await nxapiGenerateF(2, token, {
+                na_id: naId,
+                coral_user_id: coralUserId
+            });
+            console.log(`[LaunchTrace:${traceId || 'anon'}] stage=nxapi_f_method_2 source=on_demand durationMs=${Math.round(performance.now() - fStartedAt)}`);
+
+            const tokenStart = performance.now();
+            const result = await coralCall('/v4/Game/GetWebServiceToken', {
+                id: Number(serviceId),
+                registrationToken: '',
+                f: attestation.f,
+                timestamp: attestation.timestamp,
+                requestId: attestation.requestId
+            });
+            console.log(`[LaunchTrace:${traceId || 'anon'}] stage=get_web_service_token durationMs=${Math.round(performance.now() - tokenStart)} path=canonical`);
+
+            if (!result?.accessToken) {
+                throw new Error('Nintendo did not return a valid GameWebServiceToken.');
             }
 
-            const result = await this.requestOptimizedGameWebServiceToken(
-                serviceId,
-                traceId,
-                attestation
-            );
-
-            const expiresInSec = Number.isFinite(result.expiresIn) ? result.expiresIn : 7200;
+            const expiresInSec = Number.isFinite(Number(result.expiresIn)) ? Number(result.expiresIn) : 7200;
             this.tokenCache.set(idStr, {
                 token: result.accessToken,
                 expiresAt: Date.now() + Math.max(60, expiresInSec) * 1000
             });
-
             return result.accessToken;
         })();
 
@@ -357,89 +147,6 @@ class WebServiceManager {
             return await fetchPromise;
         } finally {
             this.tokenInFlight.delete(idStr);
-        }
-    }
-
-    registerCatalogServices(services) {
-        this.catalogServices = Array.isArray(services) ? services.filter((service) => service?.id) : [];
-
-        const catalog = document.getElementById('gameServicesCatalog');
-        if (catalog) {
-            catalog.querySelectorAll('.service-launch-card').forEach((card) => {
-                if (card.dataset.nsoPrimeBound === 'true') return;
-                card.dataset.nsoPrimeBound = 'true';
-                const service = this.catalogServices.find((item) => String(item.id) === String(card.dataset.serviceId));
-                if (!service) return;
-
-                const intent = () => this.scheduleIntentPrime(service);
-                card.addEventListener('pointerenter', intent, { passive: true });
-                card.addEventListener('focusin', intent);
-                card.addEventListener('touchstart', intent, { passive: true });
-            });
-        }
-
-        // The first method-2 attestation is already warming at login. Keep it
-        // reserved for an actual user gesture for a short window, then spend it
-        // priming service tokens in the background. Once primed, a click requires
-        // no f generation and no GameWebServiceToken network request at all.
-        this.scheduleCatalogPrime(12000);
-    }
-
-    scheduleIntentPrime(service) {
-        if (!service?.id || this.launchLocked || this.getCachedGameWebServiceToken(service.id)) return;
-        const id = String(service.id);
-        if (this.intentPrimeTimers.has(id)) return;
-
-        const timer = setTimeout(() => {
-            this.intentPrimeTimers.delete(id);
-            if (this.launchLocked || document.documentElement.classList.contains('webview-active')) return;
-            this.getGameWebServiceToken(service.id, `intent_${id}`, false, { useWarmAttestation: true })
-                .catch(() => {});
-        }, 80);
-        this.intentPrimeTimers.set(id, timer);
-    }
-
-    scheduleCatalogPrime(delayMs = 12000) {
-        if (this.catalogPrimeTimer) clearTimeout(this.catalogPrimeTimer);
-        if (!this.catalogServices.length) return;
-        this.catalogPrimeTimer = setTimeout(() => {
-            this.catalogPrimeTimer = null;
-            this.primeCatalogTokens().catch(() => {});
-        }, Math.max(0, delayMs));
-    }
-
-    async primeCatalogTokens() {
-        if (this.catalogPrimeRunning || !this.catalogServices.length) return;
-        if (this.launchLocked || document.hidden || document.documentElement.classList.contains('webview-active')) {
-            this.scheduleCatalogPrime(8000);
-            return;
-        }
-
-        this.catalogPrimeRunning = true;
-        try {
-            let firstUncached = true;
-            for (const service of this.catalogServices) {
-                if (this.launchLocked || document.hidden || document.documentElement.classList.contains('webview-active')) break;
-                if (this.getCachedGameWebServiceToken(service.id)) continue;
-
-                try {
-                    await this.getGameWebServiceToken(
-                        service.id,
-                        `prime_${String(service.id)}`,
-                        false,
-                        { useWarmAttestation: firstUncached }
-                    );
-                } catch (error) {
-                    // Background token priming is best-effort and must never affect
-                    // the visible service catalog or account session. Stop immediately
-                    // on provider throttling instead of walking the rest of the catalog.
-                    if (error?.status === 429 || error?.code === 'nxapi_rate_limited') break;
-                }
-                firstUncached = false;
-                await new Promise((resolve) => setTimeout(resolve, 900));
-            }
-        } finally {
-            this.catalogPrimeRunning = false;
         }
     }
 
@@ -613,12 +320,7 @@ class WebServiceManager {
 
         try {
             console.log(`[LaunchTrace:${traceId}] Launching ${service.name || 'Game Service'} via ${adapter.constructor.name}`);
-            const token = await this.getGameWebServiceToken(
-                service.id,
-                traceId,
-                false,
-                { useWarmAttestation: true }
-            );
+            const token = await this.getGameWebServiceToken(service.id, traceId);
             if (launchEpoch !== this.launchEpoch || !this.launchLocked) {
                 const cancelled = new Error('Launch cancelled');
                 cancelled.code = 'NSO_LAUNCH_CANCELLED';
@@ -658,8 +360,6 @@ class WebServiceManager {
                 this.activeService = null;
                 this.launchingButton = null;
                 this.setCatalogLocked(false);
-                this.scheduleAttestationPrewarm(500);
-                this.scheduleCatalogPrime(2500);
             }
             // On success the catalog intentionally remains locked until closeActiveService().
         }
@@ -715,9 +415,6 @@ class WebServiceManager {
         this.launchingButton = null;
         this.setCatalogLocked(false);
 
-        // Prepare the next launch again after the WebView has been dismissed.
-        this.scheduleAttestationPrewarm(350);
-        this.scheduleCatalogPrime(1500);
     }
 
     /**
