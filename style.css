@@ -406,6 +406,52 @@ textarea {
     50% { opacity: 0.75; }
 }
 
+/* Service diagnostics banner: fixed so it never changes app layout. */
+.service-health-banner {
+    position: fixed;
+    z-index: 5200;
+    top: max(74px, calc(env(safe-area-inset-top) + 62px));
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(760px, calc(100vw - 28px));
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 14px;
+    background: rgba(30,32,42,.97);
+    box-shadow: 0 14px 38px rgba(0,0,0,.38);
+    backdrop-filter: blur(16px);
+}
+.service-health-banner.hidden { display: none !important; }
+.service-health-banner.is-error { border-color: rgba(255,91,91,.48); }
+.service-health-banner.is-warning { border-color: rgba(255,183,77,.45); }
+.service-health-banner.is-ok { border-color: rgba(0,230,118,.38); }
+.service-health-icon { color: #ffb74d; font-size: 18px; }
+.service-health-banner.is-error .service-health-icon { color: #ff6b6b; }
+.service-health-banner.is-ok .service-health-icon { color: var(--accent-green); }
+.service-health-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.service-health-copy strong { color: var(--text-primary); font: 700 13px var(--font-heading); }
+.service-health-copy span { color: var(--text-secondary); font-size: 12px; line-height: 1.35; }
+.service-health-copy small { color: var(--text-muted); font-size: 10px; overflow-wrap: anywhere; }
+.service-health-action {
+    border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.08); color: var(--text-primary);
+    border-radius: 9px; padding: 7px 10px; font: 700 11px var(--font-heading); cursor: pointer; white-space: nowrap;
+}
+.service-health-action:hover { background: rgba(255,255,255,.13); }
+.service-health-dismiss {
+    width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent; color: var(--text-secondary);
+    font-size: 20px; line-height: 1; cursor: pointer;
+}
+.service-health-dismiss:hover { background: rgba(255,255,255,.08); color: var(--text-primary); }
+@media (max-width: 640px) {
+    .service-health-banner { grid-template-columns: auto minmax(0,1fr) auto; top: max(66px, calc(env(safe-area-inset-top) + 58px)); }
+    .service-health-action { grid-column: 2 / 4; justify-self: start; }
+    .service-health-dismiss { grid-column: 3; grid-row: 1; }
+}
+
 .remembered-account-section {
     display: flex;
     flex-direction: column;

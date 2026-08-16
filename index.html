@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css?v=20260816-v32">
+    <link rel="stylesheet" href="style.css?v=20260816-v33">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
@@ -42,6 +42,17 @@
             </div>
         </div>
     </header>
+
+    <aside class="service-health-banner hidden" id="serviceHealthBanner" role="status" aria-live="polite">
+        <i class="fa-solid fa-stethoscope service-health-icon" aria-hidden="true"></i>
+        <div class="service-health-copy">
+            <strong id="serviceHealthTitle">Service diagnostics</strong>
+            <span id="serviceHealthText">Checking service health…</span>
+            <small id="serviceHealthDetails"></small>
+        </div>
+        <button class="service-health-action" id="runServiceDiagnosticsBtn" type="button">Run diagnostics</button>
+        <button class="service-health-dismiss" id="dismissServiceHealthBtn" type="button" aria-label="Dismiss diagnostics">×</button>
+    </aside>
 
     <!-- Full-Screen Login Gate for Unauthenticated Users -->
     <section class="login-gate" id="loginGate">
@@ -465,7 +476,7 @@
     </div>
 
     <script src="services/adapters.js?v=20260816-v17"></script>
-    <script src="services/manager.js?v=20260816-v22"></script>
-    <script src="app.js?v=20260816-v33"></script>
+    <script src="services/manager.js?v=20260816-v23"></script>
+    <script src="app.js?v=20260816-v34"></script>
 </body>
 </html>

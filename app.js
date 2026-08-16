@@ -125,11 +125,329 @@ function updateRateLimitBanner() {
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// Service Health / Diagnostics
+// ---------------------------------------------------------------------------
+// Diagnostics are deliberately triggered only after an error (or manually). They
+// never retry the failed Nintendo/nxapi operation. This respects nxapi's public API
+// terms while still giving the user a useful answer when a transient 5xx occurs.
+const SERVICE_DIAGNOSTICS_COOLDOWN_MS = 15_000;
+const SERVICE_CIRCUIT_DEFAULT_MS = 30_000;
+let serviceDiagnosticsInFlight = null;
+let lastServiceDiagnosticsAt = 0;
+let lastServiceDiagnostics = null;
+let serviceIssueCircuit = { provider: null, until: 0, reason: '', status: 0 };
+let serviceHealthDismissedAt = 0;
+
+function serviceProviderForTarget(targetUrl) {
+    try {
+        const host = new URL(targetUrl).hostname.toLowerCase();
+        if (host === 'nxapi-znca-api.fancy.org.uk') return 'nxapi-znca';
+        if (host === 'nxapi-auth.fancy.org.uk' || host === 'fancy.org.uk') return 'nxapi-auth';
+        if (host === 'api-lp1.znc.srv.nintendo.net') return 'nintendo-coral';
+        if (host.endsWith('.nintendo.net') || host.endsWith('.srv.nintendo.net')) return 'nintendo';
+    } catch (e) {}
+    return 'unknown';
+}
+
+function isNxapiZncaProvider(provider) {
+    return provider === 'nxapi-znca' || String(provider || '').startsWith('nxapi-f') ||
+        String(provider || '').startsWith('nxapi-encrypt') || String(provider || '').startsWith('nxapi-decrypt');
+}
+
+function currentServiceCircuit(provider) {
+    if (!provider || serviceIssueCircuit.provider !== provider || serviceIssueCircuit.until <= Date.now()) return null;
+    return serviceIssueCircuit;
+}
+
+function openServiceCircuit(provider, reason, status = 503, durationMs = SERVICE_CIRCUIT_DEFAULT_MS) {
+    if (!provider) return;
+    serviceIssueCircuit = {
+        provider,
+        reason: String(reason || 'Service temporarily unavailable.'),
+        status: Number(status || 503),
+        until: Date.now() + Math.max(5_000, Number(durationMs || SERVICE_CIRCUIT_DEFAULT_MS))
+    };
+    updateServiceHealthBanner();
+}
+
+function clearServiceCircuit(provider = null) {
+    if (provider && serviceIssueCircuit.provider !== provider) return;
+    serviceIssueCircuit = { provider: null, until: 0, reason: '', status: 0 };
+    updateServiceHealthBanner();
+}
+
+function serviceHealthSummary(diag = lastServiceDiagnostics) {
+    if (!diag) return null;
+    const cloudflare = diag.cloudflare || diag.worker || {};
+    const nxapi = diag.nxapi || {};
+    const znca = nxapi.znca || {};
+    const config = nxapi.config || {};
+    return {
+        cloudflareStatus: cloudflare.status || 'unknown',
+        zncaStatus: znca.status || 'not_checked',
+        zncaHttpStatus: Number(znca.httpStatus || 0),
+        zncaDescription: znca.error_description || znca.description || znca.error || '',
+        requestedWorkerCount: Number.isFinite(Number(config.requestedWorkerCount)) ? Number(config.requestedWorkerCount) : null,
+        traceId: znca.traceId || znca.debugId || ''
+    };
+}
+
+function updateServiceHealthBanner() {
+    const banner = document.getElementById('serviceHealthBanner');
+    const title = document.getElementById('serviceHealthTitle');
+    const text = document.getElementById('serviceHealthText');
+    const details = document.getElementById('serviceHealthDetails');
+    if (!banner) return;
+
+    const circuit = serviceIssueCircuit.until > Date.now() ? serviceIssueCircuit : null;
+    const summary = serviceHealthSummary();
+    const hasRecentDiagnostic = lastServiceDiagnostics && (Date.now() - lastServiceDiagnosticsAt < 120_000);
+
+    if (!circuit && !hasRecentDiagnostic) {
+        banner.classList.add('hidden');
+        return;
+    }
+    if (serviceHealthDismissedAt && serviceHealthDismissedAt >= Math.max(lastServiceDiagnosticsAt, circuit ? circuit.until - SERVICE_CIRCUIT_DEFAULT_MS : 0)) {
+        banner.classList.add('hidden');
+        return;
+    }
+
+    banner.classList.remove('hidden', 'is-ok', 'is-warning', 'is-error');
+    let titleText = 'Service diagnostics';
+    let message = circuit?.reason || 'A service issue was detected.';
+    let detailText = '';
+    let severity = 'is-warning';
+
+    if (summary) {
+        const cf = summary.cloudflareStatus;
+        const zn = summary.zncaStatus;
+        if (cf !== 'ok') {
+            titleText = 'Cloudflare backend issue';
+            message = 'The nso-webapp backend health check is not healthy. Requests are not being retried automatically.';
+            severity = 'is-error';
+        } else if (['unavailable', 'error', 'degraded'].includes(zn)) {
+            titleText = 'nxapi ZNCA temporarily unavailable';
+            message = summary.zncaDescription || circuit?.reason || 'nxapi reported a service/worker problem. Requests are not being retried automatically.';
+            severity = 'is-error';
+        } else if (zn === 'ok') {
+            titleText = circuit ? 'Transient upstream error detected' : 'Diagnostics healthy';
+            message = circuit
+                ? 'Cloudflare and nxapi health checks are currently healthy. The failed request may have been a transient upstream 5xx; retry it manually.'
+                : 'Cloudflare and nxapi health checks are healthy.';
+            severity = circuit ? 'is-warning' : 'is-ok';
+        }
+        const bits = [`Cloudflare: ${cf}`, `nxapi ZNCA: ${zn}`];
+        if (summary.requestedWorkerCount !== null) bits.push(`matching workers: ${summary.requestedWorkerCount}`);
+        if (summary.zncaHttpStatus) bits.push(`HTTP ${summary.zncaHttpStatus}`);
+        if (summary.traceId) bits.push(`trace ${summary.traceId}`);
+        detailText = bits.join(' · ');
+    } else if (circuit) {
+        titleText = isNxapiZncaProvider(circuit.provider) ? 'nxapi issue detected' : 'Service issue detected';
+        if (circuit.status) detailText = `HTTP ${circuit.status} · diagnostics running…`;
+        severity = 'is-error';
+    }
+
+    banner.classList.add(severity);
+    if (title) title.textContent = titleText;
+    if (text) text.textContent = message;
+    if (details) details.textContent = detailText;
+}
+
+function syntheticCircuitResponse(circuit) {
+    return new Response(JSON.stringify({
+        error: 'service_circuit_open',
+        nso_error: 'service_circuit_open',
+        error_description: `${circuit.reason} A recent health check/error opened a short circuit breaker to avoid hammering the unavailable service.`,
+        provider: circuit.provider,
+        retry_after_ms: Math.max(0, circuit.until - Date.now())
+    }), {
+        status: 503,
+        headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+            'X-NSO-Proxy-Error': 'service_circuit_open',
+            'X-NSO-Upstream-Provider': circuit.provider,
+            'Retry-After': String(Math.max(1, Math.ceil((circuit.until - Date.now()) / 1000)))
+        }
+    });
+}
+
+function failureLooksLikeWorkerUnavailable(status, data = {}) {
+    const text = `${data?.error || ''} ${data?.nso_error || ''} ${data?.error_description || ''}`.toLowerCase();
+    return [500, 502, 503, 504].includes(Number(status)) ||
+        text.includes('no matching workers') || text.includes('service unavailable') || text.includes('worker unavailable');
+}
+
+async function runServiceDiagnostics(options = {}) {
+    const force = options.force === true;
+    if (serviceDiagnosticsInFlight) return serviceDiagnosticsInFlight;
+    if (!force && lastServiceDiagnostics && Date.now() - lastServiceDiagnosticsAt < SERVICE_DIAGNOSTICS_COOLDOWN_MS) {
+        return lastServiceDiagnostics;
+    }
+
+    serviceDiagnosticsInFlight = (async () => {
+        const result = {
+            timestamp: new Date().toISOString(),
+            reason: options.reason || 'manual',
+            cloudflare: { status: 'unknown' },
+            nxapi: { auth: { status: 'not_checked' }, znca: { status: 'not_checked' }, config: { status: 'not_checked' } }
+        };
+
+        try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 5_000);
+            let healthResp;
+            try {
+                healthResp = await fetch(`${WORKER_URL}/health?deep=1`, {
+                    headers: { Accept: 'application/json' },
+                    cache: 'no-store',
+                    signal: controller.signal
+                });
+            } finally {
+                clearTimeout(timer);
+            }
+            const health = await healthResp.json().catch(() => ({}));
+            result.cloudflare = {
+                status: health?.status || (healthResp.ok ? 'ok' : 'error'),
+                httpStatus: healthResp.status,
+                checks: health?.checks || {},
+                timestamp: health?.timestamp || null
+            };
+
+            if (healthResp.ok) {
+                const validNxapiToken = nxapiAuthSession?.accessToken && nxapiAuthSession.expiresAt > Date.now() + 5_000
+                    ? nxapiAuthSession.accessToken : null;
+                const diagController = new AbortController();
+                const diagTimer = setTimeout(() => diagController.abort(), 7_000);
+                let diagResp;
+                try {
+                    diagResp = await fetch(`${WORKER_URL}/api/nso/diagnostics`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                        credentials: 'include',
+                        cache: 'no-store',
+                        signal: diagController.signal,
+                        body: JSON.stringify({
+                            nxapiAccessToken: validNxapiToken || undefined,
+                            zncaVersion: ZNCA_VERSION
+                        })
+                    });
+                } finally {
+                    clearTimeout(diagTimer);
+                }
+                const diag = await diagResp.json().catch(() => ({}));
+                if (diag?.cloudflare) result.cloudflare = diag.cloudflare;
+                if (diag?.nxapi) result.nxapi = diag.nxapi;
+                result.status = diag?.status || (diagResp.ok ? 'ok' : 'degraded');
+            } else {
+                result.status = 'unavailable';
+            }
+        } catch (error) {
+            result.status = 'unavailable';
+            result.cloudflare = {
+                status: 'unavailable',
+                error: error?.name === 'AbortError' ? 'health_timeout' : 'health_request_failed'
+            };
+        }
+
+        lastServiceDiagnostics = result;
+        lastServiceDiagnosticsAt = Date.now();
+        serviceHealthDismissedAt = 0;
+
+        const summary = serviceHealthSummary(result);
+        if (summary?.cloudflareStatus === 'ok' && summary?.zncaStatus === 'ok') {
+            // A one-off 500 can happen even when health is currently green. Keep a very
+            // short warning circuit so a burst of concurrent UI requests does not hammer it.
+            if (serviceIssueCircuit.provider === 'nxapi-znca') {
+                serviceIssueCircuit.until = Math.min(serviceIssueCircuit.until, Date.now() + 5_000);
+            }
+        } else if (summary?.cloudflareStatus === 'ok' && ['unavailable', 'error', 'degraded'].includes(summary?.zncaStatus)) {
+            openServiceCircuit('nxapi-znca', summary.zncaDescription || 'nxapi ZNCA health check is not healthy.', summary.zncaHttpStatus || 503, 30_000);
+        }
+
+        console.info('[ServiceDiagnostics]', result);
+        updateServiceHealthBanner();
+        return result;
+    })().finally(() => {
+        serviceDiagnosticsInFlight = null;
+    });
+
+    updateServiceHealthBanner();
+    return serviceDiagnosticsInFlight;
+}
+
+window.nsoRunServiceDiagnostics = runServiceDiagnostics;
+
+function observeServiceResponse(response, context = {}) {
+    if (!response || response.ok) return response;
+    const provider = response.headers?.get?.('X-NSO-Upstream-Provider') || context.provider || 'cloudflare';
+    const proxyError = response.headers?.get?.('X-NSO-Proxy-Error') || '';
+    const status = Number(response.status || 0);
+
+    // Clone immediately; the caller remains free to consume the original body.
+    const clone = response.clone();
+    void (async () => {
+        let data = {};
+        try { data = await clone.json(); } catch (e) {}
+        const errorCode = String(data?.nso_error || data?.error || proxyError || '').toLowerCase();
+        const description = data?.error_description || data?.error_message || data?.error || `HTTP ${status}`;
+        const looksUnavailable = failureLooksLikeWorkerUnavailable(status, data);
+        const isZnca = isNxapiZncaProvider(provider) || context.provider === 'nxapi-znca' || errorCode.startsWith('nxapi_');
+
+        // 406 normally means unsupported_version in nxapi. Do not call that an outage
+        // unless the body explicitly says workers/service are unavailable.
+        const isUnsupportedVersion = status === 406 && (errorCode.includes('unsupported_version') || String(description).toLowerCase().includes('unsupported version'));
+        if (isZnca && looksUnavailable && !isUnsupportedVersion) {
+            openServiceCircuit('nxapi-znca', String(description), status || 503, status === 500 ? 15_000 : 30_000);
+            void runServiceDiagnostics({ reason: context.operation || `nxapi HTTP ${status}` });
+        } else if (isZnca && isUnsupportedVersion) {
+            serviceHealthDismissedAt = 0;
+            lastServiceDiagnostics = {
+                status: 'degraded',
+                cloudflare: { status: 'ok' },
+                nxapi: {
+                    auth: { status: 'unknown' },
+                    znca: { status: 'degraded', httpStatus: status, error_description: String(description) },
+                    config: { status: 'unknown' }
+                }
+            };
+            lastServiceDiagnosticsAt = Date.now();
+            void runServiceDiagnostics({ reason: 'nxapi version mismatch', force: true });
+        } else if (provider === 'cloudflare' && [500, 502, 503, 504].includes(status)) {
+            void runServiceDiagnostics({ reason: context.operation || `Cloudflare HTTP ${status}` });
+        }
+    })();
+    return response;
+}
+
+window.nsoObserveServiceResponse = observeServiceResponse;
+
+function serviceFailureMessage(data, response, fallback) {
+    const status = Number(response?.status || 0);
+    const code = String(data?.nso_error || data?.error || response?.headers?.get?.('X-NSO-Proxy-Error') || '');
+    const description = data?.error_description || data?.error_message || data?.error || fallback;
+    if (code === 'service_circuit_open') return String(description);
+    if ([500, 502, 503, 504].includes(status) || code === 'nxapi_service_unavailable' || code === 'nxapi_upstream_error') {
+        return `${description || fallback} (HTTP ${status}). Diagnostics are running; the failed request was not automatically retried.`;
+    }
+    return String(description || fallback);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
     initServicesNav();
     initAuthGate();
     updateRateLimitBanner();
+    updateServiceHealthBanner();
+    document.getElementById('runServiceDiagnosticsBtn')?.addEventListener('click', () => {
+        void runServiceDiagnostics({ force: true, reason: 'manual' });
+    });
+    document.getElementById('dismissServiceHealthBtn')?.addEventListener('click', () => {
+        serviceHealthDismissedAt = Date.now();
+        document.getElementById('serviceHealthBanner')?.classList.add('hidden');
+    });
     checkStartupSession();
 });
 
@@ -252,6 +570,7 @@ async function generateCoralViaTokenBroker({ idToken, naId, language, country, b
             zncaVersion: ZNCA_VERSION
         })
     });
+    observeServiceResponse(response, { provider: 'nxapi-znca', operation: 'Coral token broker' });
     let data = {};
     try { data = await response.json(); } catch (e) {}
     if (response.status === 429) {
@@ -262,7 +581,7 @@ async function generateCoralViaTokenBroker({ idToken, naId, language, country, b
         nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 };
     }
     if (!response.ok || !validBrokerCoralSession(data?.coral, naId)) {
-        const message = data?.error_description || data?.error || `Cloudflare token broker could not create Coral session (HTTP ${response.status}).`;
+        const message = serviceFailureMessage(data, response, `Cloudflare token broker could not create Coral session`);
         throw new AuthStageError(
             data?.error === 'nxapi_rate_limited' ? 'NXAPI_F_METHOD_1' : 'CORAL_ACCOUNT_LOGIN',
             message,
@@ -335,6 +654,10 @@ function throwIfAborted(signal) {
 
 async function proxyFetch(targetUrl, options = {}) {
     throwIfAborted(options.signal);
+    const provider = serviceProviderForTarget(targetUrl);
+    const circuit = currentServiceCircuit(provider);
+    if (circuit) return syntheticCircuitResponse(circuit);
+
     const proxyPayload = {
         targetUrl: targetUrl,
         method: options.method || 'GET',
@@ -347,12 +670,24 @@ async function proxyFetch(targetUrl, options = {}) {
         proxyPayload.data = options.body || null;
     }
 
-    return fetch(`${WORKER_URL}/api/nso/proxy`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(proxyPayload),
-        signal: options.signal
-    });
+    try {
+        const response = await fetch(`${WORKER_URL}/api/nso/proxy`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(proxyPayload),
+            signal: options.signal
+        });
+        observeServiceResponse(response, {
+            provider,
+            operation: options.diagnosticOperation || `${provider} ${options.method || 'GET'}`
+        });
+        return response;
+    } catch (error) {
+        if (error?.name !== 'AbortError') {
+            void runServiceDiagnostics({ reason: `Cloudflare proxy transport failure for ${provider}` });
+        }
+        throw error;
+    }
 }
 
 function nxapiUrl(path) {
@@ -528,7 +863,7 @@ async function nxapiGenerateF(method, token, userData = {}, requestOptions = {})
     } catch (e) {}
 
     if (!response.ok || !data.f || !data.request_id || !Number.isFinite(Number(data.timestamp))) {
-        const errorMsg = data.error_description || data.error_message || data.error || 'nxapi did not return a complete attestation result.';
+        const errorMsg = serviceFailureMessage(data, response, 'nxapi did not return a complete attestation result.');
         if (response.status === 429 || errorMsg.toLowerCase().includes('too many attempts') || errorMsg.toLowerCase().includes('rate limit')) {
             const retryAfterHeader = response.headers.get('Retry-After');
             const until = parseRetryAfter(retryAfterHeader) || (Date.now() + 60000);
@@ -562,7 +897,7 @@ async function nxapiEncryptRequest(url, bearerToken, body, requestOptions = {}) 
     } catch (e) {}
 
     if (!response.ok || !data.data) {
-        const errorMsg = data.error_description || data.error_message || data.error || 'nxapi request encryption failed.';
+        const errorMsg = serviceFailureMessage(data, response, 'nxapi request encryption failed.');
         if (response.status === 429 || errorMsg.toLowerCase().includes('too many attempts') || errorMsg.toLowerCase().includes('rate limit')) {
             const retryAfterHeader = response.headers.get('Retry-After');
             const until = parseRetryAfter(retryAfterHeader) || (Date.now() + 60000);

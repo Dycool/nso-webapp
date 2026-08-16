@@ -103,6 +103,9 @@ class WebServiceManager {
                 forceFresh: options.forceFresh === true
             })
         });
+        if (typeof window.nsoObserveServiceResponse === 'function') {
+            window.nsoObserveServiceResponse(response, { provider: 'cloudflare', operation: 'Game service token cache' });
+        }
         let data = {};
         try { data = await response.json(); } catch (e) {}
         if (response.ok && data?.token?.token) {
@@ -148,6 +151,9 @@ class WebServiceManager {
                 cancelKey: options.cancelKey || undefined
             })
         });
+        if (typeof window.nsoObserveServiceResponse === 'function') {
+            window.nsoObserveServiceResponse(response, { provider: 'nxapi-znca', operation: 'Game service token generation' });
+        }
         let data = {};
         try { data = await response.json(); } catch (e) {}
         if (response.ok && data?.token?.token) {
