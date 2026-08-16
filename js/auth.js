@@ -98,13 +98,17 @@ async function startTokenBrokerSession(nintendoAccessToken) {
     return data;
 }
 
-function validBrokerCoralSession(entry, expectedNaId) {
+function validBrokerCoralSession(entry, expectedNaId, expectedZncaVersion = nxapiAuthSession?.zncaVersion || null) {
     const session = entry?.session || entry;
     const expiresAt = Number(entry?.expiresAt || session?.nsoWebapp?.coralExpiresAt || 0);
+    const sessionVersion = String(entry?.zncaVersion || session?.nsoWebapp?.zncaVersion || '');
+    const requiredVersion = validZncaVersion(expectedZncaVersion) ? expectedZncaVersion : null;
     return Boolean(
+        requiredVersion &&
         session?.result?.webApiServerCredential?.accessToken &&
         expiresAt > Date.now() + 60000 &&
-        (!expectedNaId || String(session?.nsoWebapp?.naId || '') === String(expectedNaId))
+        (!expectedNaId || String(session?.nsoWebapp?.naId || '') === String(expectedNaId)) &&
+        sessionVersion === requiredVersion
     );
 }
 
@@ -112,7 +116,11 @@ let nxapiLoginWarmPromise = null;
 
 async function warmNxapiForLogin() {
     if (nxapiLoginWarmPromise) return nxapiLoginWarmPromise;
-    nxapiLoginWarmPromise = getNxapiAccessToken();
+    nxapiLoginWarmPromise = (async () => {
+        const nxapiAccessToken = await getNxapiAccessToken();
+        const config = await getNxapiZncaConfig({ accessToken: nxapiAccessToken });
+        return { nxapiAccessToken, zncaVersion: config.version };
+    })();
     try {
         return await nxapiLoginWarmPromise;
     } finally {
@@ -122,10 +130,11 @@ async function warmNxapiForLogin() {
 
 async function generateCoralViaTokenBroker({ idToken, naId, language, country, birthday }) {
     await prepareNxapi();
-    bindNxapiCoralContext(naId, BUNDLED_ZNCA_VERSION);
-    // nxapi authentication/config are warmed as soon as the user explicitly accepts
-    // the disclosure, usually while Nintendo sign-in is open in the other tab.
-    const nxapiAccessToken = await warmNxapiForLogin();
+    // Resolve the version from nxapi before binding the OAuth token to a Coral
+    // context. Hardcoding an app version eventually yields HTTP 406 when nxapi no
+    // longer has a matching worker for that release.
+    const { nxapiAccessToken, zncaVersion } = await warmNxapiForLogin();
+    bindNxapiCoralContext(naId, zncaVersion);
     const response = await fetch(`${WORKER_URL}/api/nso/cache/coral/get-or-create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -138,7 +147,7 @@ async function generateCoralViaTokenBroker({ idToken, naId, language, country, b
             language,
             country,
             birthday,
-            zncaVersion: ZNCA_VERSION
+            zncaVersion
         })
     });
     observeServiceResponse(response, { provider: 'nxapi-znca', operation: 'Coral token broker' });
@@ -151,7 +160,11 @@ async function generateCoralViaTokenBroker({ idToken, naId, language, country, b
     if (response.status === 401 && data?.error === 'nxapi_invalid_token') {
         clearNxapiAuthSession();
     }
-    if (!response.ok || !validBrokerCoralSession(data?.coral, naId)) {
+    if (response.status === 406 || data?.error === 'nxapi_unsupported_version') {
+        clearNxapiZncaConfig();
+        clearNxapiAuthSession();
+    }
+    if (!response.ok || !validBrokerCoralSession(data?.coral, naId, zncaVersion)) {
         const message = serviceFailureMessage(data, response, `Cloudflare token broker could not create Coral session`);
         throw new AuthStageError(
             data?.error === 'nxapi_rate_limited' ? 'NXAPI_F_METHOD_1' : 'CORAL_ACCOUNT_LOGIN',
@@ -164,16 +177,14 @@ async function generateCoralViaTokenBroker({ idToken, naId, language, country, b
 }
 
 // Broker operations themselves refresh the ephemeral lease. A periodic keepalive
-// would spend one Worker request + one Durable Object request (and storage/alarm
-// writes) just to keep memory warm, while Cloudflare may evict an idle DO anyway.
-// Keep the route server-side for older clients, but current clients do no background
-// broker heartbeat at all.
+// would spend one Worker/DO request on ordinary pagehide/refresh. Ephemeral leases
+// expire server-side and explicit Sign Out still performs destructive cleanup.
 function startTokenBrokerHeartbeat() {
     stopTokenBrokerHeartbeat();
 }
 
 function stopTokenBrokerHeartbeat() {
-    if (tokenBrokerHeartbeatTimer) clearInterval(tokenBrokerHeartbeatTimer);
+    if (tokenBrokerHeartbeatTimer) clearTimeout(tokenBrokerHeartbeatTimer);
     tokenBrokerHeartbeatTimer = null;
 }
 
@@ -189,9 +200,6 @@ function releaseTokenBrokerSession(options = {}) {
     }).catch(() => { });
 }
 
-// Do not spend a Worker/DO request on ordinary pagehide/refresh. Ephemeral leases
-// expire server-side and explicit Sign Out still performs destructive cleanup.
-
 function nxapiClientId() {
     return NXAPI_AUTH_CLIENT_ID.trim();
 }
@@ -204,8 +212,6 @@ async function prepareNxapi() {
     if (!hasNxapiConsent()) {
         throw new AuthStageError('NXAPI_AUTH', 'Please accept the nxapi third-party service disclosure before continuing.');
     }
-    // Do not put nxapi discovery/config on the critical login path. It is warmed
-    // after explicit consent and only awaited if the Coral broker actually misses.
 }
 
 function throwIfAborted(signal) {
@@ -257,6 +263,14 @@ function nxapiUrl(path) {
 
 const NXAPI_AUTH_METADATA_CACHE_KEY = 'nso_nxapi_auth_metadata_v1';
 const NXAPI_AUTH_METADATA_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const NXAPI_ZNCA_CONFIG_MAX_AGE_MS = 5 * 60 * 1000;
+let nxapiZncaConfigPromise = null;
+let nxapiZncaConfig = null;
+
+function clearNxapiZncaConfig() {
+    nxapiZncaConfig = null;
+    nxapiZncaConfigPromise = null;
+}
 
 function readCachedNxapiAuthMetadata() {
     try {
@@ -390,7 +404,9 @@ async function getNxapiAccessToken(options = {}) {
             expiresAt: Date.now() + Math.max(1, Number(tokenData.expires_in || 300)) * 1000,
             refreshToken: tokenData.refresh_token || nxapiAuthSession.refreshToken || null,
             coralNaId: nxapiAuthSession.coralNaId || null,
-            zncaVersion: nxapiAuthSession.zncaVersion || activeZncaVersion()
+            // The version is deliberately left unbound until /config tells us what
+            // nxapi can currently serve. Binding BUNDLED_ZNCA_VERSION here caused 406s.
+            zncaVersion: nxapiAuthSession.zncaVersion || null
         };
 
         return nxapiAuthSession.accessToken;
@@ -403,9 +419,81 @@ async function getNxapiAccessToken(options = {}) {
     }
 }
 
+async function getNxapiZncaConfig(options = {}) {
+    throwIfAborted(options.signal);
+    if (nxapiZncaConfig && nxapiZncaConfig.fetchedAt + NXAPI_ZNCA_CONFIG_MAX_AGE_MS > Date.now()) {
+        return nxapiZncaConfig;
+    }
+    if (nxapiZncaConfigPromise) return nxapiZncaConfigPromise;
+
+    nxapiZncaConfigPromise = (async () => {
+        const accessToken = options.accessToken || await getNxapiAccessToken({
+            signal: options.signal,
+            cancelKey: options.cancelKey
+        });
+        const response = await proxyFetch(nxapiUrl('config'), {
+            method: 'GET',
+            headers: {
+                Accept: 'application/json',
+                Authorization: `Bearer ${accessToken}`,
+                'X-znca-Client-Version': NXAPI_CLIENT_VERSION,
+                'X-znca-Platform': ZNCA_PLATFORM
+            },
+            signal: options.signal,
+            cancelKey: options.cancelKey,
+            diagnosticOperation: 'nxapi supported-version config'
+        });
+        const data = await response.json().catch(() => ({}));
+
+        if (response.status === 401) {
+            clearNxapiAuthSession();
+        }
+        if (!response.ok) {
+            throw new AuthStageError(
+                'NXAPI_CONFIG',
+                data?.error_description || data?.error || `Could not read nxapi ZNCA configuration (HTTP ${response.status}).`,
+                null,
+                response.status
+            );
+        }
+
+        const version = String(data?.nso_version || '');
+        if (!validZncaVersion(version)) {
+            throw new AuthStageError('NXAPI_CONFIG', 'nxapi returned an invalid or missing nso_version.');
+        }
+
+        const supportedVersions = Array.isArray(data?.versions)
+            ? data.versions
+                .filter(item => item?.platform === ZNCA_PLATFORM && item?.name === 'com.nintendo.znca' && validZncaVersion(item?.version))
+                .map(item => String(item.version))
+            : [];
+        if (supportedVersions.length && !supportedVersions.includes(version)) {
+            throw new AuthStageError('NXAPI_CONFIG', `nxapi reported ${version} as latest but not as an available Android ZNCA version.`);
+        }
+
+        nxapiZncaConfig = {
+            version,
+            supportedVersions,
+            fetchedAt: Date.now()
+        };
+        ZNCA_VERSION = version;
+        nxapiAuthSession.zncaVersion = version;
+        return nxapiZncaConfig;
+    })();
+
+    try {
+        return await nxapiZncaConfigPromise;
+    } finally {
+        nxapiZncaConfigPromise = null;
+    }
+}
+
 async function nxapiFetch(path, options = {}) {
     throwIfAborted(options.signal);
     const token = await getNxapiAccessToken({ signal: options.signal, cancelKey: options.cancelKey });
+    if (!userSession && !validZncaVersion(nxapiAuthSession.zncaVersion)) {
+        await getNxapiZncaConfig({ accessToken: token, signal: options.signal, cancelKey: options.cancelKey });
+    }
     const response = await proxyFetch(nxapiUrl(path), {
         ...options,
         headers: {
@@ -420,6 +508,9 @@ async function nxapiFetch(path, options = {}) {
     if (response.status === 401) {
         clearNxapiAuthSession();
     }
+    if (response.status === 406) {
+        clearNxapiZncaConfig();
+    }
 
     return response;
 }
@@ -430,7 +521,13 @@ async function nxapiFetch(path, options = {}) {
 // Version changes therefore happen only when a brand-new Coral session is created.
 
 async function nxapiGenerateF(method, token, userData = {}, requestOptions = {}) {
-    if (userData?.na_id) bindNxapiCoralContext(userData.na_id, activeZncaVersion());
+    if (userData?.na_id && !userSession) {
+        const accessToken = await getNxapiAccessToken({ signal: requestOptions.signal, cancelKey: requestOptions.cancelKey });
+        const config = await getNxapiZncaConfig({ accessToken, signal: requestOptions.signal, cancelKey: requestOptions.cancelKey });
+        bindNxapiCoralContext(userData.na_id, config.version);
+    } else if (userData?.na_id) {
+        bindNxapiCoralContext(userData.na_id, activeZncaVersion());
+    }
     // Keep f-generation on the proven nxapi-auth path. The Worker already relays
     // these requests, so adding a second Worker-owned OAuth client path only adds
     // another failure mode without making the remote attestation itself faster.
