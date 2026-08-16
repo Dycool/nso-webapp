@@ -1273,6 +1273,38 @@ function resetTabNavigationState() {
     persistentViews().forEach((view) => hideViewInstant(view));
 }
 
+// Reselecting the currently active bottom tab acts like Android's pop-to-root:
+// preserve nested state while switching between tabs, but a second press on the
+// already-selected tab clears that tab's overlay/back stack and reveals its base page.
+function resetTabToRoot(tab) {
+    tab = validAppTab(tab);
+    const ownedViews = persistentViews().filter((view) => persistentViewOwner(view) === tab);
+    const hasVisibleNestedView = ownedViews.some((view) => !view.classList.contains('hidden'));
+    const hasSavedNestedView = (tabViewSnapshots[tab] || []).length > 0;
+    if (!hasVisibleNestedView && !hasSavedNestedView) return false;
+
+    ownedViews.forEach((view) => {
+        hideViewInstant(view);
+        if (view.id) tabViewScroll.delete(view.id);
+    });
+    tabViewSnapshots[tab] = [];
+
+    // Keep the legacy per-tab state in sync with the visible root page so older
+    // handlers cannot immediately reopen a stale submenu after the reselect.
+    if (tab === 'friends') navTabStacks.friends = 'list';
+    else if (tab === 'album') navTabStacks.album = 'album';
+    else navTabStacks.home = 'home';
+
+    document.querySelectorAll('.tab-page').forEach((page) => page.classList.remove('active'));
+    document.getElementById(`page-${tab}`)?.classList.add('active');
+
+    requestAnimationFrame(() => {
+        if (activeAppTab !== tab) return;
+        window.scrollTo({ top: tabBaseScroll[tab] || 0, behavior: 'auto' });
+    });
+    return true;
+}
+
 window.nsoCurrentTab = () => activeAppTab;
 
 let activeFriendDetailData = null;
@@ -1421,6 +1453,11 @@ function showAppPage(pageName = 'home') {
         captureTabNavigationState(activeAppTab);
         suspendTabNavigationState(activeAppTab);
         activeAppTab = pageName;
+    } else {
+        // A tap on the already-selected bottom tab is an explicit request to go
+        // back to that section's main/root screen. Cross-tab restores still keep
+        // their exact submenu and scroll state until this reselect happens.
+        resetTabToRoot(pageName);
     }
 
     document.querySelectorAll('#homeDock button').forEach(button => {
