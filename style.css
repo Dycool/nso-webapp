@@ -3,6 +3,11 @@
    Design Palette: OLED Dark (#0f1015), Nintendo Red (#e60012), Neon Accents
    ========================================================================== */
 
+html {
+    /* Keep the page's horizontal geometry identical when GWS launch locks scrolling. */
+    scrollbar-gutter: stable;
+}
+
 :root {
     --bg-main: #0f1015;
     --bg-card: #191b24;
@@ -1634,6 +1639,19 @@ body.webview-active #homeDock {
     to { opacity: 0; }
 }
 
+
+/* The home dock is centered with translateX(-50%). Generic activity-scale
+   keyframes overwrite that transform and make the dock jump right. Preserve
+   the centering transform while applying the same APK scale values. */
+@keyframes nso-apk-go-exit-dock-scale {
+    from { transform: translateX(-50%) scale(1); }
+    to { transform: translateX(-50%) scale(1.05); }
+}
+@keyframes nso-apk-back-enter-dock-scale {
+    from { transform: translateX(-50%) scale(1.1); }
+    to { transform: translateX(-50%) scale(1); }
+}
+
 .nso-apk-go-enter {
     transform-origin: 50% 50%;
     animation:
@@ -1659,6 +1677,18 @@ body.webview-active #homeDock {
         nso-apk-back-exit-scale 400ms cubic-bezier(.16, 1, .3, 1) both,
         nso-apk-back-exit-alpha 50ms linear 50ms both !important;
     pointer-events: none !important;
+}
+
+
+#homeDock.nso-apk-go-exit {
+    transform-origin: 50% 50%;
+    animation:
+        nso-apk-go-exit-dock-scale 400ms cubic-bezier(.16, 1, .3, 1) 150ms both,
+        nso-apk-go-exit-alpha 150ms linear 200ms both !important;
+}
+#homeDock.nso-apk-back-enter {
+    transform-origin: 50% 50%;
+    animation: nso-apk-back-enter-dock-scale 400ms cubic-bezier(.16, 1, .3, 1) both !important;
 }
 .nso-apk-transition-background { z-index: 294 !important; }
 .nso-apk-transition-foreground { z-index: 295 !important; }
