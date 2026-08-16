@@ -1,7 +1,7 @@
 /* NSO WebApp runtime cache.
  * API/auth/GameWebService traffic is intentionally never cached here.
  */
-const STATIC_CACHE = 'nso-static-v2';
+const STATIC_CACHE = 'nso-static-v3';
 const IMAGE_CACHE = 'nso-images-v1';
 const MAX_IMAGE_ENTRIES = 300;
 const MAX_STATIC_ENTRIES = 80;
@@ -36,6 +36,22 @@ async function cacheFirst(request, cacheName) {
     return response;
 }
 
+async function networkFirst(request, cacheName) {
+    const cache = await caches.open(cacheName);
+    try {
+        const response = await fetch(request);
+        if (response && (response.ok || response.type === 'opaque')) {
+            await cache.put(request, response.clone()).catch(() => {});
+            if (cacheName === STATIC_CACHE) void trimCache(STATIC_CACHE, MAX_STATIC_ENTRIES);
+        }
+        return response;
+    } catch (error) {
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        throw error;
+    }
+}
+
 self.addEventListener('fetch', (event) => {
     const request = event.request;
     if (request.method !== 'GET') return;
@@ -55,10 +71,14 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    if (url.origin === self.location.origin && ['script', 'style', 'font'].includes(request.destination)) {
-        // App assets are query-versioned in index.html, so cache-first is safe: a
-        // deployment changes the URL and naturally bypasses the old entry. The v2
-        // cache also evicts the pre-fix auth.js entry from existing installations.
+    if (url.origin === self.location.origin && request.destination === 'script') {
+        // JavaScript must observe deployments immediately. Keeping scripts cache-first
+        // caused refactor fixes to remain hidden behind an unchanged query suffix.
+        event.respondWith(networkFirst(request, STATIC_CACHE));
+        return;
+    }
+
+    if (url.origin === self.location.origin && ['style', 'font'].includes(request.destination)) {
         event.respondWith(cacheFirst(request, STATIC_CACHE));
         return;
     }
