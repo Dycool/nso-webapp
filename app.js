@@ -134,7 +134,7 @@ function updateRateLimitBanner() {
 // real service problem. Healthy/transient results stay silent.
 const SERVICE_DIAGNOSTICS_COOLDOWN_MS = 15_000;
 const SERVICE_CIRCUIT_DEFAULT_MS = 30_000;
-const SERVICE_HEALTH_TOAST_MS = 9_000;
+const SERVICE_HEALTH_TOAST_MS = 3_000;
 let serviceDiagnosticsInFlight = null;
 let lastServiceDiagnosticsAt = 0;
 let lastServiceDiagnostics = null;
@@ -470,7 +470,19 @@ function checkStartupSession() {
 }
 
 function updateRememberedUI() {
-    const hasRemembered = localStorage.getItem('nso_has_remembered_account') === 'true';
+    const rememberedFlag = localStorage.getItem('nso_has_remembered_account') === 'true';
+    const rememberedExpiresAt = Number(localStorage.getItem('nso_remember_expires_at') || 0);
+    // Pre-v14 remembered grants did not store their server expiry locally. Keep those
+    // visible and let the already-30-day-capped server record decide at resume time.
+    const hasRemembered = rememberedFlag && (rememberedExpiresAt <= 0 || rememberedExpiresAt > Date.now());
+
+    // New grants carry their absolute server expiry, so the UI can expire them locally
+    // without even offering a stale resume action.
+    if (rememberedFlag && rememberedExpiresAt > 0 && rememberedExpiresAt <= Date.now()) {
+        localStorage.removeItem('nso_has_remembered_account');
+        localStorage.removeItem('nso_remember_expires_at');
+    }
+
     const section = document.getElementById('rememberedAccountSection');
     const profileForgetBtn = document.getElementById('profileForgetRememberedBtn');
 
@@ -1507,6 +1519,7 @@ function logout() {
 
 async function clearRememberedAccount() {
     localStorage.removeItem('nso_has_remembered_account');
+    localStorage.removeItem('nso_remember_expires_at');
     updateRememberedUI();
     try {
         await fetch(`${WORKER_URL}/api/nso/remember/forget`, {
@@ -1630,6 +1643,7 @@ async function performFullAuthentication(options = {}) {
 
                 if (!resumeResp.ok) {
                     localStorage.removeItem('nso_has_remembered_account');
+                    localStorage.removeItem('nso_remember_expires_at');
                     updateRememberedUI();
                     let errMsg = `HTTP ${resumeResp.status}`;
                     try {
@@ -1927,7 +1941,15 @@ async function performFullAuthentication(options = {}) {
                         body: JSON.stringify({ sessionToken: longLivedSessionToken })
                     });
                     if (remResp.ok) {
-                        localStorage.setItem('nso_has_remembered_account', 'true');
+                        const rememberData = await remResp.json().catch(() => ({}));
+                        const rememberExpiresAt = Number(rememberData.expiresAt || 0);
+                        if (rememberExpiresAt > Date.now()) {
+                            localStorage.setItem('nso_has_remembered_account', 'true');
+                            localStorage.setItem('nso_remember_expires_at', String(rememberExpiresAt));
+                        } else {
+                            localStorage.removeItem('nso_has_remembered_account');
+                            localStorage.removeItem('nso_remember_expires_at');
+                        }
                         updateRememberedUI();
                     } else {
                         const err = await remResp.json().catch(() => ({}));
@@ -1942,6 +1964,7 @@ async function performFullAuthentication(options = {}) {
                 // account broker cannot remain persistent because of stale local
                 // consent from a previous sign-in on this browser.
                 localStorage.removeItem('nso_has_remembered_account');
+                localStorage.removeItem('nso_remember_expires_at');
                 try {
                     await fetch(`${WORKER_URL}/api/nso/remember/forget`, {
                         method: 'POST',
@@ -5568,14 +5591,32 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         });
     }
 
-    async function openSettings() {
+    function openSettings() {
         ensureScreens();
-        openScreen('opSettingsPage');
-        await loadCurrentUserAndPermissions().catch(() => {});
-        if (!state.loginFactor) {
-            state.loginFactor = await coralExact('loginFactor').catch(() => null);
-        }
+
+        // Render immediately from current session/cached data so the settings rows
+        // exist before the transition starts. Remote Coral calls only enrich labels.
         renderSettingsPage();
+        openScreen('opSettingsPage');
+
+        const settingsPage = $('opSettingsPage');
+        const scrollHost = settingsPage?.querySelector('.op-scroll') || settingsPage;
+
+        const userRefresh = loadCurrentUserAndPermissions().catch(() => {});
+        const factorRefresh = state.loginFactor
+            ? Promise.resolve()
+            : coralExact('loginFactor')
+                .then((factor) => { if (factor) state.loginFactor = factor; })
+                .catch(() => {});
+
+        // Run the slow calls concurrently in the background and refresh in place.
+        // If the user already left Settings, do not touch the hidden page.
+        void Promise.all([userRefresh, factorRefresh]).then(() => {
+            if (!settingsPage || settingsPage.classList.contains('hidden')) return;
+            const scrollTop = scrollHost?.scrollTop || 0;
+            renderSettingsPage();
+            if (scrollHost) scrollHost.scrollTop = scrollTop;
+        });
     }
 
     function openFeedback() {
