@@ -616,9 +616,11 @@
 
     function ownPlayTimeText(totalPlayTime) {
         const minutes = Number(totalPlayTime || 0);
-        if (!Number.isFinite(minutes) || minutes < 60) return 'Played for a little while';
+        if (!Number.isFinite(minutes) || minutes < 60) {
+            return trKey('FriendDetails_Label_Play_Log_Little');
+        }
         const hours = Math.max(1, Math.round(minutes / 60));
-        return `Played for ${hours} hour(s) or more`;
+        return trFormat('FriendDetails_Label_Play_Log_Time', hours);
     }
 
     function renderOwnPlayLogs(playLogs = []) {
