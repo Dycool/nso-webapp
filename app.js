@@ -4939,10 +4939,8 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
     async function refreshParityData() {
         if (state.refreshing) return state.refreshing;
         state.refreshing = (async () => {
-            ensureHomeChatSection();
             installAlbumParity();
             if (coralToken()) {
-                refreshHomeChat();
                 coralExact('announcements').then((result) => {
                     state.announcements = Array.isArray(result) ? result : (result?.announcements || []);
                     updateAnnouncementDot();
@@ -4980,7 +4978,6 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         installChatCandidateReplacement();
         installAlbumParity();
         installReceivedRequestTextParity();
-        ensureHomeChatSection();
         refreshParityData();
         console.log('[OfficialParity] APK-derived Nintendo Switch App parity layer loaded');
     }
