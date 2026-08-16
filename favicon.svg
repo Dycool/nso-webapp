@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="nso-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff1a2a" />
+      <stop offset="100%" stop-color="#e60012" />
+    </linearGradient>
+  </defs>
+  <!-- Background rounded rectangle -->
+  <rect width="64" height="64" rx="14" fill="url(#nso-grad)" />
+  
+  <!-- Left Joy-Con (Solid white capsule with cutout hole near top) -->
+  <path d="M 23.5 13 C 17.7 13 13 17.7 13 23.5 L 13 40.5 C 13 46.3 17.7 51 23.5 51 L 26.5 51 C 27.33 51 28 50.33 28 49.5 L 28 14.5 C 28 13.67 27.33 13 26.5 13 Z M 20.5 27 C 18.29 27 16.5 25.21 16.5 23 C 16.5 20.79 18.29 19 20.5 19 C 22.71 19 24.5 20.79 24.5 23 C 24.5 25.21 22.71 27 20.5 27 Z" fill="#ffffff" />
+  
+  <!-- Right Joy-Con (Outline capsule) -->
+  <path d="M 37.5 13 C 36.67 13 36 13.67 36 14.5 L 36 49.5 C 36 50.33 36.67 51 37.5 51 L 40.5 51 C 46.3 51 51 46.3 51 40.5 L 51 23.5 C 51 17.7 46.3 13 40.5 13 Z M 40.5 46 L 39.5 46 C 39.22 46 39 45.78 39 45.5 L 39 18.5 C 39 18.22 39.22 18 39.5 18 L 40.5 18 C 43.54 18 46 20.46 46 23.5 L 46 40.5 C 46 43.54 43.54 46 40.5 46 Z" fill="#ffffff" />
+  
+  <!-- Right Joy-Con stick (Solid white circle near bottom) -->
+  <circle cx="42.5" cy="41" r="3.75" fill="#ffffff" />
+</svg>
