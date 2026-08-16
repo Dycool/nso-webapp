@@ -3172,11 +3172,18 @@ body:has(#opUserPage:not(.hidden)) .home-dock {
 .service-launch-card.launching-service::after {
     content: '';
     position: absolute;
-    inset: 0;
+    z-index: 2;
+    top: 50%;
+    left: 50%;
+    width: 30px;
+    height: 30px;
+    margin: -19px 0 0 -19px;
+    border: 4px solid rgba(255,255,255,.35);
+    border-top-color: #fff;
+    border-radius: 50%;
+    background: transparent;
     pointer-events: none;
-    background: linear-gradient(100deg, transparent 22%, rgba(255,255,255,.07) 48%, transparent 72%);
-    transform: translateX(-100%);
-    animation: nso-native-shimmer 1.05s ease-in-out infinite;
+    animation: service-launch-spin .7s linear infinite;
 }
 
 @keyframes nso-native-rise {

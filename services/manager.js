@@ -158,6 +158,17 @@ class WebServiceManager {
             cancelKey: options.cancelKey
         });
 
+        // Keep the ZNCA product version in sync with nxapi before spending a method-2
+        // generation on a cache miss. This is a cheap config read, cached in memory,
+        // and never retries /f. If config is unavailable we keep the bundled APK version.
+        if (typeof refreshNxapiConfig === 'function') {
+            await refreshNxapiConfig(nxapiAccessToken, {
+                silent: true,
+                signal: options.signal,
+                cancelKey: options.cancelKey
+            });
+        }
+
         // nxapi occasionally emits an isolated HTTP 500 while a worker is otherwise
         // healthy. Keep the native loading surface visible and retry that specific
         // transient once. Other statuses (especially 429/401/406) are never blindly
@@ -216,9 +227,15 @@ class WebServiceManager {
             }
 
             this.setLoadingStatus('');
-            const error = new Error(data?.error_description || data?.error || `Cloudflare token broker failed (HTTP ${response.status}).`);
+            const requestedVersion = typeof ZNCA_VERSION === 'string' ? ZNCA_VERSION : 'unknown';
+            const noMatchingWorker = response.status === 406 || data?.error === 'nxapi_unsupported_version' ||
+                /no matching workers/i.test(String(data?.error_description || data?.error || ''));
+            const message = noMatchingWorker
+                ? `nxapi has no matching Android worker for Nintendo Switch App ${requestedVersion} right now. ${String(data?.error_description || '').trim()}`.trim()
+                : (data?.error_description || data?.error || `Cloudflare token broker failed (HTTP ${response.status}).`);
+            const error = new Error(message);
             error.status = response.status;
-            error.code = data?.error || 'broker_generation_error';
+            error.code = noMatchingWorker ? 'nxapi_unsupported_version' : (data?.error || 'broker_generation_error');
             throw error;
         }
 
@@ -585,9 +602,19 @@ class WebServiceManager {
             const cancelled = this.isLaunchCancellation(e) || launchController.signal.aborted || launchEpoch !== this.launchEpoch;
             if (!cancelled) {
                 console.error(`[LaunchTrace:${traceId}] Launch failed:`, e);
+
+                // Remove the catalog loading treatment immediately. Previously it stayed
+                // painted over the service artwork while the 400 ms Back transition and
+                // Cloudflare cancellation completed, which made failures look stuck/broken.
+                buttonElement?.closest('.service-launch-card')?.classList.remove('launching-service');
                 launchController.abort();
-                await this.cancelCloudflareLaunch(launchId);
+
+                // Roll the UI back immediately and cancel the server-side launch in parallel.
+                // The error dialog is only shown after the native Back animation has finished,
+                // so no loading animation is visible behind it.
+                const cloudflareCancel = this.cancelCloudflareLaunch(launchId);
                 await this.cancelNativeServiceLaunch();
+                await cloudflareCancel;
                 alert(`Could not open ${service.name || 'service'}: ${e.message}`);
             } else {
                 
