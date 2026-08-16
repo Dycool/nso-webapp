@@ -25,6 +25,12 @@ function setAuthGateHint(_text) {
     // authentication-stage/debug text in the UI.
 }
 
+// Nintendo session_token_code values are single-use. If the code exchange succeeds
+// but a later authentication stage fails, retain only the resulting session_token in
+// page memory so retrying the same pasted value does not attempt to consume the code
+// a second time. This is intentionally never persisted to web storage.
+let failedLoginRetry = null;
+
 async function performFullAuthentication(options = {}) {
     if (loginInFlight) {
         console.log('[Auth] Authentication already in progress, awaiting active flow.');
@@ -78,6 +84,10 @@ async function performFullAuthentication(options = {}) {
                     throw new Error('Please paste the redirect URL or session_token string.');
                 }
 
+                // A retry token belongs only to the exact pasted value that produced it.
+                // Submitting anything else immediately drops the old in-memory credential.
+                if (failedLoginRetry?.input !== input) failedLoginRetry = null;
+
                 // Direct JSON Session or AccessToken input support
                 if (input.startsWith('{') && input.endsWith('}')) {
                     try {
@@ -88,6 +98,7 @@ async function performFullAuthentication(options = {}) {
                             coralExpiresAt: Number(jsonSession?.nsoWebapp?.coralExpiresAt || 0) || Date.now() + expiresIn * 1000,
                             zncaVersion: validZncaVersion(jsonSession?.nsoWebapp?.zncaVersion) ? jsonSession.nsoWebapp.zncaVersion : BUNDLED_ZNCA_VERSION
                         };
+                        failedLoginRetry = null;
                         userSession = jsonSession;
                         applySessionZncaVersion(jsonSession);
                         sessionStorage.setItem('nso_user_session', JSON.stringify(jsonSession));
@@ -105,6 +116,10 @@ async function performFullAuthentication(options = {}) {
                     returnedState = urlParams.get('state') || null;
                 }
 
+                const retrySessionToken = failedLoginRetry?.input === input
+                    ? failedLoginRetry.sessionToken
+                    : null;
+
                 const expectedState = localStorage.getItem('nso_auth_state');
                 if (returnedState && expectedState && returnedState !== expectedState) {
                     throw new AuthStageError(
@@ -114,45 +129,54 @@ async function performFullAuthentication(options = {}) {
                 }
 
                 const verifier = localStorage.getItem('nso_pkce_verifier');
-                if (!verifier && (input.includes('session_token_code=') || input.length < 120)) {
+                if (!retrySessionToken && !verifier && (input.includes('session_token_code=') || input.length < 120)) {
                     throw new AuthStageError(
                         'NINTENDO_SESSION_TOKEN_EXCHANGE',
                         'PKCE verifier missing. Please click "Open Nintendo Sign In" again to start a new authentication session.'
                     );
                 }
 
-                // Step 1: Exchange session_token_code + session_token_code_verifier -> session_token
-                setAuthButtonsDisabled(true, 'Signing in...');
-                setAuthGateHint('Exchanging session authorization code with Nintendo…');
+                if (retrySessionToken) {
+                    // The one-time code was already exchanged successfully during the
+                    // previous attempt. Continue from the reusable Nintendo session token.
+                    longLivedSessionToken = retrySessionToken;
+                    setAuthButtonsDisabled(true, 'Signing in...');
+                    setAuthGateHint('Retrying Nintendo Account authentication…');
+                } else {
+                    // Step 1: Exchange session_token_code + session_token_code_verifier -> session_token
+                    setAuthButtonsDisabled(true, 'Signing in...');
+                    setAuthGateHint('Exchanging session authorization code with Nintendo…');
 
-                const formBody = new URLSearchParams({
-                    client_id: '71b963c1b7b6d119',
-                    session_token_code: code,
-                    session_token_code_verifier: verifier || ''
-                });
+                    const formBody = new URLSearchParams({
+                        client_id: '71b963c1b7b6d119',
+                        session_token_code: code,
+                        session_token_code_verifier: verifier || ''
+                    });
 
-                const step1Resp = await proxyFetch('https://accounts.nintendo.com/connect/1.0.0/api/session_token', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'User-Agent': 'Dalvik/2.1.0 (Linux; U; Android 10; Build/QP1A.190711.020)'
-                    },
-                    body: formBody.toString()
-                });
-                const step1Data = await step1Resp.json().catch(() => ({}));
+                    const step1Resp = await proxyFetch('https://accounts.nintendo.com/connect/1.0.0/api/session_token', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'User-Agent': 'Dalvik/2.1.0 (Linux; U; Android 10; Build/QP1A.190711.020)'
+                        },
+                        body: formBody.toString()
+                    });
+                    const step1Data = await step1Resp.json().catch(() => ({}));
 
-                if (!step1Resp.ok || !step1Data.session_token) {
-                    throw new AuthStageError(
-                        'NINTENDO_SESSION_TOKEN_EXCHANGE',
-                        `Nintendo session code exchange failed: ${step1Data.error || step1Data.errorMessage || 'Invalid session_token_code'} (HTTP ${step1Resp.status})`,
-                        null,
-                        step1Resp.status
-                    );
+                    if (!step1Resp.ok || !step1Data.session_token) {
+                        throw new AuthStageError(
+                            'NINTENDO_SESSION_TOKEN_EXCHANGE',
+                            `Nintendo session code exchange failed: ${step1Data.error || step1Data.errorMessage || 'Invalid session_token_code'} (HTTP ${step1Resp.status})`,
+                            null,
+                            step1Resp.status
+                        );
+                    }
+
+                    longLivedSessionToken = step1Data.session_token;
+                    failedLoginRetry = { input, sessionToken: longLivedSessionToken };
+                    localStorage.removeItem('nso_pkce_verifier');
+                    localStorage.removeItem('nso_auth_state');
                 }
-
-                longLivedSessionToken = step1Data.session_token;
-                localStorage.removeItem('nso_pkce_verifier');
-                localStorage.removeItem('nso_auth_state');
 
                 // Step 2: Exchange session_token -> id_token & access_token (JWT)
                 setAuthButtonsDisabled(true, 'Signing in...');
@@ -407,6 +431,8 @@ async function performFullAuthentication(options = {}) {
                 updateRememberedUI();
             }
 
+            // The retry credential is no longer needed once the full flow succeeds.
+            failedLoginRetry = null;
             pendingRememberedResume = false;
             document.getElementById('loginWorkflow')?.classList.remove('remembered-consent-only');
             setAuthGateHint('');
@@ -547,6 +573,5 @@ function initAuthGate() {
         profileForgetRememberedBtn.addEventListener('click', forgetRememberedAccount);
     }
 }
-
 
 
