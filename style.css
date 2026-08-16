@@ -2947,6 +2947,10 @@ body:has(#opUserPage:not(.hidden)) .home-dock {
 .native-user-change:hover { background: rgba(29,184,236,.08); }
 .native-user-change:active { transform: scale(.96); }
 .native-user-change i { font-size: 13px; }
+.native-user-presence {
+    width: 100%;
+    min-height: 80px;
+}
 .native-user-offline {
     min-height: 80px;
     display: grid;
@@ -2954,6 +2958,51 @@ body:has(#opUserPage:not(.hidden)) .home-dock {
     border-bottom: 1px solid #3c3c3e;
     color: #a8a8ac;
     font-size: 13px;
+}
+.native-user-presence-row {
+    width: 100%;
+    min-height: 126px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-top: 12px;
+    padding: 17px 18px;
+    border: 0;
+    background: #444446;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background .13s ease, transform .12s ease;
+    animation: nso-native-row .22s ease-out both;
+}
+.native-user-presence-row:hover { background: #4a4a4c; }
+.native-user-presence-row:active { background: #505053; transform: scale(.996); }
+.native-user-presence-row:disabled { cursor: default; }
+.native-user-presence-row img {
+    width: 96px;
+    height: 96px;
+    flex: 0 0 auto;
+    border-radius: 5px;
+    object-fit: cover;
+    background: #2a2a2c;
+}
+.native-user-presence-row img.native-user-presence-image-missing { visibility: hidden; }
+.native-user-presence-copy {
+    min-width: 0;
+    display: grid;
+    gap: 5px;
+}
+.native-user-presence-online {
+    color: #1fd46a;
+    font: 700 12px var(--font-heading);
+}
+.native-user-presence-copy strong {
+    overflow: hidden;
+    color: #e8e8ea;
+    font: 700 17px var(--font-heading);
+    line-height: 1.22;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 .native-play-section { margin-top: 30px; }
 .native-user-play-list {
@@ -3060,6 +3109,9 @@ body:has(#opUserPage:not(.hidden)) .home-dock {
     .native-user-hero img { width: 88px; height: 88px; }
     .native-friend-code-card { padding-inline: 17px; }
     .native-user-action-card { min-height: 88px; }
+    .native-user-presence-row { min-height: 104px; padding: 13px; gap: 14px; }
+    .native-user-presence-row img { width: 78px; height: 78px; }
+    .native-user-presence-copy strong { font-size: 15px; }
     .native-user-play-row { min-height: 84px; padding-inline: 13px; gap: 13px; }
     .native-user-play-row img { width: 53px; height: 53px; }
 }

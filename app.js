@@ -3933,7 +3933,9 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
                             <i class="fa-solid fa-circle-chevron-right"></i> Change
                         </button>
                     </div>
-                    <div class="native-user-offline" id="nativeOfflineStatus">Offline</div>
+                    <div class="native-user-presence" id="nativeOwnPresence">
+                        <div class="native-user-offline">Offline</div>
+                    </div>
                 </section>
 
                 <section class="native-user-section native-play-section" aria-labelledby="nativePlayActivityHeading">
@@ -4105,11 +4107,23 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         if (permissions) state.permissions = permissions;
     }
 
-    function formatOwnPresence(user) {
-        const presence = user?.presence || sessionUser()?.presence || null;
-        const presenceState = String(presence?.state || presence?.status || '').toUpperCase();
-        if (presenceState === 'ONLINE' || presenceState === 'PLAYING') return 'Online';
+    function ownPresencePlatformLabel(presence) {
+        const raw = presence?.platform;
+        const normalized = String(raw ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+        if (raw === 2 || normalized === '2' || normalized === 'OUNCE' ||
+            normalized === 'NINTENDO_SWITCH_2' || normalized === 'SWITCH_2' || normalized === 'SWITCH2') {
+            return 'Nintendo Switch 2';
+        }
+        if (raw === 1 || normalized === '1' || normalized === 'NX' ||
+            normalized === 'NINTENDO_SWITCH' || normalized === 'SWITCH') {
+            return 'Nintendo Switch';
+        }
+        // Older Coral responses did not expose the platform field. Those responses
+        // predate Nintendo Switch 2, so Nintendo Switch is the closest native label.
+        return 'Nintendo Switch';
+    }
 
+    function formatOwnOfflinePresence(user, presence) {
         const lastSeen = toMillis(
             presence?.updatedAt ?? presence?.logoutAt ?? presence?.lastOnlineAt ??
             user?.presenceUpdatedAt ?? user?.lastOnlineAt
@@ -4122,6 +4136,64 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         if (hours < 1) return `Offline: ${Math.max(1, minutes)} minute(s)`;
         if (hours < 48) return `Offline: ${hours} hour(s)`;
         return `Offline: ${Math.floor(hours / 24)} day(s)`;
+    }
+
+    function renderOwnPresence(user) {
+        const host = $('nativeOwnPresence');
+        if (!host) return;
+        host.replaceChildren();
+
+        const presence = user?.presence || sessionUser()?.presence || null;
+        const presenceState = String(presence?.state || presence?.status || '').toUpperCase();
+        const isOnline = presenceState === 'ONLINE' || presenceState === 'PLAYING';
+        const game = presence?.game && typeof presence.game === 'object' ? presence.game : null;
+        const hasGame = Boolean(isOnline && game?.name);
+
+        if (!hasGame) {
+            const status = document.createElement('div');
+            status.className = 'native-user-offline';
+            status.textContent = isOnline
+                ? `Online (${ownPresencePlatformLabel(presence)})`
+                : formatOwnOfflinePresence(user, presence);
+            host.appendChild(status);
+            return;
+        }
+
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'native-user-presence-row';
+        row.setAttribute('aria-label', `Open ${game.name}`);
+
+        const image = document.createElement('img');
+        image.src = game.imageUri || '';
+        image.alt = '';
+        image.loading = 'eager';
+        image.addEventListener('error', () => image.classList.add('native-user-presence-image-missing'));
+
+        const copy = document.createElement('span');
+        copy.className = 'native-user-presence-copy';
+
+        const online = document.createElement('span');
+        online.className = 'native-user-presence-online';
+        online.textContent = `Online (${ownPresencePlatformLabel(presence)})`;
+
+        const title = document.createElement('strong');
+        title.textContent = game.name || 'Game';
+
+        copy.append(online, title);
+        row.append(image, copy);
+
+        if (typeof openGameSheet === 'function') {
+            row.addEventListener('click', () => openGameSheet({
+                name: game.name || 'Game',
+                imageUri: game.imageUri || '',
+                shopUri: game.shopUri || ''
+            }));
+        } else {
+            row.disabled = true;
+        }
+
+        host.appendChild(row);
     }
 
     function ownPlayTimeText(totalPlayTime) {
@@ -4250,7 +4322,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         $('opUserAvatar').src = user.imageUri || user.image2Uri || $('profileViewAvatar')?.src || '';
         $('opUserName').textContent = user.name || user.nickname || $('profileViewName')?.textContent || 'Switch Player';
         $('opFriendCode').textContent = user.links?.friendCode?.id || $('profileViewFriendCode')?.textContent || '—';
-        $('nativeOfflineStatus').textContent = formatOwnPresence(user);
+        renderOwnPresence(user);
         openScreen('opUserPage');
 
         try {
@@ -4259,7 +4331,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             $('opUserAvatar').src = full.imageUri || full.image2Uri || $('opUserAvatar').src;
             $('opUserName').textContent = full.name || full.nickname || $('opUserName').textContent;
             $('opFriendCode').textContent = full.links?.friendCode?.id || $('opFriendCode').textContent;
-            $('nativeOfflineStatus').textContent = formatOwnPresence(full);
+            renderOwnPresence(full);
             const permissions = state.permissions?.permissions || full.permissions || {};
             $('opOnlineStatusSummary').textContent = permissionLabel('presence', permissions.presence);
             $('opPlayActivitySummary').textContent = permissionLabel('playLog', permissions.playLog);
