@@ -11,7 +11,7 @@
     <!-- Google Fonts & Icons -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:ital,opsz,wght@0,14..32,100..900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="style.css?v=20260816-v41">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
@@ -362,6 +362,10 @@
             <button class="webview-reload-btn" id="reloadInAppGameWebviewBtn" type="button" aria-label="Retry"><i class="fa-solid fa-rotate-right"></i></button>
         </header>
         <div class="inapp-webview-frame-wrap">
+            <!-- allow-same-origin is required: proxied Nintendo game services need
+                 origin-sensitive Web APIs (cookies, localStorage, fetch credentials).
+                 The browser warns that allow-scripts + allow-same-origin can escape
+                 sandboxing; this is an accepted trade-off for WebView parity. -->
             <iframe id="inAppGameWebviewFrame" name="inAppGameWebviewFrame" title="Nintendo Switch Online Game Service" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"></iframe>
         </div>
     </section>
