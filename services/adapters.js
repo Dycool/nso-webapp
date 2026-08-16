@@ -151,6 +151,20 @@ class ZeldaNotesAdapter extends GenericWebViewAdapter {
             localStorage.removeItem('nso_persist_5935781783175168');
             localStorage.removeItem('nso_persist_4974384874151936');
         } catch (e) {}
+
+        // Zelda Notes keeps the display awake while its interactive map is open.
+        // The proxied service runs on the Worker origin, so Chromium requires the
+        // parent iframe to explicitly delegate the Screen Wake Lock permission.
+        // Without this delegation the browser emits a Permissions Policy violation
+        // and WakeLock.request() is rejected with NotAllowedError.
+        const frame = document.getElementById('inAppGameWebviewFrame');
+        if (frame) {
+            const currentAllow = String(frame.getAttribute('allow') || '').trim();
+            if (!/(^|;)\s*screen-wake-lock(?:\s|;|$)/i.test(currentAllow)) {
+                frame.setAttribute('allow', [currentAllow, 'screen-wake-lock'].filter(Boolean).join('; '));
+            }
+        }
+
         return super.launch(service, token, options);
     }
 }
