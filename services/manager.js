@@ -132,23 +132,24 @@ class WebServiceManager {
     }
 
     async consumeMethod2Attestation(traceId, context) {
-        const consumeWarm = () => {
+        const consumeWarm = (source = 'prewarmed', durationMs = 0) => {
             if (!this.hasFreshWarmAttestation(context)) return null;
             const warm = this.method2WarmAttestation;
             this.method2WarmAttestation = null; // one-shot: never reuse an f result
             const ageMs = Date.now() - warm.createdAt;
-            console.log(`[LaunchTrace:${traceId || 'anon'}] stage=nxapi_f_method_2 source=prewarmed durationMs=0 ageMs=${ageMs}`);
+            console.log(`[LaunchTrace:${traceId || 'anon'}] stage=nxapi_f_method_2 source=${source} durationMs=${durationMs} ageMs=${ageMs}`);
             return warm.attestation;
         };
 
         let warm = consumeWarm();
         if (warm) return warm;
 
-        // If the idle prewarm is already running, join it instead of starting a
-        // duplicate f request. This is the main latency win for quick clicks.
+        // Join a prewarm already in flight instead of sending a duplicate request.
+        // Report the actual wait time so total launch traces are no longer misleading.
         if (this.method2WarmPromise) {
+            const waitStartedAt = performance.now();
             await this.method2WarmPromise;
-            warm = consumeWarm();
+            warm = consumeWarm('prewarm_join', Math.round(performance.now() - waitStartedAt));
             if (warm) return warm;
         }
 
@@ -183,7 +184,7 @@ class WebServiceManager {
 
             const kickIfReady = () => {
                 if (catalog.querySelector('.service-launch-card')) {
-                    this.scheduleAttestationPrewarm(350);
+                    this.scheduleAttestationPrewarm(0);
                 }
             };
 

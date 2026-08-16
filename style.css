@@ -2626,7 +2626,7 @@ body:has(#opUserPage:not(.hidden)) .home-dock {
     position: relative;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     min-height: 82px;
     padding: 16px 22px;
     border-radius: 9px;
@@ -2655,7 +2655,6 @@ body:has(#opUserPage:not(.hidden)) .home-dock {
 }
 .native-friend-code-button:hover { opacity: .86; }
 .native-friend-code-button:active { transform: scale(.98); }
-.native-friend-code-button.copied i::before { content: "\f00c"; }
 .native-copy-status {
     position: absolute;
     left: 22px;
@@ -2664,50 +2663,6 @@ body:has(#opUserPage:not(.hidden)) .home-dock {
     color: #25b9ea;
     font-size: 10px;
 }
-.native-user-menu-wrap { position: relative; }
-.native-user-more {
-    width: 36px;
-    height: 36px;
-    display: grid;
-    place-items: center;
-    border: 0;
-    border-radius: 50%;
-    background: transparent;
-    color: #d6d6d8;
-    font-size: 20px;
-    cursor: pointer;
-    transition: background .14s ease, transform .12s ease;
-}
-.native-user-more:hover { background: rgba(255,255,255,.08); }
-.native-user-more:active { transform: scale(.92); }
-.native-user-menu {
-    position: absolute;
-    top: 42px;
-    right: 0;
-    z-index: 20;
-    width: 235px;
-    padding: 6px;
-    border: 1px solid rgba(255,255,255,.08);
-    border-radius: 8px;
-    background: #29292c;
-    box-shadow: 0 12px 30px rgba(0,0,0,.42);
-    animation: nso-native-menu .14s ease-out both;
-}
-.native-user-menu button {
-    width: 100%;
-    min-height: 42px;
-    padding: 0 12px;
-    border: 0;
-    border-radius: 6px;
-    background: transparent;
-    color: #dddde0;
-    text-align: left;
-    font: 600 13px var(--font-heading);
-    cursor: pointer;
-}
-.native-user-menu button:hover { background: rgba(255,255,255,.07); }
-.native-user-menu .native-danger-action { color: #f06c78; }
-
 .native-user-actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2865,10 +2820,6 @@ body:has(#opUserPage:not(.hidden)) .home-dock {
     from { opacity: 0; transform: translateY(5px); }
     to { opacity: 1; transform: translateY(0); }
 }
-@keyframes nso-native-menu {
-    from { opacity: 0; transform: translateY(-5px) scale(.98); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
-}
 @keyframes nso-native-tab-enter {
     from { opacity: .35; transform: translateY(6px); }
     to { opacity: 1; transform: translateY(0); }
@@ -2904,7 +2855,6 @@ body:has(#opUserPage:not(.hidden)) .home-dock {
         animation: none !important;
     }
     .native-friend-code-button,
-    .native-user-more,
     .native-user-action-card,
     .native-user-change {
         transition: none !important;

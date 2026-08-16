@@ -364,30 +364,14 @@ async function refreshNxapiConfig() {
 }
 
 async function nxapiGenerateF(method, token, userData = {}) {
-    const payload = { hash_method: String(method), token, ...userData };
-    let response;
-
-    // The default public nxapi f-generation path is handled directly by the
-    // Cloudflare Worker. The Worker keeps the public OAuth client credential
-    // token in isolate memory and retries transient upstream failures, removing
-    // the browser -> generic relay -> nxapi round trips from service launches.
-    // Custom nxapi endpoints/client IDs retain the generic standards-compliant path.
-    const canUseWorkerF = NXAPI_ZNCA_API_URL === DEFAULT_NXAPI_ZNCA_API_URL &&
-        nxapiClientId() === DEFAULT_NXAPI_AUTH_CLIENT_ID;
-
-    if (canUseWorkerF) {
-        response = await fetch(`${WORKER_URL}/api/nso/nxapi/f`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-            body: JSON.stringify({ ...payload, zncaVersion: ZNCA_VERSION })
-        });
-    } else {
-        response = await nxapiFetch('f', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-            body: JSON.stringify(payload)
-        });
-    }
+    // Keep f-generation on the proven nxapi-auth path. The Worker already relays
+    // these requests, so adding a second Worker-owned OAuth client path only adds
+    // another failure mode without making the remote attestation itself faster.
+    const response = await nxapiFetch('f', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ hash_method: String(method), token, ...userData })
+    });
 
     let data = {};
     try {
@@ -845,6 +829,10 @@ function showAuthenticatedUI(session) {
             document.getElementById('profileViewAvatar').src = session.user.imageUri;
         }
     }
+
+    // Begin method-2 attestation immediately after authentication so the expensive
+    // nxapi round trip overlaps Home/Friends/Album loading instead of the first click.
+    window.webServiceManager?.scheduleAttestationPrewarm(0);
 
     loadLiveFriendsList();
     loadGameServices();
@@ -3217,6 +3205,8 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         ownPlayLogsNsaId: '',
         ownPlayLogsLoadedAt: 0,
         ownPlayLogsPromise: null,
+        visibilityReturnTarget: 'opUserPage',
+        pushReturnTarget: 'opSettingsPage',
         screensReady: false,
         refreshing: null,
         mobileObserver: null
@@ -3504,17 +3494,6 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
                         </button>
                         <span class="native-copy-status" id="nativeCopyStatus" aria-live="polite"></span>
                     </div>
-                    <div class="native-user-menu-wrap">
-                        <button class="native-user-more" id="nativeProfileMoreBtn" type="button" aria-label="Profile options" aria-expanded="false">
-                            <i class="fa-solid fa-ellipsis-vertical"></i>
-                        </button>
-                        <div class="native-user-menu hidden" id="nativeProfileMoreMenu">
-                            <button type="button" data-native-action="qr"><i class="fa-solid fa-qrcode"></i> Show Friend Code QR</button>
-                            <button type="button" data-native-action="push"><i class="fa-regular fa-bell"></i> Push Notifications</button>
-                            <button type="button" data-native-action="account"><i class="fa-solid fa-arrow-up-right-from-square"></i> Nintendo Account</button>
-                            <button type="button" class="native-danger-action" data-native-action="signout"><i class="fa-solid fa-right-from-bracket"></i> Sign Out</button>
-                        </div>
-                    </div>
                 </section>
 
                 <div class="native-user-actions" aria-label="Profile actions">
@@ -3595,8 +3574,8 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
 
     function wireScreenBackNavigation() {
         const parents = {
-            opVisibilityPage: 'opUserPage',
-            opPushPage: 'opUserPage',
+            opVisibilityPage: () => state.visibilityReturnTarget || 'opUserPage',
+            opPushPage: () => state.pushReturnTarget || 'opSettingsPage',
             opSettingsPage: 'opUserPage',
             opDarkModePage: 'opSettingsPage',
             opMobileDataPage: 'opSettingsPage',
@@ -3609,10 +3588,11 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             opChatCandidatePage: 'chattedUsersView',
             opFriendNotePage: 'friendDetailView'
         };
-        for (const [child, parent] of Object.entries(parents)) {
+        for (const [child, parentSpec] of Object.entries(parents)) {
             const back = $(child)?.querySelector('.op-back');
             if (!back) continue;
             replaceNodeListener(back, () => {
+                const parent = typeof parentSpec === 'function' ? parentSpec() : parentSpec;
                 const childView = $(child);
                 const parentView = $(parent);
                 const revealParent = () => {
@@ -3832,12 +3812,9 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
                 input.remove();
             }
             const status = $('nativeCopyStatus');
-            const button = $('nativeFriendCodeCopyBtn');
             if (status) status.textContent = 'Copied';
-            button?.classList.add('copied');
             setTimeout(() => {
                 if (status) status.textContent = '';
-                button?.classList.remove('copied');
             }, 1200);
         } catch {
             toast('Could not copy the friend code.');
@@ -3869,8 +3846,9 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         }
     }
 
-    async function openVisibility(kind) {
+    async function openVisibility(kind, returnTarget = 'opUserPage') {
         ensureScreens();
+        state.visibilityReturnTarget = returnTarget || 'opUserPage';
         await loadCurrentUserAndPermissions();
         const isPresence = kind === 'presence';
         const screen = $('opVisibilityPage');
@@ -3951,8 +3929,9 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         if (item.type === 'playInvitation') state.pushSettings.playInvitation = item.scope;
     }
 
-    async function openPushNotifications() {
+    async function openPushNotifications(returnTarget = 'opSettingsPage') {
         ensureScreens();
+        state.pushReturnTarget = returnTarget || 'opSettingsPage';
         openScreen('opPushPage');
         const body = $('opPushBody');
         body.innerHTML = '<p class="op-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</p>';
@@ -4271,10 +4250,21 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         const factor = state.loginFactor || {};
         const profileSummary = factor.email || factor.loginId || state.currentUser?.name || sessionUser()?.name || 'Nintendo Account';
         const usageAllowed = localSetting('usage_data', 'deny') === 'allow';
+        const settingsUser = state.currentUser || sessionUser() || {};
+        const settingsPermissions = state.permissions?.permissions || settingsUser.permissions || {};
+        const settingsFriendCode = settingsUser.links?.friendCode?.id || $('opFriendCode')?.textContent || '—';
         $('opSettingsBody').innerHTML = `
             <section class="op-group op-no-margin">
-                <h4>Account Information</h4>
+                <h4>Nintendo Account</h4>
                 <button class="op-row" id="opSettingsProfile"><span><b>Profile</b><small>${escapeHtml(profileSummary)}</small></span><i class="fa-solid fa-chevron-right"></i></button>
+                <button class="op-row" id="opFriendCodeRow"><span><b>Friend Code</b><small>${escapeHtml(settingsFriendCode)}</small></span><i class="fa-solid fa-chevron-right"></i></button>
+                <button class="op-row" id="opOnlineStatusRow"><span><b>Online Status</b><small>${escapeHtml(permissionLabel('presence', settingsPermissions.presence))}</small></span><i class="fa-solid fa-chevron-right"></i></button>
+                <button class="op-row" id="opPlayActivityRow"><span><b>Play Activity</b><small>${escapeHtml(permissionLabel('playLog', settingsPermissions.playLog))}</small></span><i class="fa-solid fa-chevron-right"></i></button>
+                <button class="op-row" id="opNintendoAccountRow"><span><b>Nintendo Account Website</b></span><i class="fa-solid fa-arrow-up-right-from-square"></i></button>
+            </section>
+            <section class="op-group">
+                <h4>Notifications</h4>
+                <button class="op-row" id="opPushNotificationsRow"><span><b>Push Notifications</b></span><i class="fa-solid fa-chevron-right"></i></button>
             </section>
             <section class="op-group">
                 <h4>System</h4>
@@ -4296,9 +4286,19 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
                 ${supportCode ? `<div class="op-row op-static"><span><b>Support Code</b><small>${escapeHtml(supportCode)}</small></span></div>` : ''}
                 <div class="op-row op-static"><span><b>Version</b><small>${escapeHtml(version)}</small></span></div>
                 <div class="op-row op-static"><span><b>© Nintendo</b></span></div>
-            </section>`;
+            </section>
+            <button class="op-signout" id="opSettingsSignOutBtn"><i class="fa-solid fa-right-from-bracket"></i> Sign Out</button>`;
         $('opSettingsProfile')?.addEventListener('click', () => {
             openUserPage();
+        });
+        $('opFriendCodeRow')?.addEventListener('click', () => $('openMyCodeQrBtn')?.click());
+        $('opOnlineStatusRow')?.addEventListener('click', () => openVisibility('presence', 'opSettingsPage'));
+        $('opPlayActivityRow')?.addEventListener('click', () => openVisibility('playLog', 'opSettingsPage'));
+        $('opNintendoAccountRow')?.addEventListener('click', () => window.open('https://accounts.nintendo.com/', '_blank', 'noopener'));
+        $('opPushNotificationsRow')?.addEventListener('click', () => openPushNotifications('opSettingsPage'));
+        $('opSettingsSignOutBtn')?.addEventListener('click', async () => {
+            const ok = await confirmSheet('Sign Out', 'Sign out of Nintendo Switch App?', 'Sign Out');
+            if (ok && typeof logout === 'function') logout();
         });
         $('opSettingsDarkMode')?.addEventListener('click', openDarkModeSetting);
         $('opSettingsMobileData')?.addEventListener('click', openMobileDataSetting);
@@ -5213,8 +5213,8 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         ensureScreens();
 
         $('nativeFriendCodeCopyBtn')?.addEventListener('click', copyOwnFriendCode);
-        $('nativeOnlineStatusChangeBtn')?.addEventListener('click', () => openVisibility('presence'));
-        $('nativePlayActivityChangeBtn')?.addEventListener('click', () => openVisibility('playLog'));
+        $('nativeOnlineStatusChangeBtn')?.addEventListener('click', () => openVisibility('presence', 'opUserPage'));
+        $('nativePlayActivityChangeBtn')?.addEventListener('click', () => openVisibility('playLog', 'opUserPage'));
         $('nativeSettingsBtn')?.addEventListener('click', openSettings);
         $('nativeAddFriendBtn')?.addEventListener('click', () => {
             const userPage = $('opUserPage');
@@ -5223,37 +5223,6 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             const addFriend = $('addFriendView');
             if (addFriend && typeof slideViewIn === 'function') slideViewIn(addFriend);
             else $('openAddFriendBtn')?.click();
-        });
-
-        const moreButton = $('nativeProfileMoreBtn');
-        const moreMenu = $('nativeProfileMoreMenu');
-        const closeMenu = () => {
-            moreMenu?.classList.add('hidden');
-            moreButton?.setAttribute('aria-expanded', 'false');
-        };
-        moreButton?.addEventListener('click', (event) => {
-            event.stopPropagation();
-            const open = moreMenu?.classList.contains('hidden') === true;
-            moreMenu?.classList.toggle('hidden', !open);
-            moreButton.setAttribute('aria-expanded', open ? 'true' : 'false');
-        });
-        moreMenu?.addEventListener('click', async (event) => {
-            const button = event.target.closest('[data-native-action]');
-            if (!button) return;
-            const action = button.dataset.nativeAction;
-            closeMenu();
-            if (action === 'qr') $('openMyCodeQrBtn')?.click();
-            if (action === 'push') openPushNotifications();
-            if (action === 'account') window.open('https://accounts.nintendo.com/', '_blank', 'noopener');
-            if (action === 'signout') {
-                const ok = await confirmSheet('Sign Out', 'Sign out of Nintendo Switch App?', 'Sign Out');
-                if (ok && typeof logout === 'function') logout();
-            }
-        });
-        document.addEventListener('click', (event) => {
-            if (!moreMenu || moreMenu.classList.contains('hidden')) return;
-            if (moreMenu.contains(event.target) || moreButton?.contains(event.target)) return;
-            closeMenu();
         });
 
         // The real app keeps the dock visible on the User Page.
@@ -5268,7 +5237,6 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             if (event.key !== 'Escape') return;
             const userPage = $('opUserPage');
             if (!userPage || userPage.classList.contains('hidden')) return;
-            closeMenu();
             if (typeof slideViewOut === 'function') slideViewOut(userPage);
             else userPage.classList.add('hidden');
         });
