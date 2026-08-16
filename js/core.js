@@ -101,7 +101,7 @@ let currentFriends = [];
 let currentMedia = [];
 
 // ---------------------------------------------------------------------------
-// Shared translation & HTML-escape bridges
+// Shared translation, formatting & HTML-escape bridges
 // The canonical implementations live inside the localization IIFE further down.
 // These top-level wrappers delegate to window.nsoTranslate* once that IIFE has
 // executed; before that point they safely return the English source text so
@@ -136,6 +136,32 @@ function trVars(source, values = {}) {
         /\{([A-Za-z0-9_]+)\}/g,
         (_, key) => String(values[key] ?? '')
     );
+}
+
+// Shared relative-time formatter restored from the pre-modular app.js. Friends
+// rendering still calls this helper outside the localization IIFE, so it belongs
+// in the shared runtime rather than being hidden inside one feature module.
+function relativeTime(value) {
+    if (!value) return '';
+
+    let ms = 0;
+    if (typeof value === 'number') {
+        ms = value < 10_000_000_000 ? value * 1000 : value;
+    } else {
+        const parsed = Date.parse(value);
+        ms = Number.isFinite(parsed) ? parsed : 0;
+    }
+    if (!ms) return '';
+
+    const elapsed = Math.max(0, Date.now() - ms);
+    const locale = typeof window.nsoCurrentLocale === 'function'
+        ? window.nsoCurrentLocale()
+        : undefined;
+    const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+    if (elapsed < 60_000) return rtf.format(0, 'second');
+    if (elapsed < 3_600_000) return rtf.format(-Math.floor(elapsed / 60_000), 'minute');
+    if (elapsed < 86_400_000) return rtf.format(-Math.floor(elapsed / 3_600_000), 'hour');
+    return rtf.format(-Math.floor(elapsed / 86_400_000), 'day');
 }
 
 function escapeHtml(value) {
