@@ -793,6 +793,15 @@ textarea {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+.friend-online-platform {
+    color: #1fd46a;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.friend-game.friend-game-playing { color: var(--text-primary); font-weight: 600; }
 
 .friend-time {
     color: var(--text-muted);
@@ -1228,7 +1237,7 @@ body.dark-theme {
 .friends-grid .friend-avatar-wrap { width: 64px; height: 64px; margin: 0 auto 7px; }
 .friends-grid .friend-avatar-wrap img { width: 100%; height: 100%; border-radius: 50%; border: 2px solid transparent; object-fit: cover; }
 .friends-grid .friend-name { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #dedee0; }
-.friends-grid .friend-game, .friends-grid .friend-time { display: none; }
+.friends-grid .friend-game, .friends-grid .friend-time, .friends-grid .friend-online-platform { display: none; }
 .services-nav { margin: 16px 0; overflow-x: auto; }
 .service-tab-btn { background: transparent; border: 0; color: var(--text-secondary); border-bottom: 2px solid transparent; border-radius: 0; white-space: nowrap; }
 .service-tab-btn.active { color: #fff; background: transparent; border-bottom-color: var(--nintendo-red); }
@@ -1392,8 +1401,10 @@ body.dark-theme { background: #1b1b1b; }
 .friends-page-grid .friend-avatar-wrap img { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; display: block; }
 .friends-page-grid .friend-info { display: flex; flex-direction: column; align-items: center; width: 100%; overflow: hidden; }
 .friends-page-grid .friend-name { color: #fff; font: 700 14px var(--font-heading); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
-.friends-page-grid .friend-game, .friends-page-grid .friend-time { font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; }
+.friends-page-grid .friend-online-platform, .friends-page-grid .friend-game, .friends-page-grid .friend-time { font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; }
+.friends-page-grid .friend-online-platform { color: #1fd46a; font-weight: 700; }
 .friends-page-grid .friend-game { color: #00b7ef; font-weight: 600; }
+.friends-page-grid .friend-game.friend-game-playing { color: #ececee; font-weight: 700; margin-top: 2px; }
 .friends-page-grid .friend-time { color: #88888c; }
 
 .album-page-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; width: 100%; box-sizing: border-box; }
@@ -1845,6 +1856,46 @@ body.gws-transition-active {
 .friend-detail-actions button:disabled { opacity: 1; cursor: pointer; }
 .friend-detail-actions i { margin-right: 11px; color: #cacace; font-size: 19px; vertical-align: -2px; }
 .friend-detail-presence { margin: 0; padding: 28px 0; border-top: 1px solid #3a3a3b; border-bottom: 1px solid #3a3a3b; color: #b5b5b9; font-size: 13px; }
+.friend-detail-presence.has-current-game { padding: 12px 0; }
+.friend-detail-presence-online-text { color: #1fd46a; font-weight: 700; }
+.friend-detail-presence-offline-text { color: #b5b5b9; }
+.friend-detail-current-game {
+    width: 100%;
+    min-height: 112px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 16px;
+    border: 0;
+    border-radius: 0;
+    background: #3e3e40;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background .13s ease, transform .12s ease;
+}
+.friend-detail-current-game:hover { background: #474749; }
+.friend-detail-current-game:active { background: #4d4d50; transform: scale(.996); }
+.friend-detail-current-game img {
+    width: 82px;
+    height: 82px;
+    flex: 0 0 auto;
+    border-radius: 6px;
+    object-fit: cover;
+    background: #2a2a2c;
+}
+.friend-detail-current-game img.friend-detail-current-game-image-missing { visibility: hidden; }
+.friend-detail-current-game-copy { min-width: 0; display: grid; gap: 5px; }
+.friend-detail-current-game-online { color: #1fd46a; font: 700 12px var(--font-heading); }
+.friend-detail-current-game-copy strong {
+    overflow: hidden;
+    color: #f0f0f2;
+    font: 700 16px var(--font-heading);
+    line-height: 1.24;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
 .friend-detail-activity { margin-top: 39px; text-align: left; }
 .friend-detail-activity h3 { margin: 0 0 4px; color: #dadade; font: 700 14px var(--font-heading); }
 #friendDetailActivity { min-height: 48px; padding: 0; background: transparent; color: #aaaab0; font-size: 13px; }
@@ -1955,7 +2006,7 @@ body.gws-transition-active {
     .friends-page-grid .friend-avatar-wrap { width: 58px; height: 58px; margin-bottom: 8px; }
     .friends-page-grid .friend-avatar-wrap img { width: 58px; height: 58px; }
     .friends-page-grid .friend-name { font-size: 11px; }
-    .friends-page-grid .friend-game, .friends-page-grid .friend-time { font-size: 10px; }
+    .friends-page-grid .friend-online-platform, .friends-page-grid .friend-game, .friends-page-grid .friend-time { font-size: 10px; }
     .album-page-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .profile-back { left: 16px; }
     .home-dock { bottom: 12px; height: 58px; padding: 0 12px; width: min(420px, calc(100vw - 28px)); }
@@ -2719,6 +2770,11 @@ body.op-light-theme .home-dock { background: rgba(255,255,255,.96) !important; b
 body.op-light-theme .op-browser-notification-card { background: #ffffff; border: 1px solid rgba(0,0,0,.08); }
 body.op-light-theme .op-browser-notification-card b { color: #232327; }
 body.op-light-theme .op-browser-notification-card small { color: #65656b; }
+
+body.op-light-theme .friend-detail-current-game { background: #fff; }
+body.op-light-theme .friend-detail-current-game:hover { background: #f7f7f8; }
+body.op-light-theme .friend-detail-current-game-copy strong { color: #242428; }
+body.op-light-theme .friend-detail-presence { border-color: rgba(0,0,0,.08); }
 
 body.op-light-theme .friend-settings-screen,
 body.op-light-theme .sent-req-detail-screen,

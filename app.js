@@ -2246,6 +2246,81 @@ async function downloadActiveMedia() {
     }
 }
 
+function friendPresencePlatformLabel(presence) {
+    const raw = presence?.platform;
+    const normalized = String(raw ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+    if (raw === 2 || normalized === '2' || normalized === 'OUNCE' ||
+        normalized === 'NINTENDO_SWITCH_2' || normalized === 'SWITCH_2' || normalized === 'SWITCH2') {
+        return 'Nintendo Switch 2';
+    }
+    if (raw === 1 || normalized === '1' || normalized === 'NX' ||
+        normalized === 'NINTENDO_SWITCH' || normalized === 'SWITCH') {
+        return 'Nintendo Switch';
+    }
+    return 'Nintendo Switch';
+}
+
+function getFriendPresenceInfo(friend) {
+    const presence = friend?.presence || {};
+    const state = String(presence.state || friend?.state || '').toUpperCase();
+    const isOnline = Boolean(friend?.isOnline) || state === 'ONLINE' || state === 'PLAYING';
+    const game = presence?.game && typeof presence.game === 'object' ? presence.game : null;
+    return {
+        presence,
+        state,
+        isOnline,
+        game,
+        platformLabel: friendPresencePlatformLabel(presence)
+    };
+}
+
+function renderFriendDetailPresence(friend) {
+    const host = document.getElementById('friendDetailPresence');
+    if (!host) return;
+    host.replaceChildren();
+
+    const info = getFriendPresenceInfo(friend);
+    host.classList.toggle('has-current-game', Boolean(info.isOnline && info.game?.name));
+
+    if (!info.isOnline || !info.game?.name) {
+        const status = document.createElement('span');
+        status.className = info.isOnline ? 'friend-detail-presence-online-text' : 'friend-detail-presence-offline-text';
+        status.textContent = info.isOnline ? `Online (${info.platformLabel})` : 'Offline';
+        host.appendChild(status);
+        return;
+    }
+
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'friend-detail-current-game';
+    row.setAttribute('aria-label', `Open ${info.game.name}`);
+
+    const image = document.createElement('img');
+    image.src = info.game.imageUri || '';
+    image.alt = '';
+    image.loading = 'eager';
+    image.addEventListener('error', () => image.classList.add('friend-detail-current-game-image-missing'));
+
+    const copy = document.createElement('span');
+    copy.className = 'friend-detail-current-game-copy';
+
+    const online = document.createElement('span');
+    online.className = 'friend-detail-current-game-online';
+    online.textContent = `Online (${info.platformLabel})`;
+
+    const title = document.createElement('strong');
+    title.textContent = info.game.name;
+
+    copy.append(online, title);
+    row.append(image, copy);
+    row.addEventListener('click', () => openGameSheet({
+        name: info.game.name || 'Game',
+        imageUri: info.game.imageUri || '',
+        shopUri: info.game.shopUri || ''
+    }));
+    host.appendChild(row);
+}
+
 function renderFriendsList(friends) {
     currentFriends = friends || [];
     renderFriendsInto(document.getElementById('homeFriendsGrid'), currentFriends.slice(0, 8));
@@ -2263,10 +2338,10 @@ function renderFriendsInto(container, friends) {
     }
 
     friends.forEach(f => {
-        const presence = f.presence || {};
-        const presenceState = presence.state || f.state;
-        const isOnline = ['ONLINE', 'PLAYING'].includes(presenceState) || f.isOnline;
-        const presenceName = presence.game?.name || presence.name || '';
+        const presenceInfo = getFriendPresenceInfo(f);
+        const presence = presenceInfo.presence;
+        const isOnline = presenceInfo.isOnline;
+        const presenceName = presenceInfo.game?.name || presence.name || '';
         const card = document.createElement('button');
         card.type = 'button';
         card.className = 'friend-card';
@@ -2300,7 +2375,8 @@ function renderFriendsInto(container, friends) {
             </div>
             <div class="friend-info">
                 <div class="friend-name">${f.name}</div>
-                <div class="friend-game">${statusText}</div>
+                ${isOnline ? `<div class="friend-online-platform">Online (${presenceInfo.platformLabel})</div>` : ''}
+                <div class="friend-game ${isOnline && presenceName ? 'friend-game-playing' : ''}">${isOnline && presenceName ? presenceName : statusText}</div>
             </div>
         `;
         card.addEventListener('click', () => openFriendDetail(f));
@@ -2346,12 +2422,13 @@ async function openFriendDetail(friend) {
     const activePageEl = document.querySelector('.tab-page.active');
     friendDetailOriginTab = activePageEl?.id === 'page-home' ? 'home' : 'friends';
 
-    const isOnline = ['ONLINE', 'PLAYING'].includes(friend.presence?.state || friend.state) || friend.isOnline;
-    const presence = friend.presence?.name || friend.presence?.game?.name || '';
+    const presenceInfo = getFriendPresenceInfo(friend);
+    const isOnline = presenceInfo.isOnline;
+    const presence = presenceInfo.game?.name || friend.presence?.name || '';
     document.getElementById('friendDetailAvatar').src = friend.imageUri || friend.image_url || '';
     document.getElementById('friendDetailAvatar').alt = friend.name || 'Friend';
     document.getElementById('friendDetailName').textContent = friend.name || 'Friend';
-    document.getElementById('friendDetailPresence').textContent = isOnline ? (presence ? `Playing ${presence}` : 'Online now') : 'Offline';
+    renderFriendDetailPresence(friend);
 
     // Populate How / When you became friends metadata
     const howBecameEl = document.getElementById('friendDetailHowBecame');

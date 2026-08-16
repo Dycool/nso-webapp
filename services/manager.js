@@ -430,12 +430,12 @@ class WebServiceManager {
 
     installLoadFallback() {
         if (this.loadingFallbackTimer) clearTimeout(this.loadingFallbackTimer);
-        // completeLoading from znca-js-api is authoritative. This only prevents a
-        // permanently covered page if an old service never calls that bridge method.
+        // Native completeLoading/service-ready signals are authoritative. This is only
+        // an emergency escape hatch for an unknown/legacy service that never emits one.
         this.loadingFallbackTimer = setTimeout(() => {
             this.loadingFallbackTimer = null;
             this.markServiceLoaded();
-        }, 12000);
+        }, 5000);
     }
 
     async cancelNativeServiceLaunch() {
@@ -645,42 +645,60 @@ class WebServiceManager {
             if (!data || typeof data !== 'object') return;
 
             const frame = document.getElementById('inAppGameWebviewFrame');
+            const activeSessionId = this.activeAdapter?.currentSession?.id ? String(this.activeAdapter.currentSession.id) : '';
+            const messageSessionId = data.sessionId ? String(data.sessionId) : '';
+            const activeServiceId = this.activeService?.id ? String(this.activeService.id) : '';
+            const messageServiceId = data.serviceId ? String(data.serviceId) : '';
+
+            // Every Worker bridge message is scoped to the exact iframe session that
+            // emitted it. Once Back is pressed currentSession is cleared immediately,
+            // so queued/late callbacks from the dying document are silently discarded.
+            if (!frame?.contentWindow || event.source !== frame.contentWindow) return;
+            if (!activeSessionId || !messageSessionId || messageSessionId !== activeSessionId) return;
+            if (activeServiceId && messageServiceId && activeServiceId !== messageServiceId) return;
 
             // 1. Fresh GameWebServiceToken request (e.g. Zelda Notes func_272e)
             if (data.type === 'NSO_REQUEST_GAME_WEB_TOKEN') {
                 const serviceId = data.serviceId || this.activeService?.id;
+                const requestSessionId = activeSessionId;
+                const requestLaunchId = this.activeLaunchId;
+                const requestController = this.activeLaunchController;
+                const sessionStillActive = () => Boolean(
+                    this.activeAdapter?.currentSession?.id &&
+                    String(this.activeAdapter.currentSession.id) === requestSessionId &&
+                    this.activeLaunchId === requestLaunchId &&
+                    !requestController?.signal?.aborted
+                );
+
                 try {
                     console.log(`[WebServiceManager] Received fresh token request for service ${serviceId}`);
                     const freshToken = await this.getGameWebServiceToken(serviceId, undefined, true, {
-                        signal: this.activeLaunchController?.signal,
-                        cancelKey: this.activeLaunchId
+                        signal: requestController?.signal,
+                        cancelKey: requestLaunchId
                     });
+                    if (!sessionStillActive()) return;
 
-                    // Update Worker/DO session
-                    if (this.activeAdapter) {
-                        await this.activeAdapter.renewToken(freshToken, { signal: this.activeLaunchController?.signal });
-                    }
+                    // Update Worker/DO session only while this exact WebView is alive.
+                    await this.activeAdapter.renewToken(freshToken, { signal: requestController?.signal });
+                    if (!sessionStillActive()) return;
 
-                    // Send fresh token back into isolated iframe context
-                    if (frame?.contentWindow) {
-                        frame.contentWindow.postMessage({
-                            type: 'NSO_RECEIVE_GAME_WEB_TOKEN',
-                            requestId: data.requestId,
-                            token: freshToken,
-                            isZelda: data.isZelda === true
-                        }, workerOrigin);
-                    }
+                    // Send fresh token back only to the document that requested it.
+                    frame.contentWindow.postMessage({
+                        type: 'NSO_RECEIVE_GAME_WEB_TOKEN',
+                        requestId: data.requestId,
+                        token: freshToken,
+                        isZelda: data.isZelda === true
+                    }, workerOrigin);
                 } catch (err) {
+                    if (!sessionStillActive() || this.isLaunchCancellation(err)) return;
                     console.error('[WebServiceManager] Token renewal failed:', err);
-                    if (frame?.contentWindow) {
-                        frame.contentWindow.postMessage({
-                            type: 'NSO_RECEIVE_GAME_WEB_TOKEN',
-                            requestId: data.requestId,
-                            token: null,
-                            isZelda: data.isZelda === true,
-                            error: err.message
-                        }, workerOrigin);
-                    }
+                    frame.contentWindow.postMessage({
+                        type: 'NSO_RECEIVE_GAME_WEB_TOKEN',
+                        requestId: data.requestId,
+                        token: null,
+                        isZelda: data.isZelda === true,
+                        error: err.message
+                    }, workerOrigin);
                 }
                 return;
             }
