@@ -4,6 +4,51 @@
  * and service-specific native bridge quirk handlers.
  */
 
+/**
+ * Cross-module localization compatibility bridge.
+ *
+ * app.js contains legacy feature IIFEs that can execute before the Nintendo
+ * Switch App localization/parity IIFE. The real tr()/trKey()/trVars() helpers
+ * are lexical to that later IIFE, so early callers cannot see them directly.
+ *
+ * adapters.js is loaded before app.js, making it a safe place to expose small
+ * global wrappers. Before localization is ready they fail open to the source
+ * string instead of crashing startup; afterwards they delegate to app.js's
+ * exported localization API.
+ */
+(function installNsoI18nBridge(global) {
+    'use strict';
+
+    const sourceText = (value) => String(value ?? '');
+    const earlyKeyFallbacks = Object.freeze({
+        Friend_Notify_Online: 'Notify When Online'
+    });
+
+    global.tr = function tr(source) {
+        const translate = global.nsoTranslateText;
+        return typeof translate === 'function' && translate !== global.tr
+            ? translate(source)
+            : sourceText(source);
+    };
+
+    global.trKey = function trKey(resourceKey) {
+        const translateKey = global.nsoTranslateApkKey;
+        if (typeof translateKey === 'function' && translateKey !== global.trKey) {
+            return translateKey(resourceKey);
+        }
+        const key = sourceText(resourceKey);
+        return earlyKeyFallbacks[key] || key;
+    };
+
+    global.trVars = function trVars(source, values = {}) {
+        const translateVars = global.nsoTranslateVars;
+        if (typeof translateVars === 'function' && translateVars !== global.trVars) {
+            return translateVars(source, values);
+        }
+        return sourceText(source).replace(/\{([A-Za-z0-9_]+)\}/g, (_, key) => sourceText(values[key]));
+    };
+})(window);
+
 class GenericWebViewAdapter {
     constructor(manager) {
         this.manager = manager;
