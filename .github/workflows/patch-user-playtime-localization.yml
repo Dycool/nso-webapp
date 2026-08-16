@@ -1,0 +1,58 @@
+name: Apply user playtime localization patch
+
+on:
+  push:
+    paths:
+      - '.github/workflows/patch-user-playtime-localization.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch native user playtime formatter
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('js/native.js')
+          source = path.read_text(encoding='utf-8')
+          old = """    function ownPlayTimeText(totalPlayTime) {
+              const minutes = Number(totalPlayTime || 0);
+              if (!Number.isFinite(minutes) || minutes < 60) return 'Played for a little while';
+              const hours = Math.max(1, Math.round(minutes / 60));
+              return `Played for ${hours} hour(s) or more`;
+          }
+          """
+          new = """    function ownPlayTimeText(totalPlayTime) {
+              const minutes = Number(totalPlayTime || 0);
+              if (!Number.isFinite(minutes) || minutes < 60) {
+                  return trKey('FriendDetails_Label_Play_Log_Little');
+              }
+              const hours = Math.max(1, Math.round(minutes / 60));
+              return trFormat('FriendDetails_Label_Play_Log_Time', hours);
+          }
+          """
+
+          if old not in source:
+              raise SystemExit('Expected ownPlayTimeText implementation was not found; refusing to modify native.js')
+
+          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          Path('.github/workflows/patch-user-playtime-localization.yml').unlink()
+          PY
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/native.js .github/workflows/patch-user-playtime-localization.yml
+          git commit -m "Fix user playtime localization"
+          git push
