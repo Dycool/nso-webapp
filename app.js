@@ -17,7 +17,7 @@ const NXAPI_CLIENT_VERSION = 'w8zSLBsxR7rVoGJA';
 // Exact Coral Header Constants
 const ZNCA_PLATFORM = 'Android';
 const ZNCA_PLATFORM_VERSION = '12';
-let ZNCA_VERSION = '3.4.0';
+let ZNCA_VERSION = '3.4.1';
 
 function zncaUserAgent() {
     return `com.nintendo.znca/${ZNCA_VERSION}(${ZNCA_PLATFORM}/${ZNCA_PLATFORM_VERSION})`;
@@ -549,8 +549,27 @@ function validBrokerCoralSession(entry, expectedNaId) {
     );
 }
 
+let nxapiLoginWarmPromise = null;
+
+async function warmNxapiForLogin() {
+    if (nxapiLoginWarmPromise) return nxapiLoginWarmPromise;
+    nxapiLoginWarmPromise = (async () => {
+        const accessToken = await getNxapiAccessToken();
+        await refreshNxapiConfig();
+        return accessToken;
+    })();
+    try {
+        return await nxapiLoginWarmPromise;
+    } finally {
+        nxapiLoginWarmPromise = null;
+    }
+}
+
 async function generateCoralViaTokenBroker({ idToken, naId, language, country, birthday }) {
-    const nxapiAccessToken = await getNxapiAccessToken();
+    await prepareNxapi();
+    // nxapi authentication/config are warmed as soon as the user explicitly accepts
+    // the disclosure, usually while Nintendo sign-in is open in the other tab.
+    const nxapiAccessToken = await warmNxapiForLogin();
     const response = await fetch(`${WORKER_URL}/api/nso/cache/coral/get-or-create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -638,9 +657,10 @@ function hasNxapiConsent() {
 
 async function prepareNxapi() {
     if (!hasNxapiConsent()) {
-        throw new AuthStageError('NXAPI_AUTH', 'Please acknowledge the nxapi data disclosure checkbox before continuing.');
+        throw new AuthStageError('NXAPI_AUTH', 'Please accept the nxapi third-party service disclosure before continuing.');
     }
-    await refreshNxapiConfig();
+    // Do not put nxapi discovery/config on the critical login path. It is warmed
+    // after explicit consent and only awaited if the Coral broker actually misses.
 }
 
 function throwIfAborted(signal) {
@@ -1581,7 +1601,11 @@ function showAuthenticatedUI(session) {
 function logout() {
     window.webServiceManager?.closeActiveService();
     window.nsoCloseAppScreens?.();
+    // Release only this tab's active lease. If the user explicitly enabled Remember
+    // Me, keep that encrypted grant and its Coral cache so “Sign Out” does not behave
+    // like “Forget Remembered Account”.
     releaseTokenBrokerSession({ keepalive: true });
+    try { sessionStorage.removeItem('nso_token_broker_client_id'); } catch (e) {}
     sessionStorage.removeItem('nso_user_session');
     localStorage.removeItem('nso_user_session');
     localStorage.removeItem('nso_pkce_verifier');
@@ -1590,7 +1614,6 @@ function logout() {
     nxapiAuthSession = { accessToken: null, refreshToken: null, expiresAt: 0 };
     showLoginGate();
     updateRememberedUI();
-    clearRememberedAccount();
 }
 
 async function clearRememberedAccount() {
@@ -1668,7 +1691,7 @@ function setAuthButtonsDisabled(disabled, label = null) {
     if (submitGateBtn) {
         submitGateBtn.disabled = disabled;
         if (label) submitGateBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${label}`;
-        else submitGateBtn.innerHTML = '<i class="fa-solid fa-plug"></i> Authenticate & Enter WebApp';
+        else submitGateBtn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Sign In';
     }
     if (pasteAuthGateBtn) pasteAuthGateBtn.disabled = disabled;
     if (oauthGateBtn) oauthGateBtn.disabled = disabled;
@@ -1680,9 +1703,10 @@ function setAuthButtonsDisabled(disabled, label = null) {
     if (forgetBtn) forgetBtn.disabled = disabled;
 }
 
-function setAuthGateHint(text) {
-    const hint = document.getElementById('authGateHint');
-    if (hint) hint.textContent = text || '';
+function setAuthGateHint(_text) {
+    // Login progress/errors are shown through the button state and error dialogs.
+    // Keep the area below “Paste from clipboard” clean instead of exposing internal
+    // authentication-stage/debug text in the UI.
 }
 
 async function performFullAuthentication(options = {}) {
@@ -1692,19 +1716,19 @@ async function performFullAuthentication(options = {}) {
     }
 
     // Immediately disable buttons BEFORE any await
-    setAuthButtonsDisabled(true, 'Preparing authentication...');
+    setAuthButtonsDisabled(true, 'Signing in...');
 
     loginInFlight = (async () => {
         try {
-            await prepareNxapi();
-
+            // Do not contact nxapi just to check a remembered/brokered Coral session.
+            // Consent is enforced at the exact point an nxapi request becomes necessary.
             let idToken = null;
             let accessToken = null;
             let longLivedSessionToken = null;
             const isResume = options.isResume === true;
 
             if (isResume) {
-                setAuthButtonsDisabled(true, 'Resuming remembered session...');
+                setAuthButtonsDisabled(true, 'Signing in...');
                 setAuthGateHint('Resuming your saved Nintendo Account session…');
 
                 let resumeResp;
@@ -1779,7 +1803,7 @@ async function performFullAuthentication(options = {}) {
                 }
 
                 // Step 1: Exchange session_token_code + session_token_code_verifier -> session_token
-                setAuthButtonsDisabled(true, 'Step 1/3: Exchanging Session Code...');
+                setAuthButtonsDisabled(true, 'Signing in...');
                 setAuthGateHint('Exchanging session authorization code with Nintendo…');
 
                 const formBody = new URLSearchParams({
@@ -1812,7 +1836,7 @@ async function performFullAuthentication(options = {}) {
                 localStorage.removeItem('nso_auth_state');
 
                 // Step 2: Exchange session_token -> id_token & access_token (JWT)
-                setAuthButtonsDisabled(true, 'Step 2/3: Fetching ID Token & Profile...');
+                setAuthButtonsDisabled(true, 'Signing in...');
                 setAuthGateHint('Requesting Nintendo Account tokens…');
 
                 const step2Resp = await proxyFetch('https://accounts.nintendo.com/connect/1.0.0/api/token', {
@@ -1842,30 +1866,46 @@ async function performFullAuthentication(options = {}) {
                 accessToken = step2Data.access_token;
             }
 
-            // Step 3: Fetch Nintendo User Profile (/2.0.0/users/me with NASDKAPI User-Agent)
-            // Zero fake profile defaults: require id, country, language, birthday
-            setAuthButtonsDisabled(true, 'Fetching Nintendo Profile...');
-            setAuthGateHint('Retrieving authenticated Nintendo Account profile…');
-
-            const userResp = await proxyFetch('https://api.accounts.nintendo.com/2.0.0/users/me', {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Accept-Language': 'en-GB',
-                    'User-Agent': 'NASDKAPI; Android',
-                    'Accept': 'application/json'
-                }
-            });
-
-            if (!userResp.ok) {
-                throw new AuthStageError(
-                    'NINTENDO_PROFILE',
-                    `Failed to retrieve Nintendo Account profile (HTTP ${userResp.status}).`,
-                    null,
-                    userResp.status
-                );
+            // Start the account broker once. The Worker already validates the Nintendo
+            // access token against /users/me to derive the account key, so return that
+            // same profile instead of making the browser perform the identical request
+            // a second time. This removes one Nintendo + Cloudflare round trip from login.
+            setAuthButtonsDisabled(true, 'Signing in...');
+            let data = null;
+            let brokerReady = false;
+            let brokerSession = null;
+            let userInfo = null;
+            try {
+                brokerSession = await startTokenBrokerSession(accessToken);
+                brokerReady = true;
+                userInfo = brokerSession?.profile || null;
+            } catch (error) {
+                // Backward compatibility / temporary Worker outage: only then use the
+                // canonical client-side profile + Coral path. Never fall back after an
+                // nxapi/Coral response from the broker, which would double-spend auth.
+                console.warn('[AccountTokenBroker] Session unavailable; using canonical Coral login path:', error);
             }
 
-            const userInfo = await userResp.json().catch(() => ({}));
+            if (!userInfo) {
+                const userResp = await proxyFetch('https://api.accounts.nintendo.com/2.0.0/users/me', {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Accept-Language': 'en-GB',
+                        'User-Agent': 'NASDKAPI; Android',
+                        'Accept': 'application/json'
+                    }
+                });
+                if (!userResp.ok) {
+                    throw new AuthStageError(
+                        'NINTENDO_PROFILE',
+                        `Failed to retrieve Nintendo Account profile (HTTP ${userResp.status}).`,
+                        null,
+                        userResp.status
+                    );
+                }
+                userInfo = await userResp.json().catch(() => ({}));
+            }
+
             if (!userInfo?.id || !userInfo?.country || !userInfo?.language || !userInfo?.birthday) {
                 throw new AuthStageError(
                     'NINTENDO_PROFILE',
@@ -1878,28 +1918,12 @@ async function performFullAuthentication(options = {}) {
             const naCountry = userInfo.country;
             const naBirthday = userInfo.birthday;
 
-            // First ask the Cloudflare account broker. A cached Coral credential is
-            // shared across this Nintendo Account's active devices, and survives a
-            // browser close only when a Remember Me grant exists server-side.
-            let data = null;
-            let brokerReady = false;
-            try {
-                setAuthGateHint('Checking secure Cloudflare token cache…');
-                const brokerSession = await startTokenBrokerSession(accessToken);
-                brokerReady = true;
-                if (validBrokerCoralSession(brokerSession?.coral, naId)) {
-                    data = brokerSession.coral.session;
-                    console.log('[AccountTokenBroker] Coral cache hit; method-1 f-generation skipped.');
-                }
-            } catch (error) {
-                // Backward compatibility / temporary Worker outage: only then use the
-                // canonical client-side path. Never fall back after an nxapi/Coral
-                // response from the broker, which would double-spend authentication.
-                console.warn('[AccountTokenBroker] Session unavailable; using canonical Coral login path:', error);
+            if (brokerReady && validBrokerCoralSession(brokerSession?.coral, naId)) {
+                data = brokerSession.coral.session;
             }
 
             if (!data && brokerReady) {
-                setAuthButtonsDisabled(true, 'Step 3/3: Creating Coral session...');
+                setAuthButtonsDisabled(true, 'Signing in...');
                 setAuthGateHint('Cloudflare cache miss — requesting one nxapi Coral attestation…');
                 data = await generateCoralViaTokenBroker({
                     idToken,
@@ -1912,8 +1936,10 @@ async function performFullAuthentication(options = {}) {
             }
 
             if (!data) {
-                // Step 4: Request nxapi method-1 attestation
-                setAuthButtonsDisabled(true, 'Step 3/3: Requesting nxapi attestation...');
+                // Step 4: Request nxapi method-1 attestation. This is the fallback for
+                // an unavailable broker, so enforce disclosure consent right here.
+                await prepareNxapi();
+                setAuthButtonsDisabled(true, 'Signing in...');
                 setAuthGateHint('Generating Coral attestation f-token with nxapi…');
 
                 let attestation;
@@ -1927,7 +1953,7 @@ async function performFullAuthentication(options = {}) {
                 const { f: fToken, timestamp: timestampMs, requestId } = attestation;
 
                 // Step 5: Encrypt Coral Account/Login payload
-                setAuthButtonsDisabled(true, 'Step 3/3: Encrypting Coral login...');
+                setAuthButtonsDisabled(true, 'Signing in...');
                 setAuthGateHint('Encrypting Coral login request…');
 
                 const coralLoginUrl = 'https://api-lp1.znc.srv.nintendo.net/v4/Account/Login';
@@ -1952,7 +1978,7 @@ async function performFullAuthentication(options = {}) {
                 }
 
                 // Step 6: Post to Coral /v4/Account/Login
-                setAuthButtonsDisabled(true, 'Logging into Coral Account...');
+                setAuthButtonsDisabled(true, 'Signing in...');
                 setAuthGateHint('Connecting to Nintendo Switch Online Coral service…');
 
                 const coralResp = await proxyFetch(coralLoginUrl, {
@@ -2091,6 +2117,28 @@ function initAuthGate() {
     const resumeRememberedBtn = document.getElementById('resumeRememberedBtn');
     const forgetRememberedBtn = document.getElementById('forgetRememberedBtn');
     const profileForgetRememberedBtn = document.getElementById('profileForgetRememberedBtn');
+    const nxapiConsentCheckbox = document.getElementById('nxapiConsentCheckbox');
+    const nxapiDisclosure = document.getElementById('nxapiDisclosure');
+
+    const requireNxapiConsent = () => {
+        if (nxapiConsentCheckbox?.checked) {
+            nxapiDisclosure?.classList.remove('needs-consent');
+            return true;
+        }
+        nxapiDisclosure?.classList.add('needs-consent');
+        nxapiConsentCheckbox?.focus();
+        nxapiConsentCheckbox?.reportValidity?.();
+        return false;
+    };
+
+    nxapiConsentCheckbox?.addEventListener('change', () => {
+        nxapiDisclosure?.classList.toggle('needs-consent', !nxapiConsentCheckbox.checked);
+        if (nxapiConsentCheckbox.checked) {
+            // Consent is explicit at this point. Warm nxapi OAuth/config while the user
+            // is completing Nintendo sign-in, hiding that latency from the critical path.
+            void warmNxapiForLogin().catch(() => {});
+        }
+    });
 
     let pasteDebounceTimer = null;
     const continueWithPastedRedirect = () => {
@@ -2098,10 +2146,7 @@ function initAuthGate() {
         pasteDebounceTimer = setTimeout(() => {
             const value = authInput?.value.trim() || '';
             if (!value || !(value.includes('session_token_code=') || value.startsWith('eyJ') || value.startsWith('{'))) return;
-            if (!hasNxapiConsent()) {
-                setAuthGateHint('Please acknowledge the nxapi disclosure checkbox before continuing.');
-                return;
-            }
+            if (!requireNxapiConsent()) return;
             performFullAuthentication({ input: value });
         }, 300);
     };
@@ -2139,6 +2184,7 @@ function initAuthGate() {
 
     if (submitGateBtn) {
         submitGateBtn.addEventListener('click', () => {
+            if (!requireNxapiConsent()) return;
             const input = authInput?.value.trim() || '';
             performFullAuthentication({ input });
         });
@@ -2146,11 +2192,9 @@ function initAuthGate() {
 
     if (resumeRememberedBtn) {
         resumeRememberedBtn.addEventListener('click', () => {
-            if (!hasNxapiConsent()) {
-                setAuthGateHint('Please acknowledge the nxapi disclosure checkbox before continuing.');
-                alert('Please acknowledge the nxapi data disclosure checkbox before continuing.');
-                return;
-            }
+            // A valid remembered Coral cache hit needs no nxapi call, so do not force
+            // disclosure consent up front. If the cache is expired/missing, the nxapi
+            // path itself will request consent before making any third-party request.
             performFullAuthentication({ isResume: true });
         });
     }

@@ -269,31 +269,62 @@ textarea {
 
 .nxapi-disclosure {
     margin: 20px 0;
-    padding: 14px;
-    background: rgba(255, 193, 7, 0.08);
-    border: 1px solid rgba(255, 193, 7, 0.35);
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-    font-size: 12px;
-    line-height: 1.55;
+    padding: 0;
+    overflow: hidden;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.5;
     text-align: left;
+    transition: border-color .16s ease, box-shadow .16s ease;
 }
 
-.nxapi-disclosure label {
-    display: flex;
-    align-items: flex-start;
-    gap: 9px;
+.nxapi-disclosure-copy { padding: 14px 15px 12px; }
+.nxapi-disclosure-copy > strong {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--text-primary);
+    font: 700 14px var(--font-heading);
 }
-
-.nxapi-disclosure input {
-    margin-top: 3px;
-    flex: 0 0 auto;
+.nxapi-disclosure-copy p {
+    margin: 0 !important;
+    color: var(--text-secondary) !important;
+    font-size: 12px !important;
+    line-height: 1.55;
 }
-
-.nxapi-disclosure a {
-    color: var(--accent-color);
+.nxapi-disclosure a { color: var(--nintendo-red); }
+.nxapi-help-link {
     display: inline-block;
     margin-top: 8px;
+    font-weight: 600;
+    text-decoration: none;
+}
+.nxapi-help-link:hover { text-decoration: underline; }
+
+.nxapi-consent-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 46px;
+    padding: 10px 15px;
+    background: var(--bg-input);
+    border-top: 1px solid var(--border-color);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+.nxapi-consent-row input {
+    width: 17px;
+    height: 17px;
+    margin: 0;
+    flex: 0 0 auto;
+    accent-color: var(--nintendo-red);
+}
+.nxapi-consent-row span { font-size: 12px; font-weight: 600; }
+.nxapi-disclosure.needs-consent {
+    border-color: rgba(230,0,18,.62);
+    box-shadow: 0 0 0 3px rgba(230,0,18,.10);
 }
 
 .auth-steps {
@@ -376,13 +407,6 @@ textarea {
     font-size: 12px;
     font-weight: 700;
     cursor: pointer;
-}
-
-.auth-hint {
-    min-height: 18px;
-    margin: 8px 0 0 !important;
-    font-size: 12px !important;
-    color: var(--nintendo-red) !important;
 }
 
 .rate-limit-banner {
@@ -1320,8 +1344,12 @@ body.dark-theme {
 .login-help { color: #fff; font-size: 14px; text-decoration: none; }
 .login-workflow { margin-top: 24px; text-align: left; color: var(--text-primary); }
 .login-workflow { max-width: 620px; margin-inline: auto; padding: 18px; border-radius: 18px; background: #fff; box-shadow: 0 14px 34px rgba(111,0,9,.25); }
-.login-workflow .nxapi-disclosure { margin: 0 0 14px; background: #f4f4f5; border-color: #dedee2; color: #44444b; }
-.login-workflow .nxapi-disclosure a { color: #d70011; text-decoration: underline; }
+.login-workflow .nxapi-disclosure { margin: 0 0 14px; background: #fff; border-color: #dedee2; color: #202124; }
+.login-workflow .nxapi-disclosure-copy > strong { color: #202124; }
+.login-workflow .nxapi-disclosure-copy p { color: #5f6368 !important; }
+.login-workflow .nxapi-disclosure a { color: #d70011; }
+.login-workflow .nxapi-consent-row { background: #f7f7f8; border-top-color: #dedee2; color: #202124; }
+.login-workflow .nxapi-disclosure.needs-consent { border-color: #e60012; box-shadow: 0 0 0 3px rgba(230,0,18,.12); }
 .login-workflow .auth-steps { gap: 10px; margin-bottom: 14px; }
 .login-workflow .step-box { display: flex; position: static; padding: 14px; background: #f7f7f8; color: #202124; border-color: #e2e2e5; }
 .login-workflow .step-box > span { position: static; width: 26px; height: 26px; font-size: 12px; }

@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css?v=20260816-v37">
+    <link rel="stylesheet" href="style.css?v=20260816-v38">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
@@ -80,12 +80,16 @@
             <a class="login-help" href="https://lounge.nintendo.com/redirect/supportlogin" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square"></i> Help</a>
 
             <div class="login-workflow hidden" id="loginWorkflow">
-            <div class="nxapi-disclosure">
-                <label>
-                    <input type="checkbox" id="nxapiConsentCheckbox">
-                    <span>I acknowledge and agree that my Nintendo Account ID token, Coral session token, and encrypted Coral API request/response data are sent to the third-party <a href="https://github.com/samuelthomas2774/nxapi-znca-api" target="_blank" rel="noopener noreferrer">nxapi-znca-api</a> service (operated by Ellie Gray) to generate Coral attestation tokens and encrypt Nintendo Switch Online requests.</span>
+            <div class="nxapi-disclosure" id="nxapiDisclosure">
+                <div class="nxapi-disclosure-copy">
+                    <strong>Third-party service disclosure</strong>
+                    <p>Sign-in uses <a href="https://github.com/samuelthomas2774/nxapi-znca-api" target="_blank" rel="noopener noreferrer">nxapi-znca-api</a> (operated by Ellie Gray). Your Nintendo Account ID token, Coral session token, and encrypted Coral API requests/responses are sent to this service for Coral attestation and request encryption.</p>
+                    <a class="nxapi-help-link" href="https://github.com/samuelthomas2774/nxapi-znca-api/blob/docs/docs/end-user-help.md" target="_blank" rel="noopener noreferrer">Learn more about nxapi</a>
+                </div>
+                <label class="nxapi-consent-row">
+                    <input type="checkbox" id="nxapiConsentCheckbox" required>
+                    <span>I understand and agree to send this data to nxapi.</span>
                 </label>
-                <a href="https://github.com/samuelthomas2774/nxapi-znca-api/blob/docs/docs/end-user-help.md" target="_blank" rel="noopener noreferrer">nxapi end-user help</a>
             </div>
 
             <div class="auth-steps">
@@ -107,7 +111,6 @@
                         <p>After signing in, right-click <strong>Select this person</strong> → <strong>Copy link address</strong>. Paste it below and we will continue automatically.</p>
                         <textarea id="idTokenGateInput" placeholder="Paste redirect URL (npf71b963c1b7b6d119://auth#...) or session_token string here..."></textarea>
                         <button type="button" class="btn-paste-token" id="pasteAuthGateBtn"><i class="fa-regular fa-clipboard"></i> Paste from clipboard</button>
-                        <p class="auth-hint" id="authGateHint" aria-live="polite"></p>
                     </div>
                 </div>
             </div>
@@ -120,7 +123,7 @@
             </div>
 
             <button class="btn-submit-gate" id="submitAuthGateBtn">
-                <i class="fa-solid fa-plug"></i> Authenticate & Enter WebApp
+                <i class="fa-solid fa-right-to-bracket"></i> Sign In
             </button>
             </div>
         </div>
@@ -475,6 +478,6 @@
 
     <script src="services/adapters.js?v=20260816-v17"></script>
     <script src="services/manager.js?v=20260816-v25"></script>
-    <script src="app.js?v=20260816-v38"></script>
+    <script src="app.js?v=20260816-v39"></script>
 </body>
 </html>
