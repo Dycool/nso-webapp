@@ -53,19 +53,13 @@ class GenericWebViewAdapter {
             expiresAt: sessionData.expiresAt
         };
 
-        // Open in-app overlay
-        const overlay = document.getElementById('inAppGameWebview');
+        // The manager owns the APK-style activity transition and global WebView lock.
+        // This adapter only supplies the proxied Nintendo document once the session exists.
         const title = document.getElementById('inAppGameWebviewTitle');
         const frame = document.getElementById('inAppGameWebviewFrame');
 
         if (title) title.textContent = service.name || 'Game Service';
-        if (overlay) overlay.classList.remove('hidden');
-        document.documentElement.classList.add('webview-active');
-        document.body.classList.add('webview-active');
-
-        if (frame) {
-            frame.src = sessionData.webviewUrl;
-        }
+        if (frame) frame.src = sessionData.webviewUrl;
 
         return this.currentSession;
     }
@@ -87,8 +81,6 @@ class GenericWebViewAdapter {
     }
 
     async close() {
-        document.documentElement.classList.remove('webview-active');
-        document.body.classList.remove('webview-active');
         if (!this.currentSession?.id) return;
         const workerUrl = this.manager.getWorkerUrl();
         const sessionId = this.currentSession.id;

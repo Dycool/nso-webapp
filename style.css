@@ -1590,6 +1590,195 @@ body.webview-active #homeDock {
 
 @keyframes nso-loading-pulse { from { opacity: .72; } to { opacity: 1; } }
 
+/* Nintendo Switch App APK activity transitions.
+   Values mirror res/anim/anim_cmn_android_transition_*:
+   ease-out path (0.16,1,0.3,1), forward 150 ms offset + 400 ms scale,
+   50/150 ms alpha phases, and 400 ms back transition. */
+@keyframes nso-apk-go-enter-scale {
+    from { transform: scale(.85); }
+    to { transform: scale(1); }
+}
+@keyframes nso-apk-go-enter-alpha {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes nso-apk-go-exit-scale {
+    from { transform: scale(1); }
+    to { transform: scale(1.05); }
+}
+@keyframes nso-apk-go-exit-alpha {
+    from { opacity: 1; }
+    to { opacity: .5; }
+}
+@keyframes nso-apk-back-enter-scale {
+    from { transform: scale(1.1); }
+    to { transform: scale(1); }
+}
+@keyframes nso-apk-back-exit-scale {
+    from { transform: scale(1); }
+    to { transform: scale(.9); }
+}
+@keyframes nso-apk-back-exit-alpha {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+.nso-apk-go-enter {
+    transform-origin: 50% 50%;
+    animation:
+        nso-apk-go-enter-scale 400ms cubic-bezier(.16, 1, .3, 1) 150ms both,
+        nso-apk-go-enter-alpha 50ms linear 200ms both !important;
+    pointer-events: none !important;
+}
+.nso-apk-go-exit {
+    transform-origin: 50% 50%;
+    animation:
+        nso-apk-go-exit-scale 400ms cubic-bezier(.16, 1, .3, 1) 150ms both,
+        nso-apk-go-exit-alpha 150ms linear 200ms both !important;
+    pointer-events: none !important;
+}
+.nso-apk-back-enter {
+    transform-origin: 50% 50%;
+    animation: nso-apk-back-enter-scale 400ms cubic-bezier(.16, 1, .3, 1) both !important;
+    pointer-events: none !important;
+}
+.nso-apk-back-exit {
+    transform-origin: 50% 50%;
+    animation:
+        nso-apk-back-exit-scale 400ms cubic-bezier(.16, 1, .3, 1) both,
+        nso-apk-back-exit-alpha 50ms linear 50ms both !important;
+    pointer-events: none !important;
+}
+.nso-apk-transition-background { z-index: 294 !important; }
+.nso-apk-transition-foreground { z-index: 295 !important; }
+
+html.gws-transition-active,
+body.gws-transition-active {
+    overflow: hidden !important;
+    height: 100% !important;
+}
+
+.game-services-catalog.launch-locked .service-launch-card {
+    pointer-events: none;
+}
+.game-services-catalog.launch-locked .service-launch-card:not(.launching-service) {
+    opacity: .7;
+}
+.service-launch-card button:disabled {
+    cursor: default;
+}
+
+.inapp-webview-frame-wrap {
+    position: relative;
+}
+.gws-native-loading {
+    position: absolute;
+    z-index: 3;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: #111;
+    color: #f3f3f4;
+    opacity: 1;
+    transition: opacity 120ms linear;
+}
+.gws-native-loading.hidden {
+    display: none !important;
+}
+.gws-native-loading.is-complete {
+    opacity: 0;
+    pointer-events: none;
+}
+.gws-native-loading-inner {
+    display: grid;
+    justify-items: center;
+    gap: 15px;
+    padding: 24px;
+    text-align: center;
+}
+.gws-native-loading-icon {
+    width: 76px;
+    height: 76px;
+    border-radius: 18px;
+    object-fit: cover;
+    background: #2a2a2c;
+    box-shadow: 0 8px 26px rgba(0,0,0,.28);
+}
+.gws-native-loading-spinner {
+    width: 26px;
+    height: 26px;
+    border: 3px solid rgba(255,255,255,.24);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: gws-native-spinner 700ms linear infinite;
+}
+.gws-native-loading-title {
+    max-width: min(440px, 80vw);
+    font: 700 15px var(--font-heading);
+}
+@keyframes gws-native-spinner { to { transform: rotate(360deg); } }
+
+.op-browser-notification-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 18px;
+    padding: 16px;
+    background: #323235;
+    border-radius: 8px;
+}
+.op-browser-notification-card > div {
+    min-width: 0;
+}
+.op-browser-notification-card b,
+.op-browser-notification-card small {
+    display: block;
+}
+.op-browser-notification-card b {
+    color: #f0f0f2;
+    font: 700 14px var(--font-heading);
+}
+.op-browser-notification-card small {
+    margin-top: 5px;
+    color: #aaaab0;
+    font-size: 12px;
+    line-height: 1.45;
+}
+.op-browser-notification-action {
+    border: 0;
+    border-radius: 999px;
+    padding: 10px 14px;
+    background: #22b8f0;
+    color: #071116;
+    font: 700 12px var(--font-heading);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.op-browser-notification-action:disabled {
+    background: #454549;
+    color: #8a8a90;
+    cursor: default;
+}
+
+@media (max-width: 620px) {
+    .op-browser-notification-card {
+        grid-template-columns: 1fr;
+    }
+    .op-browser-notification-action {
+        justify-self: start;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nso-apk-go-enter,
+    .nso-apk-go-exit,
+    .nso-apk-back-enter,
+    .nso-apk-back-exit {
+        animation-duration: 1ms !important;
+        animation-delay: 0ms !important;
+    }
+}
+
 /* Android-style fade+shift transitions for sub-views */
 @keyframes view-enter {
     from { opacity: 0; transform: translateX(56px); }
@@ -2504,6 +2693,10 @@ body.op-light-theme .service-launch-card { background: #fff !important; }
 body.op-light-theme .friends-page-grid .friend-name,
 body.op-light-theme .media-title { color: #222225 !important; }
 body.op-light-theme .home-dock { background: rgba(255,255,255,.96) !important; box-shadow: 0 8px 26px rgba(0,0,0,.16) !important; }
+body.op-light-theme .op-browser-notification-card { background: #ffffff; border: 1px solid rgba(0,0,0,.08); }
+body.op-light-theme .op-browser-notification-card b { color: #232327; }
+body.op-light-theme .op-browser-notification-card small { color: #65656b; }
+
 body.op-light-theme .friend-settings-screen,
 body.op-light-theme .sent-req-detail-screen,
 body.op-light-theme .fc-search-screen,

@@ -727,6 +727,81 @@ function showViewInstant(el) {
     el.classList.remove('hidden', 'view-slide-in', 'view-slide-out');
 }
 
+// Exact activity transition timing recovered from the Nintendo Switch App APK:
+// forward = 150 ms delay + 400 ms ease-out scale, with the alpha phase at 200 ms;
+// back = 400 ms ease-out scale, with a 50 ms alpha phase after 50 ms.
+const NSO_APK_FORWARD_TRANSITION_MS = 550;
+const NSO_APK_BACK_TRANSITION_MS = 400;
+
+function clearNsoApkTransition(el) {
+    if (!el) return;
+    if (el.__nsoApkTransitionTimer) {
+        clearTimeout(el.__nsoApkTransitionTimer);
+        el.__nsoApkTransitionTimer = null;
+    }
+    el.classList.remove(
+        'nso-apk-go-enter',
+        'nso-apk-go-exit',
+        'nso-apk-back-enter',
+        'nso-apk-back-exit',
+        'nso-apk-transition-foreground',
+        'nso-apk-transition-background'
+    );
+}
+
+function nsoApkForward(fromView, toView, options = {}) {
+    if (!toView) return Promise.resolve();
+    const hideSource = options.hideSource !== false;
+    clearNsoApkTransition(fromView);
+    clearNsoApkTransition(toView);
+
+    toView.classList.remove('hidden', 'view-slide-in', 'view-slide-out');
+    toView.classList.add('nso-apk-transition-foreground', 'nso-apk-go-enter');
+    if (fromView && fromView !== toView) {
+        fromView.classList.remove('view-slide-in', 'view-slide-out');
+        fromView.classList.add('nso-apk-transition-background', 'nso-apk-go-exit');
+    }
+
+    return new Promise((resolve) => {
+        const finish = () => {
+            if (fromView && fromView !== toView) {
+                clearNsoApkTransition(fromView);
+                if (hideSource) fromView.classList.add('hidden');
+            }
+            clearNsoApkTransition(toView);
+            resolve();
+        };
+        toView.__nsoApkTransitionTimer = setTimeout(finish, NSO_APK_FORWARD_TRANSITION_MS + 30);
+    });
+}
+
+function nsoApkBack(fromView, toView, options = {}) {
+    if (!fromView) return Promise.resolve();
+    const hideSource = options.hideSource !== false;
+    clearNsoApkTransition(fromView);
+    clearNsoApkTransition(toView);
+
+    if (toView) {
+        toView.classList.remove('hidden', 'view-slide-in', 'view-slide-out');
+        toView.classList.add('nso-apk-transition-background', 'nso-apk-back-enter');
+    }
+    fromView.classList.remove('hidden', 'view-slide-in', 'view-slide-out');
+    fromView.classList.add('nso-apk-transition-foreground', 'nso-apk-back-exit');
+
+    return new Promise((resolve) => {
+        const finish = () => {
+            clearNsoApkTransition(fromView);
+            if (hideSource) fromView.classList.add('hidden');
+            clearNsoApkTransition(toView);
+            resolve();
+        };
+        fromView.__nsoApkTransitionTimer = setTimeout(finish, NSO_APK_BACK_TRANSITION_MS + 30);
+    });
+}
+
+window.nsoApkForward = nsoApkForward;
+window.nsoApkBack = nsoApkBack;
+
 function applyTabViewState(tabName = 'home') {
     // Hide all base tab pages and overlay views instantly (tab switches don't animate)
     document.querySelectorAll('.tab-page').forEach(page => page.classList.remove('active'));
@@ -1465,6 +1540,7 @@ async function loadGameServices() {
             const card = document.createElement('article');
             card.className = 'service-launch-card';
             card.dataset.serviceName = service.name || 'Game service';
+            card.dataset.serviceId = String(service.id || '');
             const image = document.createElement('img');
             image.src = service.imageUri || '';
             image.alt = service.name || 'Game service';
@@ -1483,6 +1559,7 @@ async function loadGameServices() {
             card.append(image, copy, button);
             container.appendChild(card);
         });
+        window.webServiceManager?.registerCatalogServices?.(services);
     } catch (e) {
         container.innerHTML = `<p class="service-status error">Could not load game services: ${e.message}</p>`;
     }
@@ -3207,6 +3284,17 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         ownPlayLogsPromise: null,
         visibilityReturnTarget: 'opUserPage',
         pushReturnTarget: 'opSettingsPage',
+        browserNotifications: {
+            timer: null,
+            running: false,
+            baselineReady: false,
+            announcementIds: new Set(),
+            requestIds: new Set(),
+            chatIds: new Set(),
+            activeEventKey: '',
+            friendOnline: new Map(),
+            lastFriendOnlineNotice: new Map()
+        },
         screensReady: false,
         refreshing: null,
         mobileObserver: null
@@ -3231,7 +3319,9 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         friendPlayLog:    { path: '/v4/User/PlayLog/Show' },
         chatCandidates:   { path: '/v5/Chat/FriendCandidate/List' },
         friendRequest:    { path: '/v4/FriendRequest/Create' },
+        receivedRequests: { path: '/v4/FriendRequest/Received/List' },
         chats:            { path: '/v5/Chat/List' },
+        activeEvent:      { path: '/v1/Event/GetActiveEvent' },
         chatShow:         { path: '/v5/Chat/Show' },
         pushList:         { path: '/v5/PushNotification/Settings/List' },
         pushUpdate:       { path: '/v5/PushNotification/Settings/Update' },
@@ -3595,6 +3685,12 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
                 const parent = typeof parentSpec === 'function' ? parentSpec() : parentSpec;
                 const childView = $(child);
                 const parentView = $(parent);
+
+                if (child === 'opChatCandidatePage' && childView && parentView && typeof nsoApkBack === 'function') {
+                    nsoApkBack(childView, parentView);
+                    return;
+                }
+
                 const revealParent = () => {
                     if (parent.startsWith('op')) {
                         // Unhide the parent so it paints underneath the exiting
@@ -3929,6 +4025,323 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         if (item.type === 'playInvitation') state.pushSettings.playInvitation = item.scope;
     }
 
+    const BROWSER_NOTIFICATION_SETTING_KEY = 'nso_browser_notifications_enabled';
+
+    function browserNotificationSupport() {
+        if (!('Notification' in window)) {
+            return { supported: false, permission: 'unsupported', enabled: false };
+        }
+        let optedIn = false;
+        try { optedIn = localStorage.getItem(BROWSER_NOTIFICATION_SETTING_KEY) === 'true'; } catch (e) {}
+        return {
+            supported: true,
+            permission: Notification.permission,
+            enabled: optedIn && Notification.permission === 'granted'
+        };
+    }
+
+    function setBrowserNotificationPreference(enabled) {
+        try {
+            if (enabled) localStorage.setItem(BROWSER_NOTIFICATION_SETTING_KEY, 'true');
+            else localStorage.removeItem(BROWSER_NOTIFICATION_SETTING_KEY);
+        } catch (e) {}
+    }
+
+    function browserNotificationStatusText() {
+        const status = browserNotificationSupport();
+        if (!status.supported) return 'Browser notifications are not supported by this browser.';
+        if (status.permission === 'denied') return 'Blocked by your browser. Allow notifications for this site in browser settings.';
+        if (status.enabled) return 'On. NSO events are shown as browser notifications while this web app is open.';
+        if (status.permission === 'granted') return 'Off for this web app.';
+        return 'Off. Your browser will ask for permission when you enable them.';
+    }
+
+    function browserNotificationActionText() {
+        const status = browserNotificationSupport();
+        if (!status.supported) return 'Not Supported';
+        if (status.permission === 'denied') return 'Blocked in Browser';
+        return status.enabled ? 'Turn Off Browser Notifications' : 'Enable Browser Notifications';
+    }
+
+    function browserNotificationKey(item, fallbackPrefix) {
+        const id = item?.id ?? item?.notificationId ?? item?.chatId ?? item?.requestId ?? item?.nsaId;
+        return id !== undefined && id !== null && String(id)
+            ? String(id)
+            : `${fallbackPrefix}:${String(item?.createdAt || item?.updatedAt || item?.sentAt || '')}:${String(item?.name || item?.title || '')}`;
+    }
+
+    function personFromRequest(request) {
+        return request?.sender || request?.user || request?.friend || request?.from || request?.requester || {};
+    }
+
+    function isFriendOnline(friend) {
+        const presence = friend?.presence || {};
+        const stateName = String(presence.state || friend?.state || '').toUpperCase();
+        return Boolean(friend?.isOnline) || stateName === 'ONLINE' || stateName === 'PLAYING';
+    }
+
+    function fireBrowserNotification(title, options = {}, onClick = null) {
+        const status = browserNotificationSupport();
+        if (!status.enabled) return;
+        // The native UI is already visible while this tab has focus. Use the OS/browser
+        // surface when the NSO page is in the background to avoid duplicate alerts.
+        if (document.visibilityState === 'visible' && document.hasFocus()) return;
+
+        try {
+            const notification = new Notification(title, {
+                body: options.body || '',
+                icon: options.icon || sessionUser()?.imageUri || '',
+                tag: options.tag || undefined,
+                renotify: options.renotify === true,
+                silent: false
+            });
+            notification.onclick = () => {
+                try { window.focus(); } catch (e) {}
+                try { notification.close(); } catch (e) {}
+                if (typeof onClick === 'function') {
+                    try { onClick(); } catch (e) {}
+                }
+            };
+        } catch (error) {
+            console.warn('[BrowserNotifications] Notification creation failed:', error);
+        }
+    }
+
+    function resetBrowserNotificationBaseline() {
+        const monitor = state.browserNotifications;
+        monitor.baselineReady = false;
+        monitor.announcementIds.clear();
+        monitor.requestIds.clear();
+        monitor.chatIds.clear();
+        monitor.activeEventKey = '';
+        monitor.friendOnline.clear();
+    }
+
+    function stopBrowserNotificationMonitor() {
+        const monitor = state.browserNotifications;
+        if (monitor.timer) clearTimeout(monitor.timer);
+        monitor.timer = null;
+        monitor.running = false;
+    }
+
+    function scheduleBrowserNotificationPoll(delayMs) {
+        const monitor = state.browserNotifications;
+        if (monitor.timer) clearTimeout(monitor.timer);
+        if (!browserNotificationSupport().enabled || !coralToken()) {
+            monitor.timer = null;
+            return;
+        }
+        monitor.timer = setTimeout(() => {
+            monitor.timer = null;
+            pollBrowserNotifications().catch((error) => {
+                console.warn('[BrowserNotifications] Poll failed:', error);
+            });
+        }, Math.max(0, Number(delayMs) || 0));
+    }
+
+    async function pollBrowserNotifications() {
+        const monitor = state.browserNotifications;
+        if (monitor.running || !browserNotificationSupport().enabled || !coralToken()) return;
+        monitor.running = true;
+
+        try {
+            const settings = await loadPushSettings().catch(() => state.pushSettings || {});
+            const jobs = [
+                coralExact('announcements').then((value) => ({ type: 'announcements', value })).catch(() => null),
+                coralExact('friends').then((value) => ({ type: 'friends', value })).catch(() => null)
+            ];
+            if (settings?.friendRequest) {
+                jobs.push(coralExact('receivedRequests').then((value) => ({ type: 'requests', value })).catch(() => null));
+            }
+            if (settings?.chatInvitation) {
+                jobs.push(coralExact('chats').then((value) => ({ type: 'chats', value })).catch(() => null));
+            }
+            if (settings?.playInvitation && settings.playInvitation !== 'NONE') {
+                jobs.push(coralExact('activeEvent').then((value) => ({ type: 'active-event', value })).catch(() => null));
+            }
+
+            const results = (await Promise.all(jobs)).filter(Boolean);
+            const baselineOnly = !monitor.baselineReady;
+
+            for (const result of results) {
+                if (result.type === 'announcements') {
+                    const items = Array.isArray(result.value) ? result.value : (result.value?.announcements || []);
+                    state.announcements = items;
+                    updateAnnouncementDot();
+                    const next = new Set();
+                    for (const item of items) {
+                        const key = browserNotificationKey(item, 'announcement');
+                        next.add(key);
+                        if (!baselineOnly && !monitor.announcementIds.has(key) && item?.isRead !== true) {
+                            fireBrowserNotification(
+                                item?.title || 'Nintendo Switch App',
+                                {
+                                    body: item?.description || item?.body || item?.message || 'You have a new notification.',
+                                    icon: item?.imageUri || undefined,
+                                    tag: `nso-announcement-${key}`
+                                },
+                                () => openAnnouncements()
+                            );
+                        }
+                    }
+                    monitor.announcementIds = next;
+                }
+
+                if (result.type === 'requests') {
+                    const items = Array.isArray(result.value)
+                        ? result.value
+                        : (result.value?.friendRequests || result.value?.requests || []);
+                    const next = new Set();
+                    for (const request of items) {
+                        const key = browserNotificationKey(request, 'friend-request');
+                        next.add(key);
+                        if (!baselineOnly && !monitor.requestIds.has(key)) {
+                            const person = personFromRequest(request);
+                            fireBrowserNotification(
+                                'Friend Request',
+                                {
+                                    body: person?.name ? `${person.name} sent you a friend request.` : 'You received a friend request.',
+                                    icon: person?.imageUri || person?.image2Uri || undefined,
+                                    tag: `nso-friend-request-${key}`
+                                },
+                                () => $('openAddFriendBtn')?.click()
+                            );
+                        }
+                    }
+                    monitor.requestIds = next;
+                }
+
+                if (result.type === 'chats') {
+                    const items = Array.isArray(result.value) ? result.value : (result.value?.chats || result.value?.chatList || []);
+                    const next = new Set();
+                    for (const chat of items) {
+                        const key = browserNotificationKey(chat, 'chat');
+                        next.add(key);
+                        if (!baselineOnly && !monitor.chatIds.has(key)) {
+                            const host = chat?.owner || chat?.host || chat?.user || {};
+                            fireBrowserNotification(
+                                'GameChat Invite',
+                                {
+                                    body: host?.name ? `${host.name} invited you to GameChat.` : 'You have a new GameChat invite.',
+                                    icon: host?.imageUri || undefined,
+                                    tag: `nso-chat-${key}`
+                                },
+                                () => openChatPage()
+                            );
+                        }
+                    }
+                    monitor.chatIds = next;
+                }
+
+                if (result.type === 'active-event') {
+                    const event = result.value?.event || result.value || null;
+                    const key = event ? browserNotificationKey(event, 'active-event') : '';
+                    if (!baselineOnly && key && monitor.activeEventKey && key !== monitor.activeEventKey) {
+                        const inviter = event?.owner || event?.host || event?.inviter || {};
+                        fireBrowserNotification(
+                            'Online Play Invitation',
+                            {
+                                body: inviter?.name ? `${inviter.name} invited you to play.` : 'You have a new online play invitation.',
+                                icon: inviter?.imageUri || undefined,
+                                tag: `nso-play-invite-${key}`
+                            },
+                            () => openChatPage()
+                        );
+                    }
+                    monitor.activeEventKey = key;
+                }
+
+                if (result.type === 'friends') {
+                    const friends = Array.isArray(result.value) ? result.value : (result.value?.friends || []);
+                    const next = new Map();
+                    const now = Date.now();
+                    for (const friend of friends) {
+                        const id = String(friend?.nsaId || friend?.id || '');
+                        if (!id) continue;
+                        const online = isFriendOnline(friend);
+                        next.set(id, online);
+                        const wasOnline = monitor.friendOnline.get(id);
+                        const wantsNotice = friend?.isOnlineNotificationEnabled === true;
+                        const lastNotice = monitor.lastFriendOnlineNotice.get(id) || 0;
+                        if (!baselineOnly && wantsNotice && wasOnline === false && online && now - lastNotice > 30 * 60 * 1000) {
+                            monitor.lastFriendOnlineNotice.set(id, now);
+                            fireBrowserNotification(
+                                'Friend Online',
+                                {
+                                    body: friend?.name ? `${friend.name} is online.` : 'A friend came online.',
+                                    icon: friend?.imageUri || friend?.image2Uri || undefined,
+                                    tag: `nso-friend-online-${id}`
+                                },
+                                () => openFriendDetail(friend)
+                            );
+                        }
+                    }
+                    monitor.friendOnline = next;
+                }
+            }
+
+            monitor.baselineReady = true;
+        } finally {
+            monitor.running = false;
+            // Keep polling deliberately conservative: Coral calls are authenticated and
+            // encrypted through nxapi, so browser notifications must not become a request storm.
+            if (browserNotificationSupport().enabled && coralToken()) {
+                const steadyDelay = document.hidden ? 90_000 : 300_000;
+                const rateLimitUntil = typeof getRateLimitUntil === 'function' ? getRateLimitUntil() : 0;
+                const rateLimitDelay = rateLimitUntil > Date.now() ? (rateLimitUntil - Date.now() + 2000) : 0;
+                scheduleBrowserNotificationPoll(Math.max(steadyDelay, rateLimitDelay));
+            }
+        }
+    }
+
+    function startBrowserNotificationMonitor({ resetBaseline = false, immediate = true } = {}) {
+        if (!browserNotificationSupport().enabled || !coralToken()) {
+            stopBrowserNotificationMonitor();
+            return;
+        }
+        if (resetBaseline) resetBrowserNotificationBaseline();
+        scheduleBrowserNotificationPoll(immediate ? 0 : (document.hidden ? 90_000 : 300_000));
+    }
+
+    async function toggleBrowserNotifications() {
+        const status = browserNotificationSupport();
+        if (!status.supported || status.permission === 'denied') return;
+
+        if (status.enabled) {
+            setBrowserNotificationPreference(false);
+            stopBrowserNotificationMonitor();
+            return;
+        }
+
+        let permission = status.permission;
+        if (permission !== 'granted') {
+            permission = await Notification.requestPermission();
+        }
+        if (permission === 'granted') {
+            setBrowserNotificationPreference(true);
+            startBrowserNotificationMonitor({ resetBaseline: true, immediate: true });
+        } else {
+            setBrowserNotificationPreference(false);
+            stopBrowserNotificationMonitor();
+        }
+    }
+
+    function installBrowserNotificationLifecycle() {
+        if (window.__nsoBrowserNotificationLifecycleInstalled) return;
+        window.__nsoBrowserNotificationLifecycleInstalled = true;
+        document.addEventListener('visibilitychange', () => {
+            if (!browserNotificationSupport().enabled || !coralToken()) return;
+            // Reconcile promptly when the tab changes foreground/background state,
+            // then fall back to the conservative steady-state polling interval.
+            scheduleBrowserNotificationPoll(document.hidden ? 1500 : 5000);
+        });
+        window.addEventListener('online', () => {
+            if (browserNotificationSupport().enabled && coralToken()) {
+                scheduleBrowserNotificationPoll(1500);
+            }
+        });
+    }
+
     async function openPushNotifications(returnTarget = 'opSettingsPage') {
         ensureScreens();
         state.pushReturnTarget = returnTarget || 'opSettingsPage';
@@ -3942,6 +4355,17 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             ]);
             body.innerHTML = `
                 <section class="op-group op-no-margin">
+                    <h4>Browser Notifications</h4>
+                    <div class="op-browser-notification-card">
+                        <div>
+                            <b>Show NSO Notifications in This Browser</b>
+                            <small id="opBrowserNotificationStatus">${escapeHtml(browserNotificationStatusText())}</small>
+                        </div>
+                        <button type="button" class="op-browser-notification-action" id="opBrowserNotificationsAction" ${!browserNotificationSupport().supported || browserNotificationSupport().permission === 'denied' ? 'disabled' : ''}>${escapeHtml(browserNotificationActionText())}</button>
+                    </div>
+                    <p class="op-group-notice">Browser notifications follow your Nintendo notification settings and run only while this web app is open. No Nintendo or nxapi credentials are stored for browser notifications.</p>
+                </section>
+                <section class="op-group">
                     <label class="op-toggle-row"><span><b>Friend Requests</b><small>You'll get notifications when receiving friend requests and when other users accept your friend requests.</small></span><input id="opPushFriendRequest" type="checkbox" ${settings.friendRequest ? 'checked' : ''}><i></i></label>
                     <label class="op-toggle-row"><span><b>GameChat Invites</b><small>You'll get GameChat-invite notifications.</small></span><input id="opPushChatInvitation" type="checkbox" ${settings.chatInvitation ? 'checked' : ''}><i></i></label>
                     <button class="op-row" id="opPushFriendOnline"><span><b>Notify When Friends Come Online</b><small>Choose individual friends.</small></span><i class="fa-solid fa-chevron-right"></i></button>
@@ -3958,6 +4382,20 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
                     <p class="op-group-notice">You'll get game-related notifications.</p>
                     <div id="opGwsPushList">${renderGwsPushRows(services)}</div>
                 </section>`;
+
+            const browserAction = $('opBrowserNotificationsAction');
+            browserAction?.addEventListener('click', async () => {
+                browserAction.disabled = true;
+                try {
+                    await toggleBrowserNotifications();
+                } finally {
+                    const latest = browserNotificationSupport();
+                    browserAction.textContent = browserNotificationActionText();
+                    browserAction.disabled = !latest.supported || latest.permission === 'denied';
+                    const status = $('opBrowserNotificationStatus');
+                    if (status) status.textContent = browserNotificationStatusText();
+                }
+            });
 
             bindPushControls(services);
         } catch (error) {
@@ -4644,13 +5082,26 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         const view = $('chattedUsersView');
         const body = view?.querySelector('.chatted-users-body');
         if (!view || !body) return;
-        view.classList.remove('hidden');
+
         body.innerHTML = '<p class="op-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</p>';
+
+        const addFriendView = $('addFriendView');
+        const openedFromAddFriend = addFriendView && !addFriendView.classList.contains('hidden');
+        view.dataset.nsoReturnTarget = openedFromAddFriend ? 'addFriendView' : '';
+
+        // Start the real APK-style activity transition immediately; do not expose the
+        // Home page between Add Friend and the GameChat candidate screen.
+        const transition = openedFromAddFriend && typeof nsoApkForward === 'function'
+            ? nsoApkForward(addFriendView, view)
+            : (view.classList.remove('hidden'), Promise.resolve());
+
         try {
-            const result = await coralExact('chatCandidates');
+            const resultPromise = coralExact('chatCandidates');
+            const result = await resultPromise;
             const raw = Array.isArray(result) ? result : (result?.chatParticipants || result?.friendCandidates || []);
             if (!raw.length) {
                 body.innerHTML = '<p class="chatted-users-empty">Users you\'ve chatted with will be displayed here.</p>';
+                await transition;
                 return;
             }
             body.innerHTML = raw.map((candidate, index) => `
@@ -4662,8 +5113,10 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             body.querySelectorAll('[data-candidate-index]').forEach((button) => {
                 button.addEventListener('click', () => openChatCandidateDetail(raw[Number(button.dataset.candidateIndex)]));
             });
+            await transition;
         } catch (error) {
             body.innerHTML = `<p class="service-status error">Couldn't load users you've chatted with: ${escapeHtml(error.message)}</p>`;
+            await transition;
         }
     }
 
@@ -4677,7 +5130,14 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
                 <button type="button" class="op-secondary danger" id="opCandidateBlock">Block</button>
             </div>
             <section class="op-group"><h4>Play Activity</h4><div id="opCandidatePlayLog"><p class="op-loading">Loading…</p></div></section>`;
-        openScreen('opChatCandidatePage');
+        const candidatePage = $('opChatCandidatePage');
+        const candidateList = $('chattedUsersView');
+        closeAppScreens('opChatCandidatePage');
+        if (candidatePage && candidateList && typeof nsoApkForward === 'function') {
+            nsoApkForward(candidateList, candidatePage);
+        } else {
+            openScreen('opChatCandidatePage');
+        }
         $('opCandidateAdd')?.addEventListener('click', async () => {
             if (!candidate.nsaId) return;
             const button = $('opCandidateAdd'); setBusy(button, true, 'Sending…');
@@ -4690,8 +5150,18 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
             if (!candidate.nsaId) return;
             const ok = await confirmSheet('Block', "You won't get friend requests sent by blocked users, and you won't encounter those users during online play. (This may not apply to all games or game modes.)", 'Block');
             if (!ok) return;
-            try { await coralExact('friendBlock', { nsaId: candidate.nsaId }); toast('Blocked.'); $('opChatCandidatePage').classList.add('hidden'); }
-            catch (error) { alert(`Could not block user: ${error.message}`); }
+            try {
+                await coralExact('friendBlock', { nsaId: candidate.nsaId });
+                toast('Blocked.');
+                const candidatePage = $('opChatCandidatePage');
+                const candidateList = $('chattedUsersView');
+                if (candidatePage && candidateList && typeof nsoApkBack === 'function') {
+                    nsoApkBack(candidatePage, candidateList);
+                } else {
+                    candidatePage?.classList.add('hidden');
+                    candidateList?.classList.remove('hidden');
+                }
+            } catch (error) { alert(`Could not block user: ${error.message}`); }
         });
         if (candidate.nsaId) {
             try {
@@ -5190,6 +5660,27 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
 
     function installChatCandidateReplacement() {
         bindControl('openVoiceChattedFriendsBtn', openChatCandidates);
+
+        const close = $('closeChattedUsersBtn');
+        close?.addEventListener('click', (event) => {
+            const view = $('chattedUsersView');
+            if (!view || view.classList.contains('hidden')) return;
+            if (view.dataset.nsoReturnTarget !== 'addFriendView') return;
+
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            const addFriendView = $('addFriendView');
+            if (addFriendView && typeof nsoApkBack === 'function') {
+                nsoApkBack(view, addFriendView).finally(() => {
+                    view.dataset.nsoReturnTarget = '';
+                });
+            } else {
+                view.classList.add('hidden');
+                addFriendView?.classList.remove('hidden');
+                view.dataset.nsoReturnTarget = '';
+            }
+        }, { capture: true });
+
         const empty = $('chattedUsersView')?.querySelector('.chatted-users-empty');
         if (empty) empty.textContent = "Users you've chatted with will be displayed here.";
     }
@@ -5218,12 +5709,41 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         $('nativeSettingsBtn')?.addEventListener('click', openSettings);
         $('nativeAddFriendBtn')?.addEventListener('click', () => {
             const userPage = $('opUserPage');
-            if (userPage && typeof hideViewInstant === 'function') hideViewInstant(userPage);
-            else userPage?.classList.add('hidden');
             const addFriend = $('addFriendView');
-            if (addFriend && typeof slideViewIn === 'function') slideViewIn(addFriend);
-            else $('openAddFriendBtn')?.click();
+            if (!addFriend) {
+                $('openAddFriendBtn')?.click();
+                return;
+            }
+
+            addFriend.dataset.nsoReturnTarget = 'opUserPage';
+            if (userPage && typeof nsoApkForward === 'function') {
+                // Keep the User Page painted underneath until Add Friend completely covers
+                // it. This removes the one-frame Home flash from the old hide-then-open path.
+                nsoApkForward(userPage, addFriend);
+            } else if (typeof slideViewIn === 'function') {
+                slideViewIn(addFriend);
+            } else {
+                addFriend.classList.remove('hidden');
+            }
         });
+
+        $('closeAddFriendBtn')?.addEventListener('click', (event) => {
+            const addFriend = $('addFriendView');
+            if (!addFriend || addFriend.dataset.nsoReturnTarget !== 'opUserPage') return;
+
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            const userPage = $('opUserPage');
+            if (userPage && typeof nsoApkBack === 'function') {
+                nsoApkBack(addFriend, userPage).finally(() => {
+                    addFriend.dataset.nsoReturnTarget = '';
+                });
+            } else {
+                addFriend.classList.add('hidden');
+                userPage?.classList.remove('hidden');
+                addFriend.dataset.nsoReturnTarget = '';
+            }
+        }, { capture: true });
 
         // The real app keeps the dock visible on the User Page.
         $('homeDock')?.addEventListener('click', () => {
@@ -5264,6 +5784,9 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
                     state.announcements = Array.isArray(result) ? result : (result?.announcements || []);
                     updateAnnouncementDot();
                 }).catch(() => {});
+                startBrowserNotificationMonitor({ immediate: true });
+            } else {
+                stopBrowserNotificationMonitor();
             }
         })().finally(() => { state.refreshing = null; });
         return state.refreshing;
@@ -5289,6 +5812,7 @@ document.getElementById('deleteSentReqBtn')?.addEventListener('click', async () 
         enforceMobileDataPreference();
         ensureScreens();
         installAuthenticatedRefreshHook();
+        installBrowserNotificationLifecycle();
         installProfileAndNotifications();
         installUserPageBindings();
         installFriendOnlinePageReplacement();
