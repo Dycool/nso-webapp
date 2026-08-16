@@ -1185,6 +1185,9 @@ let activeAppTab = 'home';
 const tabViewSnapshots = { home: [], friends: [], album: [] };
 const tabBaseScroll = { home: 0, friends: 0, album: 0 };
 const tabViewScroll = new Map();
+// While a selected bottom tab is animating back to its root, don't let a
+// simultaneous tab switch capture the outgoing submenu as fresh saved state.
+const tabRootResetInFlight = new Set();
 const PERSISTENT_VIEW_SELECTOR = [
     '#profileView',
     '#notificationView',
@@ -1222,6 +1225,7 @@ function persistentViews() {
 
 function captureTabNavigationState(tab) {
     tab = validAppTab(tab);
+    if (tabRootResetInFlight.has(tab)) return;
     tabBaseScroll[tab] = window.scrollY || 0;
     const visible = persistentViews().filter((view) =>
         !view.classList.contains('hidden') && persistentViewOwner(view) === tab
@@ -1276,32 +1280,67 @@ function resetTabNavigationState() {
 // Reselecting the currently active bottom tab acts like Android's pop-to-root:
 // preserve nested state while switching between tabs, but a second press on the
 // already-selected tab clears that tab's overlay/back stack and reveals its base page.
+// The visible leaf screen uses the same APK-derived Back transition as a normal
+// submenu Back press instead of disappearing instantly.
 function resetTabToRoot(tab) {
     tab = validAppTab(tab);
     const ownedViews = persistentViews().filter((view) => persistentViewOwner(view) === tab);
-    const hasVisibleNestedView = ownedViews.some((view) => !view.classList.contains('hidden'));
+    const visibleOwnedViews = ownedViews.filter((view) => !view.classList.contains('hidden'));
+    const hasVisibleNestedView = visibleOwnedViews.length > 0;
     const hasSavedNestedView = (tabViewSnapshots[tab] || []).length > 0;
     if (!hasVisibleNestedView && !hasSavedNestedView) return false;
+    if (tabRootResetInFlight.has(tab)) return true;
 
+    // Prefer the visually topmost visible submenu. z-index wins first; DOM order
+    // breaks ties for screens that share the same native overlay layer.
+    const leavingView = visibleOwnedViews.reduce((top, view) => {
+        if (!top) return view;
+        const topZ = Number.parseInt(getComputedStyle(top).zIndex, 10);
+        const viewZ = Number.parseInt(getComputedStyle(view).zIndex, 10);
+        const safeTopZ = Number.isFinite(topZ) ? topZ : 0;
+        const safeViewZ = Number.isFinite(viewZ) ? viewZ : 0;
+        if (safeViewZ !== safeTopZ) return safeViewZ > safeTopZ ? view : top;
+        return top.compareDocumentPosition(view) & Node.DOCUMENT_POSITION_FOLLOWING ? view : top;
+    }, null);
+
+    tabRootResetInFlight.add(tab);
+    tabViewSnapshots[tab] = [];
     ownedViews.forEach((view) => {
-        hideViewInstant(view);
         if (view.id) tabViewScroll.delete(view.id);
     });
-    tabViewSnapshots[tab] = [];
 
-    // Keep the legacy per-tab state in sync with the visible root page so older
-    // handlers cannot immediately reopen a stale submenu after the reselect.
+    // Keep the legacy per-tab state in sync with the root immediately so older
+    // handlers cannot reopen a stale submenu while the leave animation is running.
     if (tab === 'friends') navTabStacks.friends = 'list';
     else if (tab === 'album') navTabStacks.album = 'album';
     else navTabStacks.home = 'home';
 
+    const rootPage = document.getElementById(`page-${tab}`);
     document.querySelectorAll('.tab-page').forEach((page) => page.classList.remove('active'));
-    document.getElementById(`page-${tab}`)?.classList.add('active');
+    rootPage?.classList.add('active');
 
-    requestAnimationFrame(() => {
-        if (activeAppTab !== tab) return;
-        window.scrollTo({ top: tabBaseScroll[tab] || 0, behavior: 'auto' });
+    // Only the leaf screen should animate. Any older stacked overlays are removed
+    // first so the section root is the actual background revealed by Back.
+    ownedViews.forEach((view) => {
+        if (view !== leavingView) hideViewInstant(view);
     });
+
+    const finish = () => {
+        ownedViews.forEach((view) => hideViewInstant(view));
+        tabRootResetInFlight.delete(tab);
+        if (activeAppTab !== tab) return;
+        requestAnimationFrame(() => {
+            if (activeAppTab !== tab) return;
+            window.scrollTo({ top: tabBaseScroll[tab] || 0, behavior: 'auto' });
+        });
+    };
+
+    if (leavingView && rootPage) {
+        // One native-style pop-to-root animation, matching an ordinary submenu Back.
+        Promise.resolve(nsoApkBack(leavingView, rootPage)).then(finish, finish);
+    } else {
+        finish();
+    }
     return true;
 }
 
