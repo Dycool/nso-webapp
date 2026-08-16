@@ -157,10 +157,7 @@ class WebServiceManager {
         let data = {};
         try { data = await response.json(); } catch (e) {}
         if (response.ok && data?.token?.token) {
-            console.log(
-                `[LaunchTrace:${traceId || 'anon'}] stage=get_web_service_token durationMs=${Math.round(performance.now() - startedAt)} ` +
-                `path=cloudflare_broker source=${data.source || 'generated'}`
-            );
+            
             return { token: data.token.token, expiresAt: Number(data.token.expiresAt || 0), source: data.source || 'generated' };
         }
         if (response.status === 401 && data?.error === 'broker_session_missing') return { unavailable: true };
@@ -197,7 +194,7 @@ class WebServiceManager {
             signal: options.signal,
             cancelKey: options.cancelKey
         });
-        console.log(`[LaunchTrace:${traceId || 'anon'}] stage=nxapi_f_method_2 source=canonical_fallback durationMs=${Math.round(performance.now() - fStartedAt)}`);
+        
 
         if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
         const tokenStart = performance.now();
@@ -211,7 +208,7 @@ class WebServiceManager {
             signal: options.signal,
             cancelKey: options.cancelKey
         });
-        console.log(`[LaunchTrace:${traceId || 'anon'}] stage=get_web_service_token durationMs=${Math.round(performance.now() - tokenStart)} path=canonical_fallback`);
+        
         if (!result?.accessToken) throw new Error('Nintendo did not return a valid GameWebServiceToken.');
         const expiresInSec = Number.isFinite(Number(result.expiresIn)) ? Number(result.expiresIn) : 7200;
         return {
@@ -236,7 +233,7 @@ class WebServiceManager {
         if (!forceFresh) {
             const cached = this.getCachedGameWebServiceToken(idStr);
             if (cached) {
-                console.log(`[LaunchTrace:${traceId || 'anon'}] Reusing tab-local GameWebServiceToken for service ${idStr}`);
+                
                 return cached;
             }
         }
@@ -245,7 +242,7 @@ class WebServiceManager {
         if (existingFlight) {
             const sameLaunch = !options.cancelKey || !existingFlight.cancelKey || existingFlight.cancelKey === options.cancelKey;
             if (sameLaunch) {
-                console.log(`[LaunchTrace:${traceId || 'anon'}] Deduplicating concurrent token request for service ${idStr}`);
+                
                 return await existingFlight.promise;
             }
         }
@@ -258,7 +255,7 @@ class WebServiceManager {
                     forceFresh: false
                 });
                 if (result?.token) {
-                    console.log(`[LaunchTrace:${traceId || 'anon'}] stage=get_web_service_token durationMs=0 path=cloudflare_cache`);
+                    
                 }
             } else {
                 result = { miss: true };
@@ -497,7 +494,7 @@ class WebServiceManager {
         let succeeded = false;
 
         try {
-            console.log(`[LaunchTrace:${traceId}] Launching ${service.name || 'Game Service'} via ${adapter.constructor.name} launchId=${launchId}`);
+            
             const token = await this.getGameWebServiceToken(service.id, traceId, false, {
                 signal: launchController.signal,
                 cancelKey: launchId
@@ -525,12 +522,12 @@ class WebServiceManager {
                 throw cancelled;
             }
             const sessionDuration = Math.round(performance.now() - sessionStart);
-            console.log(`[LaunchTrace:${traceId}] stage=webview_session_create durationMs=${sessionDuration}`);
+            
 
             this.installLoadFallback();
             succeeded = true;
             const totalDuration = Math.round(performance.now() - overallStart);
-            console.log(`[LaunchTrace:${traceId}] stage=total_launch durationMs=${totalDuration}`);
+            
         } catch (e) {
             const cancelled = this.isLaunchCancellation(e) || launchController.signal.aborted || launchEpoch !== this.launchEpoch;
             if (!cancelled) {
@@ -540,7 +537,7 @@ class WebServiceManager {
                 await this.cancelNativeServiceLaunch();
                 alert(`Could not open ${service.name || 'service'}: ${e.message}`);
             } else {
-                console.log(`[LaunchTrace:${traceId}] launch_cancelled`);
+                
             }
         } finally {
             buttonElement?.closest('.service-launch-card')?.classList.remove('launching-service');
@@ -677,7 +674,7 @@ class WebServiceManager {
                 );
 
                 try {
-                    console.log(`[WebServiceManager] Received fresh token request for service ${serviceId}`);
+                    
                     const freshToken = await this.getGameWebServiceToken(serviceId, undefined, true, {
                         signal: requestController?.signal,
                         cancelKey: requestLaunchId
@@ -759,9 +756,9 @@ class WebServiceManager {
             if (data.type === 'NSO_SEND_MESSAGE' && data.data) {
                 try {
                     const parsed = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
-                    console.log('[WebServiceManager:sendMessage]', parsed?.type, parsed?.message);
+                    
                     if (parsed?.type === 'B_SHOW_SUCCESS' && parsed?.message) {
-                        console.info('[NookLink:Success]', parsed.message);
+                        
                     } else if (parsed?.type === 'B_SHOW_ERROR' && parsed?.message) {
                         console.warn('[NookLink:Error]', parsed.message);
                     }
