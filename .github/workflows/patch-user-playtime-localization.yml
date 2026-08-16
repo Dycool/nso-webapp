@@ -21,30 +21,33 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('js/native.js')
           source = path.read_text(encoding='utf-8')
-          old = """    function ownPlayTimeText(totalPlayTime) {
-              const minutes = Number(totalPlayTime || 0);
-              if (!Number.isFinite(minutes) || minutes < 60) return 'Played for a little while';
-              const hours = Math.max(1, Math.round(minutes / 60));
-              return `Played for ${hours} hour(s) or more`;
-          }
-          """
-          new = """    function ownPlayTimeText(totalPlayTime) {
-              const minutes = Number(totalPlayTime || 0);
-              if (!Number.isFinite(minutes) || minutes < 60) {
-                  return trKey('FriendDetails_Label_Play_Log_Little');
-              }
-              const hours = Math.max(1, Math.round(minutes / 60));
-              return trFormat('FriendDetails_Label_Play_Log_Time', hours);
-          }
-          """
+          pattern = re.compile(
+              r"(?ms)^[ \t]*function ownPlayTimeText\(totalPlayTime\) \{\n"
+              r"[ \t]*const minutes = Number\(totalPlayTime \|\| 0\);\n"
+              r"[ \t]*if \(!Number\.isFinite\(minutes\) \|\| minutes < 60\) return 'Played for a little while';\n"
+              r"[ \t]*const hours = Math\.max\(1, Math\.round\(minutes / 60\)\);\n"
+              r"[ \t]*return `Played for \$\{hours\} hour\(s\) or more`;\n"
+              r"[ \t]*\}"
+          )
+          replacement = "\n".join([
+              "    function ownPlayTimeText(totalPlayTime) {",
+              "        const minutes = Number(totalPlayTime || 0);",
+              "        if (!Number.isFinite(minutes) || minutes < 60) {",
+              "            return trKey('FriendDetails_Label_Play_Log_Little');",
+              "        }",
+              "        const hours = Math.max(1, Math.round(minutes / 60));",
+              "        return trFormat('FriendDetails_Label_Play_Log_Time', hours);",
+              "    }",
+          ])
+          updated, count = pattern.subn(replacement, source, count=1)
+          if count != 1:
+              raise SystemExit(f'Expected one ownPlayTimeText implementation, found {count}; refusing to modify native.js')
 
-          if old not in source:
-              raise SystemExit('Expected ownPlayTimeText implementation was not found; refusing to modify native.js')
-
-          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          path.write_text(updated, encoding='utf-8')
           Path('.github/workflows/patch-user-playtime-localization.yml').unlink()
           PY
 
