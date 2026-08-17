@@ -1,7 +1,7 @@
 /* NSO WebApp runtime cache.
  * API/auth/GameWebService traffic is intentionally never cached here.
  */
-const STATIC_CACHE = 'nso-static-v6';
+const STATIC_CACHE = 'nso-static-v7';
 const IMAGE_CACHE = 'nso-images-v1';
 const MAX_IMAGE_ENTRIES = 300;
 const MAX_STATIC_ENTRIES = 80;
