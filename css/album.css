@@ -174,3 +174,15 @@
     color: inherit !important;
     -webkit-text-fill-color: currentColor;
 }
+
+/* Keep the album upload-information control consistent with the white theme. */
+body.op-light-theme #opAlbumAboutBtn.op-header-info-button {
+    background: #fff;
+    color: #232327;
+    border-color: rgba(0,0,0,.12);
+}
+body.op-light-theme #opAlbumAboutBtn.op-header-info-button:hover {
+    background: #f0f0f2;
+    color: #17171a;
+    border-color: rgba(0,0,0,.18);
+}
