@@ -1522,3 +1522,99 @@ body.op-light-theme .op-language-copy small { color: #68686e; }
 }
 .friends-functional-qr-loading i { font-size: 22px; }
 body.op-light-theme .friends-functional-qr-loading { color: #64646a; }
+
+/* ---------------------------------------------------------------------------
+   v25: native Friends presence cards + narrow app-brand fix
+   --------------------------------------------------------------------------- */
+
+/* Friends list parity with the Nintendo Switch App:
+   playing friends show only the green game title plus the green avatar dot.
+   The console/device line remains available in the friend detail screen. */
+.friends-page-grid .friend-online-platform {
+    display: none !important;
+}
+
+.friends-page-grid .friend-game {
+    color: #a6a6ab;
+    font-weight: 400;
+    margin-top: 4px;
+}
+
+.friends-page-grid .friend-game.friend-game-playing {
+    color: #1fd46a;
+    font-weight: 600;
+    margin-top: 4px;
+}
+
+.friends-page-grid .friend-card:has(.friend-game-playing) .friend-avatar-wrap::after {
+    content: '';
+    display: block;
+    position: absolute;
+    right: -1px;
+    bottom: 1px;
+    width: 22px;
+    height: 22px;
+    border: 3px solid #303032;
+    border-radius: 50%;
+    background: #1fd46a;
+    box-sizing: border-box;
+    pointer-events: none;
+}
+
+.friends-page-grid .friend-card:hover:has(.friend-game-playing) .friend-avatar-wrap::after {
+    border-color: #38383a;
+}
+
+body.op-light-theme .friends-page-grid .friend-game {
+    color: #66666d !important;
+}
+
+body.op-light-theme .friends-page-grid .friend-game.friend-game-playing {
+    color: #1aaf58 !important;
+}
+
+body.op-light-theme .friends-page-grid .friend-card:has(.friend-game-playing) .friend-avatar-wrap::after,
+body.op-light-theme .friends-page-grid .friend-card:hover:has(.friend-game-playing) .friend-avatar-wrap::after {
+    border-color: #fff;
+}
+
+/* Prevent the Switch mark at the left side of the app badge from being
+   flex-shrunk/cropped on narrow phone-sized windows. */
+.brand {
+    min-width: 0;
+}
+
+.logo-icon {
+    flex: 0 0 auto;
+    min-width: 24px;
+    overflow: visible;
+}
+
+.brand-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+@media (max-width: 360px) {
+    .nav-container {
+        padding-left: 14px;
+        padding-right: 14px;
+        gap: 10px;
+    }
+
+    .brand {
+        margin-left: -14px;
+    }
+
+    .user-profile-menu {
+        gap: 8px;
+        flex: 0 0 auto;
+    }
+}
+
+@media (max-width: 720px) {
+    .logo-icon {
+        min-width: 22px;
+    }
+}
