@@ -11,23 +11,26 @@ function coralAccessToken() {
 
 const CORAL_DATA_CACHE_PREFIX = 'nso_coral_data_v2:';
 const coralRequestFlights = new Map();
+// Prefer browser-local reads aggressively for resources whose mutations are either
+// controlled by this app (and therefore explicitly invalidate below) or naturally
+// low-frequency. Presence/active-event data stays deliberately short-lived.
 const CORAL_READ_TTLS = Object.freeze({
-    '/v4/User/ShowSelf': 5 * 60_000,
-    '/v3/User/Permissions/ShowSelf': 5 * 60_000,
-    '/v4/Friend/List': 45_000,
-    '/v4/Friend/Show': 60_000,
-    '/v4/User/PlayLog/Show': 10 * 60_000,
-    '/v5/Chat/FriendCandidate/List': 60_000,
-    '/v4/FriendRequest/Received/List': 60_000,
-    '/v5/Chat/List': 60_000,
-    '/v5/Chat/Show': 60_000,
-    '/v1/Event/GetActiveEvent': 30_000,
-    '/v5/PushNotification/Settings/List': 5 * 60_000,
-    '/v4/GameWebService/List': 30 * 60_000,
-    '/v4/Announcement/List': 5 * 60_000,
-    '/v4/Media/List': 2 * 60_000,
-    '/v5/Hashtag/List': 10 * 60_000,
-    '/v4/NA/User/LoginFactor/Show': 30 * 60_000
+    '/v4/User/ShowSelf': 30 * 60_000,
+    '/v3/User/Permissions/ShowSelf': 30 * 60_000,
+    '/v4/Friend/List': 60_000,
+    '/v4/Friend/Show': 5 * 60_000,
+    '/v4/User/PlayLog/Show': 30 * 60_000,
+    '/v5/Chat/FriendCandidate/List': 5 * 60_000,
+    '/v4/FriendRequest/Received/List': 2 * 60_000,
+    '/v5/Chat/List': 2 * 60_000,
+    '/v5/Chat/Show': 5 * 60_000,
+    '/v1/Event/GetActiveEvent': 2 * 60_000,
+    '/v5/PushNotification/Settings/List': 30 * 60_000,
+    '/v4/GameWebService/List': 12 * 60 * 60_000,
+    '/v4/Announcement/List': 15 * 60_000,
+    '/v4/Media/List': 5 * 60_000,
+    '/v5/Hashtag/List': 60 * 60_000,
+    '/v4/NA/User/LoginFactor/Show': 60 * 60_000
 });
 
 function stableCacheString(value) {
@@ -171,6 +174,167 @@ async function legacyCoralRequest(path, requestBody, token, options = {}) {
     return { response, data };
 }
 
+// ---------------------------------------------------------------------------
+// Coral read micro-batching
+// ---------------------------------------------------------------------------
+// showAuthenticatedUI starts Friends, GameWebService/List and Media/List in the
+// same JavaScript turn, and notification refreshes also fan out several read calls.
+// Collapsing those concurrent reads into one incoming Worker request preserves the
+// exact existing per-call backend implementation while spending only one request
+// from Cloudflare's daily Worker allowance. Keep chunks small because Free Workers
+// have a tight CPU budget even though upstream network wait time is not billed CPU.
+const CORAL_BATCH_MAX_CALLS = 4;
+let coralBatchSequence = 0;
+let coralReadBatchQueue = [];
+let coralReadBatchScheduled = false;
+
+async function singleCoralTransport({ path, requestBody, token, naId, version, options }) {
+    const nxapiAccessToken = await getNxapiAccessToken({ signal: options.signal, cancelKey: options.cancelKey });
+    const response = await fetch(`${WORKER_URL}/api/nso/coral/call`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        credentials: 'include',
+        signal: options.signal,
+        body: JSON.stringify({
+            clientId: tokenBrokerClientId(),
+            path,
+            requestBody,
+            coralAccessToken: token,
+            nxapiAccessToken,
+            naId,
+            zncaVersion: version,
+            locale: typeof window.nsoCurrentLocale === 'function' ? window.nsoCurrentLocale() : 'en-GB',
+            platform: options.platform !== false,
+            productVersion: options.productVersion !== false
+        })
+    });
+    observeServiceResponse(response, { provider: response.ok ? 'nintendo-coral' : 'nxapi-znca', operation: `Coral ${path}` });
+    const data = await response.json().catch(() => ({}));
+    return { response, data };
+}
+
+function coralBatchGroupKey(item) {
+    const locale = typeof window.nsoCurrentLocale === 'function' ? window.nsoCurrentLocale() : 'en-GB';
+    return `${item.naId}|${item.version}|${shortCacheHash(item.token)}|${locale}`;
+}
+
+async function flushCoralReadBatchGroup(items) {
+    for (let offset = 0; offset < items.length; offset += CORAL_BATCH_MAX_CALLS) {
+        const chunk = items.slice(offset, offset + CORAL_BATCH_MAX_CALLS);
+        if (chunk.length < 2) {
+            const item = chunk[0];
+            if (!item) continue;
+            try { item.resolve(await singleCoralTransport(item)); }
+            catch (error) { item.reject(error); }
+            continue;
+        }
+
+        try {
+            const first = chunk[0];
+            const nxapiAccessToken = await getNxapiAccessToken();
+            const response = await fetch(`${WORKER_URL}/api/nso/coral/batch`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    clientId: tokenBrokerClientId(),
+                    coralAccessToken: first.token,
+                    nxapiAccessToken,
+                    naId: first.naId,
+                    zncaVersion: first.version,
+                    locale: typeof window.nsoCurrentLocale === 'function' ? window.nsoCurrentLocale() : 'en-GB',
+                    calls: chunk.map(item => ({
+                        id: item.batchId,
+                        path: item.path,
+                        requestBody: item.requestBody,
+                        platform: item.options.platform !== false,
+                        productVersion: item.options.productVersion !== false
+                    }))
+                })
+            });
+            observeServiceResponse(response, { provider: response.ok ? 'nintendo-coral' : 'nxapi-znca', operation: `Coral batch (${chunk.length})` });
+            const payload = await response.json().catch(() => ({}));
+            const results = Array.isArray(payload?.results) ? payload.results : null;
+
+            // Deployment-order / compatibility escape hatch: if an older Worker has
+            // not received the batch route yet, use the old one-call endpoint rather
+            // than making startup dependent on synchronized frontend/backend deploys.
+            if (!results || response.status === 404 || response.status === 405) {
+                await Promise.all(chunk.map(async item => {
+                    try { item.resolve(await singleCoralTransport(item)); }
+                    catch (error) { item.reject(error); }
+                }));
+                continue;
+            }
+
+            const byId = new Map(results.map(result => [String(result?.id ?? ''), result]));
+            for (const item of chunk) {
+                const result = byId.get(item.batchId);
+                if (!result) {
+                    item.reject(new Error(`Cloudflare Coral batch omitted ${item.path}.`));
+                    continue;
+                }
+                const headers = new Headers({ 'Content-Type': 'application/json' });
+                if (result.retryAfter) headers.set('Retry-After', String(result.retryAfter));
+                const synthetic = new Response(JSON.stringify(result.data ?? {}), {
+                    status: Number(result.status || 500),
+                    headers
+                });
+                observeServiceResponse(synthetic, {
+                    provider: synthetic.ok ? 'nintendo-coral' : 'nxapi-znca',
+                    operation: `Coral ${item.path}`
+                });
+                item.resolve({ response: synthetic, data: result.data ?? {} });
+            }
+        } catch (batchError) {
+            // A batching-layer failure is never allowed to break a working Coral
+            // feature. Fall back to the original request path; the extra requests
+            // occur only when the optimization itself is unavailable.
+            await Promise.all(chunk.map(async item => {
+                try { item.resolve(await singleCoralTransport(item)); }
+                catch (error) { item.reject(error || batchError); }
+            }));
+        }
+    }
+}
+
+async function flushCoralReadBatchQueue() {
+    coralReadBatchScheduled = false;
+    const queued = coralReadBatchQueue;
+    coralReadBatchQueue = [];
+    if (!queued.length) return;
+
+    const groups = new Map();
+    for (const item of queued) {
+        const key = coralBatchGroupKey(item);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(item);
+    }
+    await Promise.all(Array.from(groups.values()).map(flushCoralReadBatchGroup));
+}
+
+function queuedCoralReadTransport(item) {
+    return new Promise((resolve, reject) => {
+        coralReadBatchQueue.push({
+            ...item,
+            batchId: `b${++coralBatchSequence}`,
+            resolve,
+            reject
+        });
+        if (!coralReadBatchScheduled) {
+            coralReadBatchScheduled = true;
+            queueMicrotask(() => { void flushCoralReadBatchQueue(); });
+        }
+    });
+}
+
+function coralTransport(item, batchEligible) {
+    if (batchEligible && !item.options.signal && !item.options.cancelKey && item.options.batch !== false) {
+        return queuedCoralReadTransport(item);
+    }
+    return singleCoralTransport(item);
+}
+
 async function coralCall(path, parameter = {}, options = {}) {
     const token = coralAccessToken();
     if (!token) throw new Error('No Coral access token is available. Sign in again.');
@@ -193,27 +357,14 @@ async function coralCall(path, parameter = {}, options = {}) {
         try {
             throwIfAborted(options.signal);
             const version = bindNxapiCoralContext(naId, activeZncaVersion());
-            const nxapiAccessToken = await getNxapiAccessToken({ signal: options.signal, cancelKey: options.cancelKey });
-            const response = await fetch(`${WORKER_URL}/api/nso/coral/call`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-                credentials: 'include',
-                signal: options.signal,
-                body: JSON.stringify({
-                    clientId: tokenBrokerClientId(),
-                    path,
-                    requestBody,
-                    coralAccessToken: token,
-                    nxapiAccessToken,
-                    naId,
-                    zncaVersion: version,
-                    locale: typeof window.nsoCurrentLocale === 'function' ? window.nsoCurrentLocale() : 'en-GB',
-                    platform: options.platform !== false,
-                    productVersion: options.productVersion !== false
-                })
-            });
-            observeServiceResponse(response, { provider: response.ok ? 'nintendo-coral' : 'nxapi-znca', operation: `Coral ${path}` });
-            let data = await response.json().catch(() => ({}));
+            let { response, data } = await coralTransport({
+                path,
+                requestBody,
+                token,
+                naId,
+                version,
+                options
+            }, ttlMs > 0);
             let effectiveResponse = response;
             if (response.status === 401 && data?.error === 'broker_session_missing') {
                 // A restored session can outlive the broker session cookie. Preserve
@@ -262,7 +413,7 @@ async function coralCall(path, parameter = {}, options = {}) {
 }
 
 // Load Live Friends with shared per-account caching/single-flight. A fresh cache hit
-// renders without contacting Cloudflare; presence data is refreshed after 45 seconds.
+// renders without contacting Cloudflare; presence data is refreshed after one minute.
 async function loadLiveFriendsList(options = {}) {
     if (!userSession) return;
     const friendContainers = ['homeFriendsGrid', 'friendsGrid'].map(id => document.getElementById(id)).filter(Boolean);
@@ -341,4 +492,3 @@ document.getElementById('reloadInAppGameWebviewBtn')?.addEventListener('click', 
 });
 
 let selectedMediaSet = new Set();
-

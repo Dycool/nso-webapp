@@ -3,6 +3,96 @@
  * Kept in original execution order while separating this responsibility from the app shell.
  */
 
+// ---------------------------------------------------------------------------
+// Worker control-plane transport optimization
+// ---------------------------------------------------------------------------
+// The webapp runs on GitHub Pages while the API is workers.dev. `application/json`
+// makes every cross-origin POST non-simple, so browsers may spend a second Worker
+// invocation on OPTIONS before the real request. Cloudflare's hardened gateway
+// already validates the exact Origin for every /api/nso control-plane request, and
+// Request.json() parses the body independently of the declared media type. Send the
+// exact same JSON string as CORS-safelisted text/plain so normal POSTs need no
+// preflight at all.
+//
+// Remembered resume has one additional optimization: include the existing broker
+// clientId in /remember/resume. A new backend can then perform /cache/session/start
+// internally and return `brokerSession` in the same response. Old backends ignore the
+// optional body, so deployment order remains safe.
+(function installWorkerSimplePostTransport() {
+    if (window.__nsoWorkerSimplePostTransportInstalled) return;
+    window.__nsoWorkerSimplePostTransportInstalled = true;
+    const nativeFetch = window.fetch.bind(window);
+    const workerOrigin = new URL(WORKER_URL).origin;
+
+    function installOneShotBrokerResume(snapshot) {
+        if (!snapshot || typeof snapshot !== 'object') return;
+        const original = window.startTokenBrokerSession;
+        if (typeof original !== 'function' || original.__nsoCombinedResumeOneShot) return;
+
+        let restoreTimer = null;
+        const restore = () => {
+            if (window.startTokenBrokerSession === wrapped) {
+                window.startTokenBrokerSession = original;
+                try { startTokenBrokerSession = original; } catch { }
+            }
+            if (restoreTimer) clearTimeout(restoreTimer);
+            restoreTimer = null;
+        };
+        const wrapped = async function startTokenBrokerSessionFromCombinedResume() {
+            restore();
+            try { window.nsoHydrateBrokerGameTokens?.(snapshot.gws); } catch { }
+            return snapshot;
+        };
+        wrapped.__nsoCombinedResumeOneShot = true;
+        window.startTokenBrokerSession = wrapped;
+        try { startTokenBrokerSession = wrapped; } catch { }
+        restoreTimer = setTimeout(restore, 30_000);
+    }
+
+    window.fetch = function nsoEfficientFetch(input, init) {
+        try {
+            // Current control-plane code uses URL/string inputs. Leave Request-object
+            // calls untouched so we never clone/consume an arbitrary request body.
+            if (!(input instanceof Request)) {
+                const target = new URL(String(input), location.href);
+                const method = String(init?.method || 'GET').toUpperCase();
+                if (target.origin === workerOrigin && target.pathname.startsWith('/api/nso/') && method === 'POST') {
+                    const headers = new Headers(init?.headers || {});
+                    let nextInit = { ...(init || {}), headers };
+                    let combinedResume = false;
+
+                    if (target.pathname === '/api/nso/remember/resume' && nextInit.body == null && typeof tokenBrokerClientId === 'function') {
+                        const clientId = String(tokenBrokerClientId() || '');
+                        if (/^[A-Za-z0-9_-]{8,128}$/.test(clientId)) {
+                            headers.set('Content-Type', 'text/plain;charset=UTF-8');
+                            nextInit.body = JSON.stringify({ clientId });
+                            combinedResume = true;
+                        }
+                    } else {
+                        const contentType = String(headers.get('Content-Type') || '');
+                        if (/^application\/json(?:\s*;|$)/i.test(contentType)) {
+                            headers.set('Content-Type', 'text/plain;charset=UTF-8');
+                        }
+                    }
+
+                    const requestPromise = nativeFetch(input, nextInit);
+                    if (!combinedResume) return requestPromise;
+
+                    return requestPromise.then(async response => {
+                        if (!response.ok) return response;
+                        try {
+                            const data = await response.clone().json();
+                            if (data?.brokerSession) installOneShotBrokerResume(data.brokerSession);
+                        } catch { }
+                        return response;
+                    });
+                }
+            }
+        } catch { }
+        return nativeFetch(input, init);
+    };
+})();
+
 // Service Health / Diagnostics
 // ---------------------------------------------------------------------------
 // Diagnostics are background-only. A failed dependency request starts one

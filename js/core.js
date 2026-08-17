@@ -386,3 +386,50 @@ function updateRateLimitBanner() {
         throw error;
     };
 })();
+
+// ---------------------------------------------------------------------------
+// Warm broker GameWebServiceToken hydration
+// ---------------------------------------------------------------------------
+// Remember Me already restores the account broker during /cache/session/start.
+// The backend now includes all still-valid game tokens in that same response, so
+// hydrate WebServiceManager's in-memory cache before the first game is opened.
+// This turns a remembered game launch into one /service/session/create request
+// instead of /service/token/cache + /service/session/create.
+(function installBrokerWarmTokenHydration() {
+    function hydrate(snapshot) {
+        const manager = window.webServiceManager;
+        if (!manager?.tokenCache || !snapshot || typeof snapshot !== 'object') return 0;
+        let count = 0;
+        for (const [serviceId, cached] of Object.entries(snapshot)) {
+            const token = cached?.token;
+            const expiresAt = Number(cached?.expiresAt || 0);
+            if (!/^\d+$/.test(String(serviceId)) || !token || expiresAt <= Date.now() + 60_000) continue;
+            const current = manager.tokenCache.get(String(serviceId));
+            if (!current || Number(current.expiresAt || 0) < expiresAt) {
+                manager.tokenCache.set(String(serviceId), { token: String(token), expiresAt });
+                count++;
+            }
+        }
+        return count;
+    }
+
+    window.nsoHydrateBrokerGameTokens = hydrate;
+
+    const install = () => {
+        const original = window.startTokenBrokerSession;
+        if (typeof original !== 'function' || original.__nsoWarmTokenHydration) return;
+        const wrapped = async function startTokenBrokerSessionWithWarmTokens(...args) {
+            const data = await original.apply(this, args);
+            hydrate(data?.gws);
+            return data;
+        };
+        wrapped.__nsoWarmTokenHydration = true;
+        window.startTokenBrokerSession = wrapped;
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', install, { once: true });
+    } else {
+        install();
+    }
+})();

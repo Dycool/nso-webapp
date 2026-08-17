@@ -1,0 +1,27 @@
+name: NSO WebApp CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check js/core.js
+          node --check js/auth.js
+          node --check js/coral.js
+          node --check services/manager.js
+          node --check services/adapters.js
+
+      - name: Run free-tier efficiency regressions
+        run: node test-efficiency-regressions.js
