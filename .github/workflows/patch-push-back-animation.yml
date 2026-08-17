@@ -1,0 +1,49 @@
+name: Patch Push Notifications back animation
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch native back transition
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('js/native.js')
+          text = path.read_text(encoding='utf-8')
+          old = """                if (child === 'opChatCandidatePage' && childView && parentView && typeof nsoApkBack === 'function') {
+                    nsoApkBack(childView, parentView);
+                    return;
+                }
+"""
+          new = """                if ((child === 'opChatCandidatePage' || child === 'opPushPage') && childView && parentView && typeof nsoApkBack === 'function') {
+                    nsoApkBack(childView, parentView);
+                    return;
+                }
+"""
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one back-transition anchor, found {text.count(old)}')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
+
+      - name: Syntax check
+        run: node --check js/native.js
+
+      - name: Commit patch and cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/patch-push-back-animation.yml
+          git add js/native.js .github/workflows/patch-push-back-animation.yml
+          git commit -m "Animate Push Notifications back navigation"
+          git push
