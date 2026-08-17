@@ -168,3 +168,9 @@
     .friends-functional-request-actions { grid-column: 1 / -1; }
 }
 
+/* Album toolbar action labels follow their button state/theme color. */
+#selectAllBtnText,
+#downloadZipBtnText {
+    color: inherit !important;
+    -webkit-text-fill-color: currentColor;
+}

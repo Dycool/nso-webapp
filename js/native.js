@@ -406,6 +406,7 @@
             opLegalPage: 'opSettingsPage',
             opLicenseDetailPage: 'opLegalPage',
             opFeedbackPage: 'opSettingsPage',
+            opAlbumAboutPage: 'page-album',
             opAnnouncementPage: 'page-home',
             opAnnouncementDetailPage: 'opAnnouncementPage',
             opChatDetailPage: 'opChatPage',
