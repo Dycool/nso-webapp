@@ -406,6 +406,7 @@
             opLegalPage: 'opSettingsPage',
             opLicenseDetailPage: 'opLegalPage',
             opFeedbackPage: 'opSettingsPage',
+            opAnnouncementPage: 'page-home',
             opAnnouncementDetailPage: 'opAnnouncementPage',
             opChatDetailPage: 'opChatPage',
             opChatCandidatePage: 'chattedUsersView',
@@ -419,7 +420,7 @@
                 const childView = $(child);
                 const parentView = $(parent);
 
-                if ((child === 'opChatCandidatePage' || child === 'opPushPage') && childView && parentView && typeof nsoApkBack === 'function') {
+                if (child === 'opChatCandidatePage' && childView && parentView && typeof nsoApkBack === 'function') {
                     nsoApkBack(childView, parentView);
                     return;
                 }
