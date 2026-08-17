@@ -419,7 +419,7 @@
                 const childView = $(child);
                 const parentView = $(parent);
 
-                if (child === 'opChatCandidatePage' && childView && parentView && typeof nsoApkBack === 'function') {
+                if ((child === 'opChatCandidatePage' || child === 'opPushPage') && childView && parentView && typeof nsoApkBack === 'function') {
                     nsoApkBack(childView, parentView);
                     return;
                 }
