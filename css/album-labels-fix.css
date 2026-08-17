@@ -1,0 +1,6 @@
+/* Album toolbar label color normalization. */
+#selectAllBtnText,
+#downloadZipBtnText {
+    color: inherit !important;
+    -webkit-text-fill-color: currentColor;
+}
