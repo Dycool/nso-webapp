@@ -241,8 +241,8 @@
 .service-health-copy span { color: var(--text-secondary); font-size: 12px; line-height: 1.35; }
 .service-health-copy small { color: var(--text-muted); font-size: 10px; overflow-wrap: anywhere; }
 @keyframes service-health-toast-in {
-    from { opacity: 0; transform: translateY(-5px); }
-    to { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: translate(-50%, -5px); }
+    to { opacity: 1; transform: translate(-50%, 0); }
 }
 @media (max-width: 640px) {
     .service-health-banner { top: max(66px, calc(env(safe-area-inset-top) + 58px)); }
