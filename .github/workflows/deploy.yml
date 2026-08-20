@@ -3,6 +3,8 @@ name: Deploy NSO WebApp to GitHub Pages
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -15,7 +17,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  ci:
+    name: Test & Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check js/core.js
+          node --check js/auth.js
+          node --check js/coral.js
+          node --check services/manager.js
+          node --check services/adapters.js
+
+      - name: Run free-tier efficiency regressions
+        run: node test-efficiency-regressions.js
+
   deploy:
+    name: Deploy to GitHub Pages
+    needs: ci
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
