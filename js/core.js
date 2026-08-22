@@ -331,6 +331,7 @@ function updateRateLimitBanner() {
                     this.tokenCache.set(String(id), { token: String(token), expiresAt });
                 }
             }
+            this.savePersistentGameTokens?.();
 
             if (data.sharedF2) {
                 console.info(`[SharedF2:${traceId || 'launch'}] broker reused one method-2 attestation across game services`, {
@@ -410,6 +411,7 @@ function updateRateLimitBanner() {
                 count++;
             }
         }
+        if (count > 0) manager.savePersistentGameTokens?.();
         return count;
     }
 

@@ -84,11 +84,55 @@ class WebServiceManager {
         return this.genericAdapter;
     }
 
+    rehydratePersistentGameTokens() {
+        if (typeof hasRememberedAccount === 'function' && !hasRememberedAccount()) return;
+        try {
+            const raw = localStorage.getItem('nso_gws_tokens');
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return;
+            const now = Date.now();
+            for (const [id, entry] of parsed) {
+                if (entry && Number(entry.expiresAt || 0) > now + 60000 && entry.token) {
+                    this.tokenCache.set(String(id), { token: String(entry.token), expiresAt: Number(entry.expiresAt) });
+                }
+            }
+        } catch { }
+    }
+
+    savePersistentGameTokens() {
+        if (typeof hasRememberedAccount === 'function' && !hasRememberedAccount()) {
+            try { localStorage.removeItem('nso_gws_tokens'); } catch { }
+            return;
+        }
+        try {
+            const entries = [];
+            const now = Date.now();
+            for (const [id, entry] of this.tokenCache.entries()) {
+                if (entry && Number(entry.expiresAt || 0) > now + 60000 && entry.token) {
+                    entries.push([String(id), { token: String(entry.token), expiresAt: Number(entry.expiresAt) }]);
+                }
+            }
+            if (entries.length) {
+                localStorage.setItem('nso_gws_tokens', JSON.stringify(entries));
+            } else {
+                localStorage.removeItem('nso_gws_tokens');
+            }
+        } catch { }
+    }
+
     getCachedGameWebServiceToken(serviceId) {
         const idStr = String(serviceId);
-        const cached = this.tokenCache.get(idStr);
+        let cached = this.tokenCache.get(idStr);
+        if (!cached && typeof hasRememberedAccount === 'function' && hasRememberedAccount()) {
+            this.rehydratePersistentGameTokens();
+            cached = this.tokenCache.get(idStr);
+        }
         if (cached && cached.expiresAt > Date.now() + 60000) return cached.token;
-        if (cached) this.tokenCache.delete(idStr);
+        if (cached) {
+            this.tokenCache.delete(idStr);
+            this.savePersistentGameTokens();
+        }
         return null;
     }
 
@@ -331,6 +375,7 @@ class WebServiceManager {
                 token: result.token,
                 expiresAt: Number(result.expiresAt || (Date.now() + 2 * 60 * 60 * 1000))
             });
+            this.savePersistentGameTokens();
             return result.token;
         })();
 

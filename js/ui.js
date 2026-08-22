@@ -627,6 +627,8 @@ async function logout() {
         try { sessionStorage.removeItem('nso_token_broker_client_id'); } catch (e) { }
         sessionStorage.removeItem('nso_user_session');
         localStorage.removeItem('nso_user_session');
+        localStorage.removeItem('nso_gws_tokens');
+        try { window.webServiceManager?.tokenCache?.clear(); } catch (e) { }
         localStorage.removeItem('nso_pkce_verifier');
         localStorage.removeItem('nso_auth_state');
         clearAllCoralDataCache();
@@ -662,6 +664,8 @@ async function clearRememberedAccount() {
     }
     localStorage.removeItem('nso_has_remembered_account');
     localStorage.removeItem('nso_remember_expires_at');
+    localStorage.removeItem('nso_user_session');
+    localStorage.removeItem('nso_gws_tokens');
     updateRememberedUI();
 }
 

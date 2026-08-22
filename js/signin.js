@@ -385,6 +385,9 @@ async function performFullAuthentication(options = {}) {
                 // Resuming an existing remembered account must not treat the hidden,
                 // unchecked Remember Me box as an opt-out. Keep the existing grant
                 // until the user explicitly signs out or forgets it from their profile.
+                if (hasRememberedAccount()) {
+                    localStorage.setItem('nso_user_session', JSON.stringify(data));
+                }
                 updateRememberedUI();
             } else if (shouldRemember && longLivedSessionToken) {
                 try {
@@ -401,6 +404,7 @@ async function performFullAuthentication(options = {}) {
                         if (rememberExpiresAt > Date.now()) {
                             localStorage.setItem('nso_has_remembered_account', 'true');
                             localStorage.setItem('nso_remember_expires_at', String(rememberExpiresAt));
+                            localStorage.setItem('nso_user_session', JSON.stringify(data));
                         } else {
                             localStorage.removeItem('nso_has_remembered_account');
                             localStorage.removeItem('nso_remember_expires_at');
@@ -420,6 +424,8 @@ async function performFullAuthentication(options = {}) {
                 // consent from a previous sign-in on this browser.
                 localStorage.removeItem('nso_has_remembered_account');
                 localStorage.removeItem('nso_remember_expires_at');
+                localStorage.removeItem('nso_user_session');
+                localStorage.removeItem('nso_gws_tokens');
                 try {
                     await fetch(`${WORKER_URL}/api/nso/remember/forget`, {
                         method: 'POST',

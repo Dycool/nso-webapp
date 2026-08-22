@@ -45,4 +45,9 @@ assert(auth.includes('function startTokenBrokerHeartbeat()'), 'Token-broker hear
 assert(auth.includes('stopTokenBrokerHeartbeat();'), 'Heartbeat hook stays disabled rather than polling the Worker');
 assert(sw.includes("url.hostname.includes('workers.dev')"), 'Service worker never pretends Worker/API traffic is ordinary static app cache data');
 
+assert(auth.includes("localStorage.getItem('nso_user_session')"), 'Remembered sessions persist Coral access credentials across browser restarts');
+assert(auth.includes('expiresAt > Date.now() + 60000'), 'Restored Coral sessions verify active token expiration time');
+assert(manager.includes('rehydratePersistentGameTokens') && manager.includes("localStorage.getItem('nso_gws_tokens')"), 'GameWebService tokens persist in local storage for unexpired game launches');
+assert(manager.includes('savePersistentGameTokens'), 'New game tokens are persisted on write for remembered accounts');
+
 console.log('NSO webapp free-tier efficiency regression suite passed.');

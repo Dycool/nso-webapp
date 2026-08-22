@@ -4,16 +4,24 @@
  */
 
 function checkStartupSession() {
-    // Coral credentials are never kept in persistent browser storage unless the
-    // user has explicitly opted into Remember Me. Migrate one legacy localStorage
-    // session only when that opt-in flag exists, then remove the persistent copy.
     let stored = sessionStorage.getItem('nso_user_session');
-    const legacy = localStorage.getItem('nso_user_session');
-    if (!stored && legacy && localStorage.getItem('nso_has_remembered_account') === 'true') {
-        stored = legacy;
-        try { sessionStorage.setItem('nso_user_session', legacy); } catch (e) { }
+    if (!stored && hasRememberedAccount()) {
+        const persistent = localStorage.getItem('nso_user_session');
+        if (persistent) {
+            try {
+                const parsed = JSON.parse(persistent);
+                const expiresAt = Number(parsed?.nsoWebapp?.coralExpiresAt || 0);
+                if (expiresAt > Date.now() + 60000 && parsed?.result?.webApiServerCredential?.accessToken) {
+                    stored = persistent;
+                    try { sessionStorage.setItem('nso_user_session', persistent); } catch (e) { }
+                } else {
+                    localStorage.removeItem('nso_user_session');
+                }
+            } catch (e) {
+                localStorage.removeItem('nso_user_session');
+            }
+        }
     }
-    if (legacy) localStorage.removeItem('nso_user_session');
 
     if (stored) {
         try {

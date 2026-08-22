@@ -9512,22 +9512,22 @@ const APP_WEB_STRINGS = Object.freeze({
     "zh-CN": "在此设备上记住我的Nintendo Account",
     "zh-TW": "在此裝置上記住我的Nintendo Account"
   },
-  "Your Nintendo Account session token is securely encrypted on the server for up to 30 days so you can resume without signing in each time. After 30 days, you’ll need to sign in again.": {
-    "de-DE": "Dein Nintendo-Account-Sitzungstoken wird auf dem Server sicher verschlüsselt und bis zu 30 Tage gespeichert, damit du fortfahren kannst, ohne dich jedes Mal anzumelden. Nach 30 Tagen musst du dich erneut anmelden.",
-    "en-GB": "Your Nintendo Account session token is securely encrypted on the server for up to 30 days so you can resume without signing in each time. After 30 days, you’ll need to sign in again.",
-    "en-US": "Your Nintendo Account session token is securely encrypted on the server for up to 30 days so you can resume without signing in each time. After 30 days, you’ll need to sign in again.",
-    "es-ES": "El token de sesión de tu cuenta Nintendo se cifra de forma segura en el servidor durante un máximo de 30 días para que puedas continuar sin iniciar sesión cada vez. Después de 30 días tendrás que iniciar sesión de nuevo.",
-    "es-MX": "El token de sesión de tu cuenta Nintendo se cifra de forma segura en el servidor durante un máximo de 30 días para que puedas continuar sin iniciar sesión cada vez. Después de 30 días tendrás que iniciar sesión de nuevo.",
-    "fr-CA": "Le jeton de session de votre compte Nintendo est chiffré de façon sécurisée sur le serveur pendant un maximum de 30 jours afin que vous puissiez reprendre sans vous reconnecter à chaque fois. Après 30 jours, vous devrez vous reconnecter.",
-    "fr-FR": "Le jeton de session de votre compte Nintendo est chiffré de façon sécurisée sur le serveur pendant un maximum de 30 jours afin que vous puissiez reprendre sans vous reconnecter à chaque fois. Après 30 jours, vous devrez vous reconnecter.",
-    "it-IT": "Il token di sessione del tuo account Nintendo viene cifrato in modo sicuro sul server per un massimo di 30 giorni, così puoi riprendere senza accedere ogni volta. Dopo 30 giorni dovrai accedere di nuovo.",
-    "ja-JP": "ニンテンドーアカウントのセッショントークンはサーバー上で安全に暗号化され、最大30日間保存されます。その間は毎回サインインせずに再開できます。30日後は再度サインインが必要です。",
-    "ko-KR": "닌텐도 어카운트 세션 토큰은 서버에서 안전하게 암호화되어 최대 30일 동안 저장되므로 매번 로그인하지 않고 다시 시작할 수 있습니다. 30일이 지나면 다시 로그인해야 합니다.",
-    "nl-NL": "Je Nintendo-account-sessietoken wordt maximaal 30 dagen veilig versleuteld op de server opgeslagen, zodat je verder kunt zonder elke keer aan te melden. Na 30 dagen moet je opnieuw aanmelden.",
-    "pt-PT": "O token de sessão da tua Conta Nintendo é cifrado de forma segura no servidor durante até 30 dias, para poderes retomar sem iniciar sessão todas as vezes. Após 30 dias, terás de iniciar sessão novamente.",
-    "ru-RU": "Токен сеанса вашего аккаунта Nintendo безопасно шифруется на сервере и хранится до 30 дней, чтобы можно было продолжать без повторного входа каждый раз. Через 30 дней потребуется войти снова.",
-    "zh-CN": "你的Nintendo Account会话令牌会在服务器上安全加密并最多保存30天，因此无需每次都登录即可继续使用。30天后需要重新登录。",
-    "zh-TW": "你的Nintendo Account工作階段權杖會在伺服器上安全加密並最多儲存30天，因此無需每次都登入即可繼續使用。30天後需要重新登入。"
+  "Your Nintendo Account session is securely encrypted on this device for up to 30 days so you can resume without signing in each time. After 30 days, you’ll need to sign in again.": {
+    "de-DE": "Deine Nintendo-Account-Sitzung wird auf diesem Gerät sicher verschlüsselt und bis zu 30 Tage gespeichert, damit du fortfahren kannst, ohne dich jedes Mal anzumelden. Nach 30 Tagen musst du dich erneut anmelden.",
+    "en-GB": "Your Nintendo Account session is securely encrypted on this device for up to 30 days so you can resume without signing in each time. After 30 days, you’ll need to sign in again.",
+    "en-US": "Your Nintendo Account session is securely encrypted on this device for up to 30 days so you can resume without signing in each time. After 30 days, you’ll need to sign in again.",
+    "es-ES": "La sesión de tu cuenta Nintendo se cifra de forma segura en este dispositivo durante un máximo de 30 días para que puedas continuar sin iniciar sesión cada vez. Después de 30 días tendrás que iniciar sesión de nuevo.",
+    "es-MX": "La sesión de tu cuenta Nintendo se cifra de forma segura en este dispositivo durante un máximo de 30 días para que puedas continuar sin iniciar sesión cada vez. Después de 30 días tendrás que iniciar sesión de nuevo.",
+    "fr-CA": "Votre session de compte Nintendo est chiffrée de façon sécurisée sur cet appareil pendant un maximum de 30 jours afin que vous puissiez reprendre sans vous reconnecter à chaque fois. Après 30 jours, vous devrez vous reconnecter.",
+    "fr-FR": "Votre session de compte Nintendo est chiffrée de façon sécurisée sur cet appareil pendant un maximum de 30 jours afin que vous puissiez reprendre sans vous reconnecter à chaque fois. Après 30 jours, vous devrez vous reconnecter.",
+    "it-IT": "La sessione del tuo account Nintendo viene cifrata in modo sicuro su questo dispositivo per un massimo di 30 giorni, così puoi riprendere senza accedere ogni volta. Dopo 30 giorni dovrai accedere di nuovo.",
+    "ja-JP": "ニンテンドーアカウントのセッションはこのデバイス上で安全に暗号化され、最大30日間保存されます。その間は毎回サインインせずに再開できます。30日後は再度サインインが必要です。",
+    "ko-KR": "닌텐도 어카운트 세션은 이 기기에서 안전하게 암호화되어 최대 30일 동안 저장되므로 매번 로그인하지 않고 다시 시작할 수 있습니다. 30일이 지나면 다시 로그인해야 합니다.",
+    "nl-NL": "Je Nintendo-account-sessie wordt maximaal 30 dagen veilig versleuteld op dit apparaat opgeslagen, zodat je verder kunt zonder elke keer aan te melden. Na 30 dagen moet je opnieuw aanmelden.",
+    "pt-PT": "A tua sessão da Conta Nintendo é cifrada de forma segura neste dispositivo durante até 30 dias, para poderes retomar sem iniciar sessão todas as vezes. Após 30 dias, terás de iniciar sessão novamente.",
+    "ru-RU": "Сеанс вашего аккаунта Nintendo безопасно шифруется на этом устройстве и хранится до 30 дней, чтобы можно было продолжать без повторного входа каждый раз. Через 30 дней потребуется войти снова.",
+    "zh-CN": "你的Nintendo Account会话在此设备上安全加密并最多保存30天，因此无需每次都登录即可继续使用。30天后需要重新登录。",
+    "zh-TW": "你的Nintendo Account工作階段在此裝置上安全加密並最多儲存30天，因此無需每次都登入即可繼續使用。30天後需要重新登入。"
   },
   "Login Account": {
     "de-DE": "Account anmelden",
