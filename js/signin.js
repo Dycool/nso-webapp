@@ -565,7 +565,6 @@ function initAuthGate() {
 
     if (oauthGateBtn) {
         oauthGateBtn.addEventListener('click', openNintendoOAuth);
-        void prepareNintendoOAuthLink();
     }
 
     if (submitGateBtn) {

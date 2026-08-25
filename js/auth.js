@@ -692,7 +692,23 @@ function userFacingErrorMessage(error, fallbackKey = 'Error_Dialog_Message_Unkno
     return trKey(fallbackKey);
 }
 
-async function prepareNintendoOAuthLink() {
+async function openNintendoOAuth(e) {
+    if (e) e.preventDefault();
+    const nxapiConsentCheckbox = document.getElementById('nxapiConsentCheckbox');
+    if (nxapiConsentCheckbox && !nxapiConsentCheckbox.checked) {
+        const nxapiDisclosure = document.getElementById('nxapiDisclosure');
+        nxapiDisclosure?.classList.add('needs-consent');
+        nxapiConsentCheckbox.focus();
+        nxapiConsentCheckbox.reportValidity?.();
+        return;
+    }
+
+    // Open a blank window synchronously inside the user click gesture to prevent mobile popup blockers
+    let popup = null;
+    try {
+        popup = window.open('about:blank', '_blank');
+    } catch { }
+
     try {
         const { verifier, challenge } = await generatePKCE();
         const state = generateRandomString(50);
@@ -702,59 +718,15 @@ async function prepareNintendoOAuthLink() {
 
         const oauthUrl = `https://accounts.nintendo.com/connect/1.0.0/authorize?state=${state}&redirect_uri=npf71b963c1b7b6d119%3A%2F%2Fauth&client_id=71b963c1b7b6d119&scope=openid+user+user.birthday+user.screenName&response_type=session_token_code&session_token_code_challenge=${challenge}&session_token_code_challenge_method=S256&theme=login_form`;
 
-        const oauthBtn = document.getElementById('nintendoOAuthGateBtn');
-        if (oauthBtn) {
-            oauthBtn.setAttribute('href', oauthUrl);
-            oauthBtn.dataset.oauthUrl = oauthUrl;
+        if (popup && !popup.closed) {
+            popup.location.href = oauthUrl;
+        } else {
+            window.location.href = oauthUrl;
         }
-        return oauthUrl;
-    } catch (e) {
-        console.warn('[auth] Failed to pre-generate Nintendo OAuth link:', e);
-        return null;
+    } catch (err) {
+        if (popup && !popup.closed) popup.close();
+        alert(userFacingErrorMessage(err, 'Error_Dialog_Message_Login_Failed'));
     }
-}
-
-async function openNintendoOAuth(e) {
-    const nxapiConsentCheckbox = document.getElementById('nxapiConsentCheckbox');
-    if (nxapiConsentCheckbox && !nxapiConsentCheckbox.checked) {
-        if (e) e.preventDefault();
-        const nxapiDisclosure = document.getElementById('nxapiDisclosure');
-        nxapiDisclosure?.classList.add('needs-consent');
-        nxapiConsentCheckbox.focus();
-        nxapiConsentCheckbox.reportValidity?.();
-        return;
-    }
-
-    const oauthBtn = document.getElementById('nintendoOAuthGateBtn');
-    let oauthUrl = oauthBtn?.dataset?.oauthUrl || oauthBtn?.getAttribute('href');
-
-    if (!oauthUrl || oauthUrl === '#' || oauthUrl.startsWith('javascript:')) {
-        if (e) e.preventDefault();
-        // Synchronously open blank window to bypass mobile popup blockers before async operations
-        const popup = window.open('about:blank', '_blank');
-        try {
-            oauthUrl = await prepareNintendoOAuthLink();
-            if (oauthUrl) {
-                if (popup && !popup.closed) {
-                    popup.location.href = oauthUrl;
-                } else {
-                    window.location.href = oauthUrl;
-                }
-            } else if (popup && !popup.closed) {
-                popup.close();
-            }
-        } catch (err) {
-            if (popup && !popup.closed) popup.close();
-            alert(userFacingErrorMessage(err, 'Error_Dialog_Message_Login_Failed'));
-        }
-        return;
-    }
-
-    // Anchor link handles navigation natively without popup blocker interference.
-    // Prepare next PKCE verifier/challenge in advance for subsequent attempts.
-    setTimeout(() => {
-        void prepareNintendoOAuthLink();
-    }, 1200);
 }
 
 // Navigation Tabs & CrewVue-style Lottie Dock Bar
