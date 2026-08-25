@@ -139,6 +139,7 @@
 }
 
 .btn-nintendo-oauth {
+    text-decoration: none;
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -152,6 +153,11 @@
     cursor: pointer;
     margin-top: 8px;
     box-shadow: var(--shadow-red);
+}
+
+.btn-nintendo-oauth.disabled {
+    pointer-events: none;
+    opacity: 0.6;
 }
 
 .step-box textarea,

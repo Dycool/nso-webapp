@@ -15,7 +15,11 @@ function setAuthButtonsDisabled(disabled, label = null) {
         else submitGateBtn.innerHTML = `<i class="fa-solid fa-right-to-bracket"></i> ${escapeHtml(trKey('Tutorial_Button_Login'))}`;
     }
     if (pasteAuthGateBtn) pasteAuthGateBtn.disabled = disabled;
-    if (oauthGateBtn) oauthGateBtn.disabled = disabled;
+    if (oauthGateBtn) {
+        oauthGateBtn.disabled = disabled;
+        if (disabled) oauthGateBtn.classList.add('disabled');
+        else oauthGateBtn.classList.remove('disabled');
+    }
     if (beginSignInBtn) beginSignInBtn.disabled = disabled;
 }
 
@@ -561,6 +565,7 @@ function initAuthGate() {
 
     if (oauthGateBtn) {
         oauthGateBtn.addEventListener('click', openNintendoOAuth);
+        void prepareNintendoOAuthLink();
     }
 
     if (submitGateBtn) {

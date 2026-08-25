@@ -692,25 +692,69 @@ function userFacingErrorMessage(error, fallbackKey = 'Error_Dialog_Message_Unkno
     return trKey(fallbackKey);
 }
 
-async function openNintendoOAuth() {
+async function prepareNintendoOAuthLink() {
     try {
-        await prepareNxapi();
+        const { verifier, challenge } = await generatePKCE();
+        const state = generateRandomString(50);
+
+        localStorage.setItem('nso_pkce_verifier', verifier);
+        localStorage.setItem('nso_auth_state', state);
+
+        const oauthUrl = `https://accounts.nintendo.com/connect/1.0.0/authorize?state=${state}&redirect_uri=npf71b963c1b7b6d119%3A%2F%2Fauth&client_id=71b963c1b7b6d119&scope=openid+user+user.birthday+user.screenName&response_type=session_token_code&session_token_code_challenge=${challenge}&session_token_code_challenge_method=S256&theme=login_form`;
+
+        const oauthBtn = document.getElementById('nintendoOAuthGateBtn');
+        if (oauthBtn) {
+            oauthBtn.setAttribute('href', oauthUrl);
+            oauthBtn.dataset.oauthUrl = oauthUrl;
+        }
+        return oauthUrl;
     } catch (e) {
-        alert(userFacingErrorMessage(e, 'Error_Dialog_Message_Login_Failed'));
+        console.warn('[auth] Failed to pre-generate Nintendo OAuth link:', e);
+        return null;
+    }
+}
+
+async function openNintendoOAuth(e) {
+    const nxapiConsentCheckbox = document.getElementById('nxapiConsentCheckbox');
+    if (nxapiConsentCheckbox && !nxapiConsentCheckbox.checked) {
+        if (e) e.preventDefault();
+        const nxapiDisclosure = document.getElementById('nxapiDisclosure');
+        nxapiDisclosure?.classList.add('needs-consent');
+        nxapiConsentCheckbox.focus();
+        nxapiConsentCheckbox.reportValidity?.();
         return;
     }
 
-    const { verifier, challenge } = await generatePKCE();
-    const state = generateRandomString(50);
+    const oauthBtn = document.getElementById('nintendoOAuthGateBtn');
+    let oauthUrl = oauthBtn?.dataset?.oauthUrl || oauthBtn?.getAttribute('href');
 
-    localStorage.setItem('nso_pkce_verifier', verifier);
-    localStorage.setItem('nso_auth_state', state);
+    if (!oauthUrl || oauthUrl === '#' || oauthUrl.startsWith('javascript:')) {
+        if (e) e.preventDefault();
+        // Synchronously open blank window to bypass mobile popup blockers before async operations
+        const popup = window.open('about:blank', '_blank');
+        try {
+            oauthUrl = await prepareNintendoOAuthLink();
+            if (oauthUrl) {
+                if (popup && !popup.closed) {
+                    popup.location.href = oauthUrl;
+                } else {
+                    window.location.href = oauthUrl;
+                }
+            } else if (popup && !popup.closed) {
+                popup.close();
+            }
+        } catch (err) {
+            if (popup && !popup.closed) popup.close();
+            alert(userFacingErrorMessage(err, 'Error_Dialog_Message_Login_Failed'));
+        }
+        return;
+    }
 
-    // EXACT 1:1 nxapi Coral auth scope. Do not request user.mii here: Coral
-    // authentication expects the smaller Nintendo Account token scope.
-    const oauthUrl = `https://accounts.nintendo.com/connect/1.0.0/authorize?state=${state}&redirect_uri=npf71b963c1b7b6d119%3A%2F%2Fauth&client_id=71b963c1b7b6d119&scope=openid+user+user.birthday+user.screenName&response_type=session_token_code&session_token_code_challenge=${challenge}&session_token_code_challenge_method=S256&theme=login_form`;
-
-    window.open(oauthUrl, '_blank');
+    // Anchor link handles navigation natively without popup blocker interference.
+    // Prepare next PKCE verifier/challenge in advance for subsequent attempts.
+    setTimeout(() => {
+        void prepareNintendoOAuthLink();
+    }, 1200);
 }
 
 // Navigation Tabs & CrewVue-style Lottie Dock Bar
