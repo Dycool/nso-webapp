@@ -345,3 +345,17 @@
     background: rgba(240, 108, 120, 0.15);
 }
 
+
+
+@media (max-width: 480px) {
+    .login-gate {
+        padding: 12px 10px;
+        min-height: calc(100dvh - 65px);
+    }
+    .login-gate-card {
+        padding: 24px 16px;
+    }
+    .step-box {
+        padding: 14px 12px;
+    }
+}
