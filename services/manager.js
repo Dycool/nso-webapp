@@ -85,7 +85,7 @@ class WebServiceManager {
     }
 
     rehydratePersistentGameTokens() {
-        if (typeof hasRememberedAccount === 'function' && !hasRememberedAccount()) return;
+        if (typeof hasRememberedAccount === 'function' && !hasRememberedAccount() && !userSession) return;
         try {
             const raw = localStorage.getItem('nso_gws_tokens');
             if (!raw) return;
@@ -101,7 +101,7 @@ class WebServiceManager {
     }
 
     savePersistentGameTokens() {
-        if (typeof hasRememberedAccount === 'function' && !hasRememberedAccount()) {
+        if (typeof hasRememberedAccount === 'function' && !hasRememberedAccount() && !userSession) {
             try { localStorage.removeItem('nso_gws_tokens'); } catch { }
             return;
         }
@@ -124,7 +124,7 @@ class WebServiceManager {
     getCachedGameWebServiceToken(serviceId) {
         const idStr = String(serviceId);
         let cached = this.tokenCache.get(idStr);
-        if (!cached && typeof hasRememberedAccount === 'function' && hasRememberedAccount()) {
+        if (!cached && (typeof hasRememberedAccount !== 'function' || hasRememberedAccount() || Boolean(userSession))) {
             this.rehydratePersistentGameTokens();
             cached = this.tokenCache.get(idStr);
         }
@@ -164,6 +164,20 @@ class WebServiceManager {
         }
         let data = {};
         try { data = await response.json(); } catch (e) {}
+        if (response.ok && data?.tokens && typeof data.tokens === "object") {
+            for (const [id, entry] of Object.entries(data.tokens)) {
+                if (entry?.token) {
+                    this.tokenCache.set(String(id), {
+                        token: String(entry.token),
+                        expiresAt: Number(entry.expiresAt || (Date.now() + 7200 * 1000))
+                    });
+                }
+            }
+            this.savePersistentGameTokens();
+            if (data?.source === "shared_f2") {
+                console.log(`%c[nxapi:shared_f2]%c Reused 1 single method-2 attestation across ${Object.keys(data.tokens || {}).length} game services in parallel!`, "color: #10b981; font-weight: bold", "color: inherit");
+            }
+        }
         if (response.ok && data?.token?.token) {
             return { token: data.token.token, expiresAt: Number(data.token.expiresAt || 0), source: data.source || 'cache' };
         }
@@ -209,6 +223,7 @@ class WebServiceManager {
         // Public nxapi terms prohibit automatic retries after an HTTP response.
         // One user interaction therefore produces at most one generation request.
         if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+        console.log(`%c[nxapi:f2]%c Generating GameWebServiceToken for service ${serviceId} via Worker (nxapi method 2)`, "color: #3b82f6; font-weight: bold", "color: inherit");
         const response = await fetch(`${this.getWorkerUrl()}/api/nso/service/token`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -222,6 +237,7 @@ class WebServiceManager {
                 naId: String(naId),
                 coralUserId,
                 zncaVersion,
+                serviceIds: [String(serviceId), "4834290508791808", "5598642853249024", "4953919198265344", "5935781783175168", "5741031244955648"],
                 forceFresh: options.forceFresh === true,
                 cancelKey: options.cancelKey || undefined
             })
@@ -284,6 +300,7 @@ class WebServiceManager {
 
         if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
         const fStartedAt = performance.now();
+        console.log(`%c[nxapi:f2:fallback]%c Generating GameWebServiceToken for service ${serviceId} via client fallback (nxapi method 2)`, "color: #ec4899; font-weight: bold", "color: inherit");
         const attestation = await nxapiGenerateF(2, token, {
             na_id: naId,
             coral_user_id: coralUserId
@@ -330,7 +347,7 @@ class WebServiceManager {
         if (!forceFresh) {
             const cached = this.getCachedGameWebServiceToken(idStr);
             if (cached) {
-                
+                console.log(`%c[GWS:Cache HIT]%c Reusing cached token for service ${idStr} (Zero nxapi contact)`, "color: #10b981; font-weight: bold", "color: inherit");
                 return cached;
             }
         }
@@ -359,6 +376,7 @@ class WebServiceManager {
             }
 
             if (!result?.token && !result?.unavailable) {
+                console.log(`%c[GWS:Cache MISS]%c Requesting token for service ${idStr} (Method 2 f-token via nxapi)...`, "color: #f59e0b; font-weight: bold", "color: inherit");
                 result = await this.requestBrokerGeneratedToken(idStr, traceId, {
                     signal: options.signal,
                     cancelKey: options.cancelKey,
@@ -789,7 +807,7 @@ class WebServiceManager {
 
                 try {
                     
-                    const freshToken = await this.getGameWebServiceToken(serviceId, undefined, true, {
+                    const freshToken = await this.getGameWebServiceToken(serviceId, undefined, false, {
                         signal: requestController?.signal,
                         cancelKey: requestLaunchId
                     });

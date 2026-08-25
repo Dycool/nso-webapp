@@ -143,6 +143,7 @@ async function generateCoralViaTokenBroker({ idToken, naId, language, country, b
     // longer has a matching worker for that release.
     const { nxapiAccessToken, zncaVersion } = await warmNxapiForLogin();
     bindNxapiCoralContext(naId, zncaVersion);
+    console.log("%c[nxapi:f1]%c Generating Coral session token (Method 1: Account Login)", "color: #3b82f6; font-weight: bold", "color: inherit");
     const response = await fetch(`${WORKER_URL}/api/nso/cache/coral/get-or-create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -371,6 +372,7 @@ async function getNxapiAccessToken(options = {}) {
             scope: NXAPI_AUTH_SCOPE
         };
 
+        console.log(`%c[nxapi:auth]%c Requesting OAuth access token (${isRefresh ? "refresh" : "client_credentials"})`, "color: #8b5cf6; font-weight: bold", "color: inherit");
         const tokenResp = await proxyFetch(nxapiAuthMetadata.token_endpoint, {
             method: 'POST',
             headers: {
@@ -428,6 +430,7 @@ async function getNxapiZncaConfig(options = {}) {
         const accessToken = options.accessToken || await getNxapiAccessToken({
             signal: options.signal
         });
+        console.log("%c[nxapi:config]%c Fetching znca version configuration from nxapi", "color: #06b6d4; font-weight: bold", "color: inherit");
         const response = await proxyFetch(nxapiUrl('config'), {
             method: 'GET',
             headers: {
@@ -521,6 +524,7 @@ async function nxapiGenerateF(method, token, userData = {}, requestOptions = {})
     // Keep f-generation on the proven nxapi-auth path. The Worker already relays
     // these requests, so adding a second Worker-owned OAuth client path only adds
     // another failure mode without making the remote attestation itself faster.
+    console.log(`%c[nxapi:f${method}]%c Generating Method ${method} attestation (Reason: ${method === 1 ? "Coral Login" : "Game Token fallback"})`, "color: #f97316; font-weight: bold", "color: inherit");
     const response = await nxapiFetch('f', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -557,6 +561,7 @@ async function nxapiGenerateF(method, token, userData = {}, requestOptions = {})
 
 async function nxapiEncryptRequest(url, bearerToken, body, requestOptions = {}) {
     if (userSession?.nsoWebapp?.naId) bindNxapiCoralContext(userSession.nsoWebapp.naId, activeZncaVersion());
+    console.log(`%c[nxapi:encrypt]%c Encrypting Coral request: ${url}`, "color: #64748b; font-weight: bold", "color: inherit");
     const response = await nxapiFetch('encrypt-request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -592,6 +597,7 @@ async function nxapiEncryptRequest(url, bearerToken, body, requestOptions = {}) 
 
 async function nxapiDecryptResponse(encryptedBase64, requestOptions = {}) {
     if (userSession?.nsoWebapp?.naId) bindNxapiCoralContext(userSession.nsoWebapp.naId, activeZncaVersion());
+    console.log(`%c[nxapi:decrypt]%c Decrypting Coral response`, "color: #64748b; font-weight: bold", "color: inherit");
     const response = await nxapiFetch('decrypt-response', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'text/plain' },
