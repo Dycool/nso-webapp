@@ -153,7 +153,7 @@ function invalidateAfterCoralMutation(path) {
 
 async function legacyCoralRequest(path, requestBody, token, options = {}) {
     const url = `https://api-lp1.znc.srv.nintendo.net${path}`;
-    const requestOptions = { signal: options.signal, cancelKey: options.cancelKey };
+    const requestOptions = { signal: options.signal };
     const encrypted = await nxapiEncryptRequest(url, token, JSON.stringify(requestBody), requestOptions);
     const headers = {
         'Content-Type': 'application/octet-stream',
@@ -168,7 +168,7 @@ async function legacyCoralRequest(path, requestBody, token, options = {}) {
     if (options.productVersion !== false) headers['X-ProductVersion'] = activeZncaVersion();
     const response = await proxyFetch(url, {
         method: 'POST', headers, bodyBase64: encrypted,
-        signal: options.signal, cancelKey: options.cancelKey
+        signal: options.signal
     });
     const data = await parseCoralResponse(response, requestOptions);
     return { response, data };
@@ -189,7 +189,7 @@ let coralReadBatchQueue = [];
 let coralReadBatchScheduled = false;
 
 async function singleCoralTransport({ path, requestBody, token, naId, version, options }) {
-    const nxapiAccessToken = await getNxapiAccessToken({ signal: options.signal, cancelKey: options.cancelKey });
+    const nxapiAccessToken = await getNxapiAccessToken({ signal: options.signal });
     const response = await fetch(`${WORKER_URL}/api/nso/coral/call`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -329,7 +329,7 @@ function queuedCoralReadTransport(item) {
 }
 
 function coralTransport(item, batchEligible) {
-    if (batchEligible && !item.options.signal && !item.options.cancelKey && item.options.batch !== false) {
+    if (batchEligible && !item.options.signal &&  item.options.batch !== false) {
         return queuedCoralReadTransport(item);
     }
     return singleCoralTransport(item);

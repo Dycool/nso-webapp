@@ -238,8 +238,7 @@ async function proxyFetch(targetUrl, options = {}) {
         method: options.method || 'GET',
         headers: options.headers || {}
     };
-    if (options.cancelKey) proxyPayload.cancelKey = String(options.cancelKey);
-    if (options.bodyBase64) {
+        if (options.bodyBase64) {
         proxyPayload.dataBase64 = options.bodyBase64;
     } else {
         proxyPayload.data = options.body || null;
@@ -272,7 +271,6 @@ function nxapiUrl(path) {
 const NXAPI_AUTH_METADATA_CACHE_KEY = 'nso_nxapi_auth_metadata_v1';
 const NXAPI_AUTH_METADATA_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const NXAPI_ZNCA_CONFIG_MAX_AGE_MS = 5 * 60 * 1000;
-let nxapiZncaConfigPromise = null;
 let nxapiZncaConfig = null;
 
 function clearNxapiZncaConfig() {
@@ -323,12 +321,12 @@ async function getNxapiAccessToken(options = {}) {
         return nxapiAuthSession.accessToken;
     }
 
-    // Single-flight deduplication
-    if (nxapiTokenPromise) {
-        return nxapiTokenPromise;
-    }
-
-    nxapiTokenPromise = (async () => {
+    // Cross-tab Web Locks deduplication
+    return await navigator.locks.request('nxapi-token', async () => {
+        // Double check cache inside lock
+        if (nxapiAuthSession.accessToken && nxapiAuthSession.expiresAt > Date.now() + 10000) {
+            return nxapiAuthSession.accessToken;
+        }
         const clientId = nxapiClientId();
         if (!clientId) {
             throw new AuthStageError('NXAPI_AUTH', 'Enter an nxapi-auth public client ID before signing in.');
@@ -340,8 +338,7 @@ async function getNxapiAccessToken(options = {}) {
             const apiOrigin = new URL(NXAPI_ZNCA_API_URL).origin;
             const protectedResourceResp = await proxyFetch(`${apiOrigin}/.well-known/oauth-protected-resource`, {
                 headers: { Accept: 'application/json' },
-                signal: options.signal,
-                cancelKey: options.cancelKey
+                signal: options.signal
             });
             const protectedResource = await protectedResourceResp.json().catch(() => ({}));
             if (!protectedResourceResp.ok || !protectedResource.authorization_servers?.[0]) {
@@ -353,8 +350,7 @@ async function getNxapiAccessToken(options = {}) {
                 `${authorizationServer.origin}/.well-known/oauth-authorization-server`,
                 {
                     headers: { Accept: 'application/json' },
-                    signal: options.signal,
-                    cancelKey: options.cancelKey
+                    signal: options.signal
                 }
             );
             nxapiAuthMetadata = await authorizationMetadataResp.json().catch(() => ({}));
@@ -382,8 +378,7 @@ async function getNxapiAccessToken(options = {}) {
                 Accept: 'application/json'
             },
             body: new URLSearchParams(tokenRequest).toString(),
-            signal: options.signal,
-            cancelKey: options.cancelKey
+            signal: options.signal
         });
 
         if (tokenResp.status === 429) {
@@ -418,13 +413,7 @@ async function getNxapiAccessToken(options = {}) {
         };
 
         return nxapiAuthSession.accessToken;
-    })();
-
-    try {
-        return await nxapiTokenPromise;
-    } finally {
-        nxapiTokenPromise = null;
-    }
+    });
 }
 
 async function getNxapiZncaConfig(options = {}) {
@@ -432,12 +421,12 @@ async function getNxapiZncaConfig(options = {}) {
     if (nxapiZncaConfig && nxapiZncaConfig.fetchedAt + NXAPI_ZNCA_CONFIG_MAX_AGE_MS > Date.now()) {
         return nxapiZncaConfig;
     }
-    if (nxapiZncaConfigPromise) return nxapiZncaConfigPromise;
-
-    nxapiZncaConfigPromise = (async () => {
+    return await navigator.locks.request('nxapi-config', async () => {
+        if (nxapiZncaConfig && nxapiZncaConfig.fetchedAt + NXAPI_ZNCA_CONFIG_MAX_AGE_MS > Date.now()) {
+            return nxapiZncaConfig;
+        }
         const accessToken = options.accessToken || await getNxapiAccessToken({
-            signal: options.signal,
-            cancelKey: options.cancelKey
+            signal: options.signal
         });
         const response = await proxyFetch(nxapiUrl('config'), {
             method: 'GET',
@@ -448,7 +437,6 @@ async function getNxapiZncaConfig(options = {}) {
                 'X-znca-Platform': ZNCA_PLATFORM
             },
             signal: options.signal,
-            cancelKey: options.cancelKey,
             diagnosticOperation: 'nxapi supported-version config'
         });
         const data = await response.json().catch(() => ({}));
@@ -487,20 +475,14 @@ async function getNxapiZncaConfig(options = {}) {
         ZNCA_VERSION = version;
         nxapiAuthSession.zncaVersion = version;
         return nxapiZncaConfig;
-    })();
-
-    try {
-        return await nxapiZncaConfigPromise;
-    } finally {
-        nxapiZncaConfigPromise = null;
-    }
+    });
 }
 
 async function nxapiFetch(path, options = {}) {
     throwIfAborted(options.signal);
-    const token = await getNxapiAccessToken({ signal: options.signal, cancelKey: options.cancelKey });
+    const token = await getNxapiAccessToken({ signal: options.signal });
     if (!userSession && !validZncaVersion(nxapiAuthSession.zncaVersion)) {
-        await getNxapiZncaConfig({ accessToken: token, signal: options.signal, cancelKey: options.cancelKey });
+        await getNxapiZncaConfig({ accessToken: token, signal: options.signal });
     }
     const response = await proxyFetch(nxapiUrl(path), {
         ...options,
@@ -530,8 +512,8 @@ async function nxapiFetch(path, options = {}) {
 
 async function nxapiGenerateF(method, token, userData = {}, requestOptions = {}) {
     if (userData?.na_id && !userSession) {
-        const accessToken = await getNxapiAccessToken({ signal: requestOptions.signal, cancelKey: requestOptions.cancelKey });
-        const config = await getNxapiZncaConfig({ accessToken, signal: requestOptions.signal, cancelKey: requestOptions.cancelKey });
+        const accessToken = await getNxapiAccessToken({ signal: requestOptions.signal });
+        const config = await getNxapiZncaConfig({ accessToken, signal: requestOptions.signal });
         bindNxapiCoralContext(userData.na_id, config.version);
     } else if (userData?.na_id) {
         bindNxapiCoralContext(userData.na_id, activeZncaVersion());
@@ -543,8 +525,7 @@ async function nxapiGenerateF(method, token, userData = {}, requestOptions = {})
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ hash_method: String(method), token, ...userData }),
-        signal: requestOptions.signal,
-        cancelKey: requestOptions.cancelKey
+        signal: requestOptions.signal
     });
 
     let data = {};
@@ -580,8 +561,7 @@ async function nxapiEncryptRequest(url, bearerToken, body, requestOptions = {}) 
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ url, token: bearerToken || null, data: body }),
-        signal: requestOptions.signal,
-        cancelKey: requestOptions.cancelKey
+        signal: requestOptions.signal
     });
     let data = {};
     try {
@@ -616,8 +596,7 @@ async function nxapiDecryptResponse(encryptedBase64, requestOptions = {}) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'text/plain' },
         body: JSON.stringify({ data: encryptedBase64 }),
-        signal: requestOptions.signal,
-        cancelKey: requestOptions.cancelKey
+        signal: requestOptions.signal
     });
     const data = await response.text();
     if (!response.ok) {

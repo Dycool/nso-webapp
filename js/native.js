@@ -184,7 +184,7 @@
             allowStaleOnError: callOptions.allowStaleOnError,
             staleIfErrorMs: callOptions.staleIfErrorMs,
             signal: callOptions.signal,
-            cancelKey: callOptions.cancelKey
+            
         });
     }
 

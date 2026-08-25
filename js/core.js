@@ -293,8 +293,7 @@ function updateRateLimitBanner() {
         }
 
         const nxapiAccessToken = await getNxapiAccessToken({
-            signal: options.signal,
-            cancelKey: options.cancelKey
+            signal: options.signal
         });
         if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
 
@@ -312,8 +311,7 @@ function updateRateLimitBanner() {
                 naId: String(naId),
                 coralUserId,
                 zncaVersion,
-                forceFresh: false,
-                cancelKey: options.cancelKey || undefined
+                forceFresh: false || undefined
             })
         });
         if (typeof window.nsoObserveServiceResponse === 'function') {

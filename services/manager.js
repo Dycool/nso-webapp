@@ -392,33 +392,6 @@ class WebServiceManager {
         return error?.name === 'AbortError' || error?.code === 'NSO_LAUNCH_CANCELLED';
     }
 
-    async cancelCloudflareLaunch(launchId) {
-        if (!launchId) return;
-        if (this.cancelInFlight?.launchId === launchId) return this.cancelInFlight.promise;
-
-        const promise = fetch(`${this.getWorkerUrl()}/api/nso/service/launch/${encodeURIComponent(launchId)}/cancel`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { Accept: 'application/json' }
-        }).then(async (response) => {
-            if (!response.ok) {
-                let detail = '';
-                try { detail = (await response.json())?.error || ''; } catch (e) {}
-                throw new Error(detail || `Cloudflare launch cancellation failed (HTTP ${response.status}).`);
-            }
-        }).catch((error) => {
-            // The local AbortController and iframe teardown already stop browser-side work.
-            // Keep this warning visible because the explicit Worker/DO cancellation is what
-            // guarantees an already-running nxapi/Nintendo fetch is aborted server-side.
-            console.warn('[WebServiceManager] Cloudflare launch cancellation warning:', error);
-        }).finally(() => {
-            if (this.cancelInFlight?.launchId === launchId) this.cancelInFlight = null;
-        });
-
-        this.cancelInFlight = { launchId, promise };
-        return promise;
-    }
-
     setCatalogLocked(locked, activeButton = null) {
         this.launchLocked = Boolean(locked);
         const catalog = document.getElementById('gameServicesCatalog');
@@ -676,10 +649,8 @@ class WebServiceManager {
                 // Roll the UI back immediately and cancel the server-side launch in parallel.
                 // The error dialog is only shown after the native Back animation has finished,
                 // so no loading animation is visible behind it.
-                const cloudflareCancel = this.cancelCloudflareLaunch(launchId);
-                await this.cancelNativeServiceLaunch();
-                await cloudflareCancel;
-                const reason = e?.code === 'nxapi_unsupported_version'
+                                await this.cancelNativeServiceLaunch();
+                                const reason = e?.code === 'nxapi_unsupported_version'
                     ? nsoUiVars('No matching nxapi Android worker is available for Nintendo Switch App {version} right now. Please try again later.', { version: e.requestedVersion || '?' })
                     : (Number(e?.status || 0) === 429 ? nsoUiText('nxapi is temporarily rate-limited. Please try again later.') : nsoUiApk('Error_Dialog_Message_Unknown_Error', 'An error has occurred.'));
                 alert(nsoUiVars('Could not open {service}. {reason}', { service: service.name || nsoUiText('Game Service'), reason }));
@@ -716,8 +687,7 @@ class WebServiceManager {
         const launchId = this.activeLaunchId;
         const launchController = this.activeLaunchController;
         if (launchController && !launchController.signal.aborted) launchController.abort();
-        const cloudflareCancel = this.cancelCloudflareLaunch(launchId);
-
+        
         if (this.launchTransitionTimer) {
             clearTimeout(this.launchTransitionTimer);
             this.launchTransitionTimer = null;
@@ -758,8 +728,7 @@ class WebServiceManager {
         document.documentElement.classList.remove('gws-transition-active');
         document.body.classList.remove('gws-transition-active');
 
-        await cloudflareCancel;
-        this.activeAdapter = null;
+                this.activeAdapter = null;
         this.activeService = null;
         this.launchingButton = null;
         this.activeLaunchController = null;
