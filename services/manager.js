@@ -773,10 +773,16 @@ class WebServiceManager {
     /**
      * Controlled postMessage listener between proxied Nintendo iframe and nso-webapp.
      */
-    initPostMessageListener() {
+        initPostMessageListener() {
         window.addEventListener('message', async (event) => {
             const workerOrigin = new URL(this.getWorkerUrl()).origin;
-            if (event.origin !== workerOrigin) return;
+            const isNintendoOrigin = typeof event.origin === 'string' && (
+                event.origin.endsWith('.srv.nintendo.net') ||
+                event.origin.endsWith('.nintendo.net') ||
+                event.origin.endsWith('.nintendo.com')
+            );
+            const isExtensionMode = window.nsoBackendMode === 'extension';
+            if (event.origin !== workerOrigin && !(isExtensionMode && isNintendoOrigin)) return;
 
             const data = event.data;
             if (!data || typeof data !== 'object') return;
@@ -791,8 +797,10 @@ class WebServiceManager {
             // emitted it. Once Back is pressed currentSession is cleared immediately,
             // so queued/late callbacks from the dying document are silently discarded.
             if (!frame?.contentWindow || event.source !== frame.contentWindow) return;
-            if (!activeSessionId || !messageSessionId || messageSessionId !== activeSessionId) return;
-            if (activeServiceId && messageServiceId && activeServiceId !== messageServiceId) return;
+            if (!isExtensionMode) {
+                if (!activeSessionId || !messageSessionId || messageSessionId !== activeSessionId) return;
+                if (activeServiceId && messageServiceId && activeServiceId !== messageServiceId) return;
+            }
 
             // 1. Fresh GameWebServiceToken request (e.g. Zelda Notes func_272e)
             if (data.type === 'NSO_REQUEST_GAME_WEB_TOKEN') {
@@ -825,7 +833,7 @@ class WebServiceManager {
                         requestId: data.requestId,
                         token: freshToken,
                         isZelda: data.isZelda === true
-                    }, workerOrigin);
+                    }, (window.nsoBackendMode === "extension" ? "*" : workerOrigin));
                 } catch (err) {
                     if (!sessionStillActive() || this.isLaunchCancellation(err)) return;
                     console.error('[WebServiceManager] Token renewal failed:', err);
@@ -835,7 +843,7 @@ class WebServiceManager {
                         token: null,
                         isZelda: data.isZelda === true,
                         error: err.message
-                    }, workerOrigin);
+                    }, (window.nsoBackendMode === "extension" ? "*" : workerOrigin));
                 }
                 return;
             }
