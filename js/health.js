@@ -63,6 +63,7 @@
         if (pathname === '/api/nso/coral/batch') return { type: 'NSO_CORAL_BATCH', ...(body || {}) };
         if (pathname === '/api/nso/service/session/create') return { type: 'NSO_GAME_SESSION_CREATE', ...(body || {}) };
         if (pathname === '/api/nso/auth/logout') return { type: 'NSO_LOGOUT', ...(body || {}) };
+        if (pathname === '/api/nso/proxy') return { type: 'NSO_PROXY', ...(body || {}) };
 
         const renewMatch = pathname.match(/^\/api\/nso\/service\/session\/([a-zA-Z0-9-]+)\/renew-token$/);
         if (renewMatch) return { type: 'NSO_GAME_TOKEN_RENEW', sessionId: renewMatch[1], ...(body || {}) };
@@ -85,7 +86,8 @@
             if (pathname === '/api/nso/remember/resume' && extRes.data?.brokerSession) {
                 installOneShotBrokerResume(extRes.data.brokerSession);
             }
-            return new Response(JSON.stringify(extRes.data), { status, headers });
+            const bodyContent = typeof extRes.text === 'string' ? extRes.text : JSON.stringify(extRes.data !== undefined ? extRes.data : extRes);
+            return new Response(bodyContent, { status, headers });
         } catch (extErr) {
             console.warn('[NSO WebApp] Extension request failed, attempting Cloudflare fallback:', extErr?.message);
             throw extErr;
