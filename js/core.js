@@ -45,13 +45,7 @@ async function nsoDetectBackend() {
                 if (response && response.status === 'ok') {
                     window.nsoBackendMode = 'extension';
                     window.nsoActiveBackend = 'extension';
-                    console.log(
-                        '%c[NSO WebApp]%c Backend:%c Browser Extension (Zero-Worker) %c⚡ (v' + (response.version || '1.0.0') + ')',
-                        'background: #e60012; color: #fff; font-weight: bold; border-radius: 3px 0 0 3px; padding: 2px 5px;',
-                        'background: #27272a; color: #a1a1aa; padding: 2px 5px;',
-                        'background: #10b981; color: #fff; font-weight: bold; border-radius: 0 3px 3px 0; padding: 2px 5px;',
-                        'color: #10b981; font-weight: bold;'
-                    );
+                    console.log(`%c[backend:extension]%c Connected to browser extension backend (v${response.version || '1.0.0'})`, 'color: #10b981; font-weight: bold', 'color: inherit');
                     return 'extension';
                 }
             } catch (_) {}
@@ -59,13 +53,7 @@ async function nsoDetectBackend() {
 
         window.nsoBackendMode = 'cloudflare';
         window.nsoActiveBackend = 'cloudflare';
-        console.log(
-            '%c[NSO WebApp]%c Backend:%c Cloudflare Worker Relay %c☁️',
-            'background: #e60012; color: #fff; font-weight: bold; border-radius: 3px 0 0 3px; padding: 2px 5px;',
-            'background: #27272a; color: #a1a1aa; padding: 2px 5px;',
-            'background: #f59e0b; color: #000; font-weight: bold; border-radius: 0 3px 3px 0; padding: 2px 5px;',
-            'color: #f59e0b; font-weight: bold;'
-        );
+        console.log('%c[backend:cloudflare]%c Connected to Cloudflare Worker backend', 'color: #f59e0b; font-weight: bold', 'color: inherit');
         return 'cloudflare';
     })();
 

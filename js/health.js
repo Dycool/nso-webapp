@@ -64,10 +64,10 @@
         if (pathname === '/api/nso/service/session/create') return { type: 'NSO_GAME_SESSION_CREATE', ...(body || {}) };
         if (pathname === '/api/nso/auth/logout') return { type: 'NSO_LOGOUT', ...(body || {}) };
 
-        const renewMatch = pathname.match(/^/api/nso/service/session/([a-zA-Z0-9-]+)/renew-token$/);
+        const renewMatch = pathname.match(/^\/api\/nso\/service\/session\/([a-zA-Z0-9-]+)\/renew-token$/);
         if (renewMatch) return { type: 'NSO_GAME_TOKEN_RENEW', sessionId: renewMatch[1], ...(body || {}) };
 
-        const closeMatch = pathname.match(/^/api/nso/service/session/([a-zA-Z0-9-]+)/close$/);
+        const closeMatch = pathname.match(/^\/api\/nso\/service\/session\/([a-zA-Z0-9-]+)\/close$/);
         if (closeMatch) return { type: 'NSO_GAME_SESSION_CLOSE', sessionId: closeMatch[1], ...(body || {}) };
 
         return null;
