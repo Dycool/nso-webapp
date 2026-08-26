@@ -482,7 +482,9 @@ class WebServiceManager {
         frame.id = 'inAppGameWebviewFrame';
         frame.name = 'inAppGameWebviewFrame';
         frame.title = 'Nintendo Switch Online Game Service';
-        frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads');
+        if (window.nsoBackendMode !== 'extension') {
+            frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads');
+        }
 
         // Zelda Notes uses the Screen Wake Lock API while its map is open.
         // Delegate only that capability to Zelda's Worker-origin document.
