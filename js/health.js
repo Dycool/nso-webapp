@@ -49,6 +49,49 @@
         restoreTimer = setTimeout(restore, 30_000);
     }
 
+
+    function mapPathToExtensionMessage(pathname, body) {
+        if (pathname === '/api/nso/remember/resume') return { type: 'NSO_RESUME_SESSION', ...(body || {}) };
+        if (pathname === '/api/nso/remember/save') return { type: 'NSO_REMEMBER_SAVE', ...(body || {}) };
+        if (pathname === '/api/nso/remember/forget') return { type: 'NSO_REMEMBER_FORGET', ...(body || {}) };
+        if (pathname === '/api/nso/cache/session/start') return { type: 'NSO_SESSION_START', ...(body || {}) };
+        if (pathname === '/api/nso/cache/session/release') return { type: 'NSO_SESSION_RELEASE', ...(body || {}) };
+        if (pathname === '/api/nso/cache/coral/get-or-create') return { type: 'NSO_CORAL_SESSION', ...(body || {}) };
+        if (pathname === '/api/nso/service/token') return { type: 'NSO_GAME_TOKEN', ...(body || {}) };
+        if (pathname === '/api/nso/service/token/cache') return { type: 'NSO_GAME_TOKEN_CACHE', ...(body || {}) };
+        if (pathname === '/api/nso/coral/call') return { type: 'NSO_CORAL_CALL', ...(body || {}) };
+        if (pathname === '/api/nso/coral/batch') return { type: 'NSO_CORAL_BATCH', ...(body || {}) };
+        if (pathname === '/api/nso/service/session/create') return { type: 'NSO_GAME_SESSION_CREATE', ...(body || {}) };
+        if (pathname === '/api/nso/auth/logout') return { type: 'NSO_LOGOUT', ...(body || {}) };
+
+        const renewMatch = pathname.match(/^/api/nso/service/session/([a-zA-Z0-9-]+)/renew-token$/);
+        if (renewMatch) return { type: 'NSO_GAME_TOKEN_RENEW', sessionId: renewMatch[1], ...(body || {}) };
+
+        const closeMatch = pathname.match(/^/api/nso/service/session/([a-zA-Z0-9-]+)/close$/);
+        if (closeMatch) return { type: 'NSO_GAME_SESSION_CLOSE', sessionId: closeMatch[1], ...(body || {}) };
+
+        return null;
+    }
+
+    async function dispatchExtensionFetch(msg, pathname) {
+        try {
+            const extRes = await window.nsoDispatchExtensionMessage(msg.type, msg);
+            const status = extRes.status || (extRes.ok ? 200 : 400);
+            const headers = new Headers({
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-store',
+                'X-NSO-Active-Backend': 'extension'
+            });
+            if (pathname === '/api/nso/remember/resume' && extRes.data?.brokerSession) {
+                installOneShotBrokerResume(extRes.data.brokerSession);
+            }
+            return new Response(JSON.stringify(extRes.data), { status, headers });
+        } catch (extErr) {
+            console.warn('[NSO WebApp] Extension request failed, attempting Cloudflare fallback:', extErr?.message);
+            throw extErr;
+        }
+    }
+
     window.fetch = function nsoEfficientFetch(input, init) {
         try {
             // Current control-plane code uses URL/string inputs. Leave Request-object
@@ -57,6 +100,16 @@
                 const target = new URL(String(input), location.href);
                 const method = String(init?.method || 'GET').toUpperCase();
                 if (target.origin === workerOrigin && target.pathname.startsWith('/api/nso/') && method === 'POST') {
+                    if (window.nsoBackendMode === 'extension' && typeof window.nsoDispatchExtensionMessage === 'function') {
+                        let parsedBody = {};
+                        try {
+                            if (typeof init?.body === 'string') parsedBody = JSON.parse(init.body);
+                        } catch (_) {}
+                        const extMsg = mapPathToExtensionMessage(target.pathname, parsedBody);
+                        if (extMsg) {
+                            return dispatchExtensionFetch(extMsg, target.pathname).catch(() => nativeFetch(input, init));
+                        }
+                    }
                     const headers = new Headers(init?.headers || {});
                     let nextInit = { ...(init || {}), headers };
                     let combinedResume = false;

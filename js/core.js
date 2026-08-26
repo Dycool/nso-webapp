@@ -10,6 +10,91 @@
  */
 
 const WORKER_URL = 'https://nso-worker-backend.diogoenes0.workers.dev';
+
+// ---------------------------------------------------------------------------
+// Backend Provider & Extension Auto-Detection
+// ---------------------------------------------------------------------------
+const DEFAULT_NSO_EXTENSION_ID = 'nso-extension';
+const NSO_EXTENSION_ID = window.NSO_EXTENSION_ID ||
+    localStorage.getItem('nso_extension_id') ||
+    DEFAULT_NSO_EXTENSION_ID;
+
+window.nsoBackendMode = 'detecting'; // 'extension' | 'cloudflare'
+let extensionPingPromise = null;
+
+async function nsoDetectBackend() {
+    if (extensionPingPromise) return extensionPingPromise;
+
+    extensionPingPromise = (async () => {
+        if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
+            try {
+                const response = await new Promise((resolve) => {
+                    const timeout = setTimeout(() => resolve(null), 300);
+                    try {
+                        chrome.runtime.sendMessage(NSO_EXTENSION_ID, { type: 'NSO_PING' }, (res) => {
+                            clearTimeout(timeout);
+                            if (chrome.runtime?.lastError) resolve(null);
+                            else resolve(res);
+                        });
+                    } catch (_) {
+                        clearTimeout(timeout);
+                        resolve(null);
+                    }
+                });
+
+                if (response && response.status === 'ok') {
+                    window.nsoBackendMode = 'extension';
+                    window.nsoActiveBackend = 'extension';
+                    console.log(
+                        '%c[NSO WebApp]%c Backend:%c Browser Extension (Zero-Worker) %c⚡ (v' + (response.version || '1.0.0') + ')',
+                        'background: #e60012; color: #fff; font-weight: bold; border-radius: 3px 0 0 3px; padding: 2px 5px;',
+                        'background: #27272a; color: #a1a1aa; padding: 2px 5px;',
+                        'background: #10b981; color: #fff; font-weight: bold; border-radius: 0 3px 3px 0; padding: 2px 5px;',
+                        'color: #10b981; font-weight: bold;'
+                    );
+                    return 'extension';
+                }
+            } catch (_) {}
+        }
+
+        window.nsoBackendMode = 'cloudflare';
+        window.nsoActiveBackend = 'cloudflare';
+        console.log(
+            '%c[NSO WebApp]%c Backend:%c Cloudflare Worker Relay %c☁️',
+            'background: #e60012; color: #fff; font-weight: bold; border-radius: 3px 0 0 3px; padding: 2px 5px;',
+            'background: #27272a; color: #a1a1aa; padding: 2px 5px;',
+            'background: #f59e0b; color: #000; font-weight: bold; border-radius: 0 3px 3px 0; padding: 2px 5px;',
+            'color: #f59e0b; font-weight: bold;'
+        );
+        return 'cloudflare';
+    })();
+
+    return extensionPingPromise;
+}
+
+// Start detection immediately upon script evaluation
+void nsoDetectBackend();
+
+async function nsoDispatchExtensionMessage(type, payload = {}) {
+    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
+        throw new Error('Chrome extension runtime is not available');
+    }
+    return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(NSO_EXTENSION_ID, { type, ...payload }, (res) => {
+            if (chrome.runtime?.lastError) {
+                reject(new Error(chrome.runtime.lastError.message || 'Extension communication error'));
+            } else if (res && res.error) {
+                resolve({ ok: false, status: res.status || 400, data: res });
+            } else {
+                resolve({ ok: true, status: res?.status || 200, data: res?.data ?? res });
+            }
+        });
+    });
+}
+
+window.nsoDetectBackend = nsoDetectBackend;
+window.nsoDispatchExtensionMessage = nsoDispatchExtensionMessage;
+
 const DEFAULT_NXAPI_ZNCA_API_URL = 'https://nxapi-znca-api.fancy.org.uk/api/znca';
 const DEFAULT_NXAPI_AUTH_CLIENT_ID = 'JGN1is1KSmRMOL-g4qmgZA';
 const NXAPI_ZNCA_API_URL = (window.NXAPI_ZNCA_API_URL ||
