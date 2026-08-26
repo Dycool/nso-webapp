@@ -14,7 +14,7 @@ const WORKER_URL = 'https://nso-worker-backend.diogoenes0.workers.dev';
 // ---------------------------------------------------------------------------
 // Backend Provider & Extension Auto-Detection
 // ---------------------------------------------------------------------------
-const DEFAULT_NSO_EXTENSION_ID = 'nso-extension';
+const DEFAULT_NSO_EXTENSION_ID = 'bjcigdmffhlolfpaocccgclocgdnenfc';
 const NSO_EXTENSION_ID = window.NSO_EXTENSION_ID ||
     localStorage.getItem('nso_extension_id') ||
     DEFAULT_NSO_EXTENSION_ID;
