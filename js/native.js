@@ -1735,23 +1735,7 @@
         const body = $('opCompanionBody');
         if (!body) return;
 
-        body.innerHTML = `
-            <div class="op-copy-page">
-                <h3>${escapeHtml(tr('Current Status'))}</h3>
-                <div class="op-info-card">
-                    <strong style="color:#fff; display:block; margin-bottom:4px;">
-                        ${isExtension ? `🟢 ${escapeHtml(tr('NSO Extension'))}` : `🟡 ${escapeHtml(tr('External Server'))}`}
-                    </strong>
-                    <span>
-                        ${escapeHtml(isExtension
-                ? tr('All network traffic and authentication are handled entirely locally on your PC directly to Nintendo.')
-                : tr('All network traffic is currently being routed through an external server.'))}
-                    </span>
-                </div>
-
-                <h3>${escapeHtml(tr('How Traffic Is Handled'))}</h3>
-                <p>${escapeHtml(tr('By default, Nintendo Switch Online web traffic is proxied through an external server. By installing the companion extension, all requests and proxying are handled entirely locally on your PC directly to Nintendo servers.'))}</p>
-
+        const installSection = isExtension ? '' : `
                 <h3>${escapeHtml(tr('How to Install'))}</h3>
                 <ol class="op-steps">
                     <li>
@@ -1778,6 +1762,26 @@
                 <button type="button" class="op-primary" id="opCopyExtensionsUrl" style="background:#3a3a3e; justify-content:center; align-items:center; gap:8px;">
                     <i class="fa-regular fa-copy"></i> ${escapeHtml(tr('Copy chrome://extensions'))}
                 </button>
+        `;
+
+        body.innerHTML = `
+            <div class="op-copy-page">
+                <h3>${escapeHtml(tr('Current Status'))}</h3>
+                <div class="op-info-card">
+                    <strong style="color:#fff; display:block; margin-bottom:4px;">
+                        ${isExtension ? `🟢 ${escapeHtml(tr('NSO Extension'))}` : `🟡 ${escapeHtml(tr('External Server'))}`}
+                    </strong>
+                    <span>
+                        ${escapeHtml(isExtension
+                ? tr('All network traffic and authentication are handled entirely locally on your PC directly to Nintendo.')
+                : tr('All network traffic is currently being routed through an external server.'))}
+                    </span>
+                </div>
+
+                <h3>${escapeHtml(tr('How Traffic Is Handled'))}</h3>
+                <p>${escapeHtml(tr('By default, Nintendo Switch Online web traffic is proxied through an external server. By installing the companion extension, all requests and proxying are handled entirely locally on your PC directly to Nintendo servers.'))}</p>
+
+                ${installSection}
             </div>`;
 
         openScreen('opCompanionPage');
