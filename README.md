@@ -1,102 +1,139 @@
+<p align="center">
+  <img src="favicon.svg" alt="Nintendo Switch Online WebApp icon" width="128" height="128">
+</p>
+
 # Nintendo Switch Online (NSO) WebApp
 
-A modern, responsive Web Application port of the official Nintendo Switch Online (Coral) App.
+**A modern, responsive, and feature-complete Web Application port of the official Nintendo Switch Online (Coral) App.**
 
-Live Site: [https://dycool.github.io/nso-webapp/](https://dycool.github.io/nso-webapp/)
-
----
-
-## 🌟 Features
-
-- **Friends List & Online Presence**: Live online status, played games, and Friend Codes.
-- **All account game services**: Loads Nintendo's current
-  `/v4/GameWebService/List` catalog, obtains a short-lived token for the chosen
-  service, and launches its real Nintendo WebView through the Worker. This
-  includes Zelda Notes, SplatNet 3, NookLink, Smash World, SplatNet 2, and
-  future catalog services when they are available for the signed-in account.
-- **Switch Media & Album Gallery**: Browse and play uploaded screenshots and
-  videos, inspect capture metadata, share links, and download captures.
-- **Public nxapi ZNCA API**: Generates the Coral `f`, timestamp, and request ID,
-  and encrypts/decrypts Coral API traffic.
-- **CORS and WebView relay**: Connects to
-  `nso-worker-backend.diogoenes0.workers.dev` because Nintendo and nxapi do not
-  permit browser CORS requests. Short-lived account/game-service tokens are
-  handled by the account-scoped Worker broker and are removed when the user
-  signs out; nxapi OAuth tokens remain browser-memory-only.
+🌐 **Live WebApp**: **[https://dycool.github.io/nso-webapp/](https://dycool.github.io/nso-webapp/)**
 
 ---
 
-## 🚀 Live Demo & Deployment
+## 🌟 Key Features
 
-This WebApp is automatically deployed to **GitHub Pages**:
-- **URL**: [https://dycool.github.io/nso-webapp/](https://dycool.github.io/nso-webapp/)
+👥 **Friends List & Online Presence** — View real-time friend online status, currently played games, friend requests, and copy Friend Codes with one click.
 
-## nxapi setup
+🎮 **Game Web Services** — Complete integration with official Nintendo Game Web Services, including **Zelda Notes**, **SplatNet 3**, **NookLink (Animal Crossing: New Horizons)**, **Smash World (Super Smash Bros. Ultimate)**, **SplatNet 2**, and all catalog services from Nintendo's `/v4/GameWebService/List`.
 
-The webapp uses the public `nxapi-znca-api` service with its registered
-**nxapi-auth public client ID**. The production client ID is part of the
-application configuration and is not editable by visitors. For local
-development, register a separate public client with the scopes
-`ca:gf ca:er ca:dr` at [nxapi-auth](https://nxapi-auth.fancy.org.uk/oauth/clients)
-and set `window.NXAPI_AUTH_CLIENT_ID` before loading the scripts in `js/`.
+📸 **Switch Media & Album Gallery** — Browse and play uploaded screenshots and gameplay videos, view capture metadata, download zip archives, and share captures.
 
-Before sign-in, the webapp requires an explicit acknowledgement that the
-Nintendo Account ID token, Coral token, and Coral API traffic are sent to the
-third-party nxapi ZNCA API. The short-lived nxapi access token is kept in memory
-only; it is not written to browser storage. For local development, register and
-use a separate nxapi-auth public client ID instead of the production client ID.
+🧩 **Dual-Mode Backend Architecture** — Automatically connects to the local **[NSO Extension Backend](https://github.com/Dycool/nso-extension-backend)** for 100% direct PC-to-Nintendo communication, or seamlessly falls back to the stateless external server relay.
 
-No Android emulator, Frida process, or local `f` service is needed. The webapp
-pins the Nintendo Switch App version to the Coral session that created its
-tokens; it never changes `X-znca-Version` underneath an active nxapi/Coral
-context.
+🌍 **Full 15-Language Localization** — Native interface translation across English (US/GB), Japanese, Spanish (ES/MX), French (FR/CA), Portuguese, German, Italian, Dutch, Russian, Korean, and Traditional/Simplified Chinese.
 
-For a different nxapi ZNCA deployment, set `window.NXAPI_ZNCA_API_URL` before
-loading the scripts in `js/`. The CORS relay must explicitly allow that host.
-
-## Caching and request budget
-
-The browser locally caches app settings, selected language, short-lived Coral read
-results, and image/static assets so repeat navigation normally does not need to hit
-the Worker. Nintendo/Coral and nxapi authentication tokens are never written into
-that response cache. Cached account API data is removed on Sign Out. Nintendo, nxapi,
-authentication, mutation, and game-service API traffic is never placed in a shared
-browser or CDN cache.
-
-Coral request encryption, the Nintendo API call, and response decryption are grouped
-into one browser-to-Worker request when an account broker session is available. The
-Worker does not persist the request-local nxapi OAuth token. Current clients do not send periodic account-broker heartbeats. Normal broker operations
-refresh the lease, stale ephemeral leases expire server-side, and explicit Sign Out
-performs immediate destructive cleanup.
-
-## Frontend structure
-
-The browser app is intentionally split by responsibility without a build step:
-
-- `js/core.js`, `health.js`, `auth.js`, `signin.js` — shared runtime and authentication
-- `js/ui.js` — navigation, view transitions and the authenticated shell
-- `js/coral.js` — Coral API access and response caching
-- `js/album.js`, `friends.js` — feature-specific controllers
-- `js/localization.js` — all localization data and translation logic
-- `js/native.js` — cohesive Nintendo-app parity controller with private state
-- `css/` — `base`, `auth`, `layout`, `shell`, `friends`, `album` and `screens`, kept in cascade order
-
-`services/` remains separate because it owns game-specific WebView orchestration rather than the main app UI.
-
+🔐 **Secure & Encrypted Sessions** — Encrypted Remember Me credential storage with automated session restoration, token renewal, and zero token leakage.
 
 ---
 
-## License and Nintendo notice
+## 🚀 Live Demo & Installation
 
-The project's original source code is available under the [MIT License](./LICENSE).
-That license applies only to code and other material authored for this project.
+### Option 1: WebApp with Browser Extension (Recommended)
+1. Install the **[NSO Extension Backend](https://github.com/Dycool/nso-extension-backend/releases/latest)** for direct PC-to-Nintendo proxying.
+2. Open the **[Live WebApp](https://dycool.github.io/nso-webapp/)**.
+3. The app will automatically connect in `🟢 NSO Extension` mode.
 
-This is an unofficial interoperability project and is not affiliated with,
-endorsed by, sponsored by, or approved by Nintendo. Nintendo, Nintendo Switch,
-Nintendo Switch App, and related names, logos, game-service content, APIs, and
-other Nintendo-owned material remain the property of their respective owners
-and are not granted under this project's MIT License.
+### Option 2: Zero-Install Web Mode
+1. Navigate directly to **[https://dycool.github.io/nso-webapp/](https://dycool.github.io/nso-webapp/)**.
+2. Sign in with your Nintendo Account — traffic will route through the external server relay.
 
-A software license governs reuse of this project's own code; it does not waive
-or prevent any rights or claims a third party may have in its trademarks,
-copyrighted material, services, or agreements.
+---
+
+## 🛠️ Architecture & Backend Modes
+
+```
++-----------------------------------------------------------------------+
+|                       NSO WebApp (Browser Frontend)                  |
++------------------------------------+----------------------------------+
+                                     |
+           +-------------------------+-------------------------+
+           | (Detected)                                        | (Fallback)
+           v                                                   v
++------------------------------------+   +------------------------------------+
+|    NSO Extension Backend (MV3)     |   |    NSO Worker Backend (Cloudflare) |
+|  - 100% Direct Local PC Proxy      |   |  - Stateless CORS Relay            |
+|  - DeclarativeNetRequest Headers   |   |  - Web Crypto Session Encryption   |
+|  - Injected Native znca Bridge     |   |  - Reverse-Proxied Game WebViews   |
++------------------+-----------------+   +------------------+-----------------+
+                   |                                        |
+                   +-------------------+--------------------+
+                                       |
+                                       v
+                   +----------------------------------------+
+                   |  Nintendo & nxapi Coral APIs           |
+                   |  - accounts.nintendo.com               |
+                   |  - api-lp1.znc.srv.nintendo.net       |
+                   |  - nxapi-znca-api.fancy.org.uk         |
+                   +----------------------------------------+
+```
+
+### 1. NSO Browser Extension Mode
+* Operates locally with **zero external server dependencies**.
+* Uses Manifest V3 `declarativeNetRequest` to dynamically strip frame headers and inject `X-GameWebToken` credentials into official Nintendo game iframes.
+* Injects the native mobile JavaScript bridge (`window.webkit.messageHandlers.invokeMethod`) in `world: "MAIN"` at `document_start`.
+
+### 2. External Server Relay Mode
+* Relays browser requests that Nintendo and public nxapi services do not permit directly through CORS.
+* All proxied responses containing sensitive tokens enforce `Cache-Control: no-store`.
+
+---
+
+## 🔐 nxapi & Privacy
+
+The WebApp utilizes the public `nxapi-znca-api` service for Nintendo Switch Online Coral request attestation (`f` generation) and request encryption/decryption:
+* **Explicit User Acknowledgement**: The WebApp requires user acknowledgement before authenticating.
+* **Ephemeral Memory Only**: Short-lived nxapi OAuth access tokens remain strictly in browser memory and are never persisted to disk or shared caches.
+* **No Emulators Required**: No Android emulator or local Frida server is required.
+
+---
+
+## 📂 Project Structure
+
+```text
+nso-webapp/
+├── index.html              # Main HTML entrypoint and navigation shell
+├── favicon.svg             # Application vector icon
+├── css/
+│   ├── base.css            # Design tokens, themes, typography, and reset
+│   ├── auth.css            # Nintendo Account login view and modals
+│   ├── layout.css          # Viewport layout and responsive containers
+│   ├── shell.css           # Navigation bar, bottom tabs, and headers
+│   ├── friends.css         # Friends list, presence cards, and profiles
+│   ├── album.css           # Media grid, lightbox viewer, and downloaders
+│   └── screens.css         # Settings and secondary feature sub-pages
+├── js/
+│   ├── localization.js     # Multilingual dictionary & translation engine (15 locales)
+│   ├── core.js             # Shared state, backend auto-detection, and helpers
+│   ├── health.js           # Network transport, retry engine, and preflight shims
+│   ├── auth.js             # OAuth token pipeline and nxapi client credentials
+│   ├── signin.js           # Nintendo Account login flow & session management
+│   ├── coral.js            # Nintendo Coral API client and cache layer
+│   ├── friends.js          # Friends list controller and presence handlers
+│   ├── album.js            # Switch Album controller and media viewer
+│   ├── ui.js               # Tab navigation, view router, and UI transitions
+│   └── native.js           # Nintendo app parity controller, voice chat, and settings
+└── services/
+    ├── adapters.js         # Game service quirks and authentication adapters
+    └── manager.js          # Game WebView iframe launcher and bridge manager
+```
+
+---
+
+## 📜 Local Development
+
+Run the web application locally with any static web server:
+
+```bash
+# Using Node.js built-in server or npx serve
+npx serve . -l 8080
+```
+
+Open `http://localhost:8080` in your browser.
+
+---
+
+## 📄 License & Nintendo Notice
+
+The project's original source code is available under the [MIT License](LICENSE).
+
+This is an unofficial interoperability project and is not affiliated with, endorsed by, sponsored by, or approved by Nintendo. Nintendo, Nintendo Switch, Nintendo Switch Online, Coral, and related names, logos, game-service content, and APIs remain the property of their respective owners.
