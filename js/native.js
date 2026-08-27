@@ -184,7 +184,7 @@
             allowStaleOnError: callOptions.allowStaleOnError,
             staleIfErrorMs: callOptions.staleIfErrorMs,
             signal: callOptions.signal,
-            
+
         });
     }
 
@@ -390,6 +390,7 @@
                 <p>The automatic uploads feature allows you to automatically upload any screenshot or video as soon as you capture it.</p>
                 <p class="op-muted">You can enable automatic uploads from the upload settings on your Nintendo Switch 2 console.</p>
             </div>`);
+        screenShell('opCompanionPage', 'Proxy Settings', '<div id="opCompanionBody"></div>');
 
         wireScreenBackNavigation();
     }
@@ -406,6 +407,7 @@
             opLegalPage: 'opSettingsPage',
             opLicenseDetailPage: 'opLegalPage',
             opFeedbackPage: 'opSettingsPage',
+            opCompanionPage: 'opSettingsPage',
             opAlbumAboutPage: 'page-album',
             opAnnouncementPage: 'page-home',
             opAnnouncementDetailPage: 'opAnnouncementPage',
@@ -1651,6 +1653,7 @@
             </section>
             <section class="op-group">
                 <h4>Other</h4>
+                <button class="op-row" id="opSettingsCompanion"><span><b>${escapeHtml(tr('Proxy Settings'))}</b><small>${escapeHtml(window.nsoBackendMode === 'extension' ? tr('NSO Extension') : tr('External Server'))}</small></span><i class="fa-solid fa-chevron-right"></i></button>
                 <button class="op-row" id="opSettingsFeedback"><span><b>Feedback</b><small>Send feedback about this app.</small></span><i class="fa-solid fa-chevron-right"></i></button>
             </section>
             <section class="op-group">
@@ -1681,6 +1684,7 @@
         $('opSettingsMobileData')?.addEventListener('click', openMobileDataSetting);
         $('opSettingsUsageData')?.addEventListener('click', openUsageDataSetting);
         $('opSettingsLegal')?.addEventListener('click', openLegalNotices);
+        $('opSettingsCompanion')?.addEventListener('click', openCompanionSetting);
         $('opSettingsFeedback')?.addEventListener('click', openFeedback);
         $('opSettingsStorage')?.addEventListener('click', async () => {
             const ok = await confirmSheet(trKey('Storage_Clear_Confirm'), trKey('Storage_Notice'), trKey('Storage_Clear_Submit'));
@@ -1722,6 +1726,81 @@
             const scrollTop = scrollHost?.scrollTop || 0;
             renderSettingsPage();
             if (scrollHost) scrollHost.scrollTop = scrollTop;
+        });
+    }
+
+    function openCompanionSetting() {
+        ensureScreens();
+        const isExtension = window.nsoBackendMode === 'extension';
+        const body = $('opCompanionBody');
+        if (!body) return;
+
+        body.innerHTML = `
+            <div class="op-copy-page">
+                <h3>${escapeHtml(tr('Current Status'))}</h3>
+                <div class="op-info-card">
+                    <strong style="color:#fff; display:block; margin-bottom:4px;">
+                        ${isExtension ? `🟢 ${escapeHtml(tr('NSO Extension'))}` : `🟡 ${escapeHtml(tr('External Server'))}`}
+                    </strong>
+                    <span>
+                        ${escapeHtml(isExtension
+                ? tr('All network traffic and authentication are handled entirely locally on your PC directly to Nintendo.')
+                : tr('All network traffic is currently being routed through an external server.'))}
+                    </span>
+                </div>
+
+                <h3>${escapeHtml(tr('How Traffic Is Handled'))}</h3>
+                <p>${escapeHtml(tr('By default, Nintendo Switch Online web traffic is proxied through an external server. By installing the companion extension, all requests and proxying are handled entirely locally on your PC directly to Nintendo servers.'))}</p>
+
+                <h3>${escapeHtml(tr('How to Install'))}</h3>
+                <ol class="op-steps">
+                    <li>
+                        <b>${escapeHtml(tr('Download Extension Package'))}</b>
+                        <small>${escapeHtml(tr('Download the latest extension package by clicking the "Download" button.'))}</small>
+                    </li>
+                    <li>
+                        <b>${escapeHtml(tr('Open Browser Extensions'))}</b>
+                        <small>${escapeHtml(tr('Navigate to chrome://extensions and turn on Developer mode.'))}</small>
+                    </li>
+                    <li>
+                        <b>${escapeHtml(tr('Drag & Drop Extension'))}</b>
+                        <small>${escapeHtml(tr('Drag and drop the downloaded ZIP file directly onto the chrome://extensions page.'))}</small>
+                    </li>
+                    <li>
+                        <b>${escapeHtml(tr('Refresh This Page'))}</b>
+                        <small>${escapeHtml(tr('Once loaded, refresh this page to connect to the extension.'))}</small>
+                    </li>
+                </ol>
+
+                <a href="https://github.com/Dycool/nso-extension-backend/releases/latest/download/nso-extension-backend.zip" download="nso-extension-backend.zip" target="_blank" rel="noopener" class="op-primary" style="text-decoration:none; justify-content:center; align-items:center; gap:8px;">
+                    <i class="fa-solid fa-download"></i> ${escapeHtml(tr('Download Extension (.zip)'))}
+                </a>
+                <button type="button" class="op-primary" id="opCopyExtensionsUrl" style="background:#3a3a3e; justify-content:center; align-items:center; gap:8px;">
+                    <i class="fa-regular fa-copy"></i> ${escapeHtml(tr('Copy chrome://extensions'))}
+                </button>
+            </div>`;
+
+        openScreen('opCompanionPage');
+        applyAppLanguage(body);
+
+        $('opCopyExtensionsUrl')?.addEventListener('click', async () => {
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText('chrome://extensions');
+                } else {
+                    const temp = document.createElement('textarea');
+                    temp.value = 'chrome://extensions';
+                    temp.style.position = 'fixed';
+                    temp.style.opacity = '0';
+                    document.body.appendChild(temp);
+                    temp.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(temp);
+                }
+                toast(tr('Copied chrome://extensions to clipboard! (Paste into address bar)'));
+            } catch (_) {
+                toast(tr('Copied chrome://extensions to clipboard! (Paste into address bar)'));
+            }
         });
     }
 

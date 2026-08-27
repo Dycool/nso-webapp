@@ -45,7 +45,10 @@ async function nsoDetectBackend() {
                 if (response && response.status === 'ok') {
                     window.nsoBackendMode = 'extension';
                     window.nsoActiveBackend = 'extension';
-                    console.log(`%c[backend:extension]%c Connected to browser extension backend (v${response.version || '1.0.0'})`, 'color: #10b981; font-weight: bold', 'color: inherit');
+                    const msg = typeof window.trVars === 'function'
+                        ? window.trVars('Connected to browser extension backend (v{version})', { version: response.version || '1.0.0' })
+                        : `Connected to browser extension backend (v${response.version || '1.0.0'})`;
+                    console.log(`%c[backend:extension]%c ${msg}`, 'color: #10b981; font-weight: bold', 'color: inherit');
                     return 'extension';
                 }
             } catch (_) {}
@@ -53,7 +56,10 @@ async function nsoDetectBackend() {
 
         window.nsoBackendMode = 'cloudflare';
         window.nsoActiveBackend = 'cloudflare';
-        console.log('%c[backend:cloudflare]%c Connected to Cloudflare Worker backend', 'color: #f59e0b; font-weight: bold', 'color: inherit');
+        const cloudMsg = typeof window.tr === 'function'
+            ? window.tr('Connected to external server backend')
+            : 'Connected to external server backend';
+        console.log(`%c[backend:external]%c ${cloudMsg}`, 'color: #f59e0b; font-weight: bold', 'color: inherit');
         return 'cloudflare';
     })();
 

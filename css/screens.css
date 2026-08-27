@@ -1618,3 +1618,55 @@ body.op-light-theme .friends-page-grid .friend-card:hover:has(.friend-game-playi
         min-width: 22px;
     }
 }
+
+/* Companion Extension Status & Setup */
+.op-status-card {
+    margin: 16px;
+    padding: 16px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.op-status-card.op-status-active {
+    background: rgba(16, 185, 129, 0.08);
+    border-color: rgba(16, 185, 129, 0.25);
+}
+.op-status-card.op-status-cloud {
+    background: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.25);
+}
+.op-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 15px;
+}
+.op-status-active .op-status-badge {
+    color: #10b981;
+}
+.op-status-cloud .op-status-badge {
+    color: #f59e0b;
+}
+.op-status-card p {
+    margin: 0;
+    font-size: 13px;
+    opacity: 0.85;
+    line-height: 1.4;
+}
+
+body.op-light-theme .op-status-card {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.08);
+}
+body.op-light-theme .op-status-card.op-status-active {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.3);
+}
+body.op-light-theme .op-status-card.op-status-cloud {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.3);
+}

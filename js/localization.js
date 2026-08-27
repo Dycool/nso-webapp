@@ -11041,6 +11041,601 @@ const APP_WEB_STRINGS = Object.freeze({
     "ru-RU": "Видео",
     "zh-CN": "视频",
     "zh-TW": "影片"
+  },
+  "Proxy Settings": {
+    "de-DE": "Proxy-Einstellungen",
+    "en-GB": "Proxy Settings",
+    "en-US": "Proxy Settings",
+    "es-ES": "Ajustes de proxy",
+    "es-MX": "Ajustes de proxy",
+    "fr-CA": "Paramètres de proxy",
+    "fr-FR": "Paramètres de proxy",
+    "it-IT": "Impostazioni proxy",
+    "ja-JP": "プロキシ設定",
+    "ko-KR": "프록시 설정",
+    "nl-NL": "Proxy-instellingen",
+    "pt-PT": "Definições de proxy",
+    "ru-RU": "Настройки прокси",
+    "zh-CN": "代理设置",
+    "zh-TW": "代理設定"
+  },
+  "NSO Extension": {
+    "de-DE": "NSO-Erweiterung",
+    "en-GB": "NSO Extension",
+    "en-US": "NSO Extension",
+    "es-ES": "Extensión de NSO",
+    "es-MX": "Extensión de NSO",
+    "fr-CA": "Extension NSO",
+    "fr-FR": "Extension NSO",
+    "it-IT": "Estensione NSO",
+    "ja-JP": "NSO拡張機能",
+    "ko-KR": "NSO 확장 프로그램",
+    "nl-NL": "NSO-extensie",
+    "pt-PT": "Extensão NSO",
+    "ru-RU": "Расширение NSO",
+    "zh-CN": "NSO扩展程序",
+    "zh-TW": "NSO擴充功能"
+  },
+  "Cloudflare Worker": {
+    "de-DE": "Cloudflare Worker",
+    "en-GB": "Cloudflare Worker",
+    "en-US": "Cloudflare Worker",
+    "es-ES": "Cloudflare Worker",
+    "es-MX": "Cloudflare Worker",
+    "fr-CA": "Cloudflare Worker",
+    "fr-FR": "Cloudflare Worker",
+    "it-IT": "Cloudflare Worker",
+    "ja-JP": "Cloudflare Worker",
+    "ko-KR": "Cloudflare Worker",
+    "nl-NL": "Cloudflare Worker",
+    "pt-PT": "Cloudflare Worker",
+    "ru-RU": "Cloudflare Worker",
+    "zh-CN": "Cloudflare Worker",
+    "zh-TW": "Cloudflare Worker"
+  },
+  "External Server": {
+    "de-DE": "Externer Server",
+    "en-GB": "External Server",
+    "en-US": "External Server",
+    "es-ES": "Servidor externo",
+    "es-MX": "Servidor externo",
+    "fr-CA": "Serveur externe",
+    "fr-FR": "Serveur externe",
+    "it-IT": "Server esterno",
+    "ja-JP": "外部サーバー",
+    "ko-KR": "외부 서버",
+    "nl-NL": "Externe server",
+    "pt-PT": "Servidor externo",
+    "ru-RU": "Внешний сервер",
+    "zh-CN": "外部服务器",
+    "zh-TW": "外部伺服器"
+  },
+  "Current Status": {
+    "de-DE": "Aktueller Status",
+    "en-GB": "Current Status",
+    "en-US": "Current Status",
+    "es-ES": "Estado actual",
+    "es-MX": "Estado actual",
+    "fr-CA": "État actuel",
+    "fr-FR": "État actuel",
+    "it-IT": "Stato attuale",
+    "ja-JP": "現在の状態",
+    "ko-KR": "현재 상태",
+    "nl-NL": "Huidige status",
+    "pt-PT": "Estado atual",
+    "ru-RU": "Текущий статус",
+    "zh-CN": "当前状态",
+    "zh-TW": "目前狀態"
+  },
+  "All network traffic and authentication are handled entirely locally on your PC directly to Nintendo.": {
+    "de-DE": "Der gesamte Netzwerkverkehr und die Authentifizierung werden vollständig lokal auf deinem PC direkt mit Nintendo abgewickelt.",
+    "en-GB": "All network traffic and authentication are handled entirely locally on your PC directly to Nintendo.",
+    "en-US": "All network traffic and authentication are handled entirely locally on your PC directly to Nintendo.",
+    "es-ES": "Todo el tráfico de red y la autenticación se gestionan de forma totalmente local en tu ordenador directamente con Nintendo.",
+    "es-MX": "Todo el tráfico de red y la autenticación se procesan de forma totalmente local en tu computadora directamente con Nintendo.",
+    "fr-CA": "Tout le trafic réseau et l’authentification sont entièrement gérés localement sur votre ordinateur directement vers Nintendo.",
+    "fr-FR": "Tout le trafic réseau et l’authentification sont entièrement gérés localement sur votre PC directement vers Nintendo.",
+    "it-IT": "Tutto il traffico di rete e l'autenticazione vengono gestiti interamente in locale sul tuo PC direttamente con Nintendo.",
+    "ja-JP": "すべてのネットワーク通信と認証はPC上でローカルに処理され、任天堂サーバーと直接通信します。",
+    "ko-KR": "모든 네트워크 트래픽과 인증은 PC에서 로컬로 직접 닌텐도 서버와 처리됩니다.",
+    "nl-NL": "Al het netwerkverkeer en de verificatie worden volledig lokaal op je pc rechtstreeks met Nintendo verwerkt.",
+    "pt-PT": "Todo o tráfego de rede e autenticação são processados totalmente no teu PC diretamente com a Nintendo.",
+    "ru-RU": "Весь сетевой трафик и аутентификация обрабатываются полностью локально на вашем ПК напрямую с Nintendo.",
+    "zh-CN": "所有网络流量与身份验证均在你的电脑本地直接与Nintendo服务器进行处理。",
+    "zh-TW": "所有網路流量與身分驗證均在你的電腦本機直接與Nintendo伺服器進行處理。"
+  },
+  "All network traffic is currently being routed through an external server.": {
+    "de-DE": "Der gesamte Netzwerkverkehr wird derzeit über einen externen Server geleitet.",
+    "en-GB": "All network traffic is currently being routed through an external server.",
+    "en-US": "All network traffic is currently being routed through an external server.",
+    "es-ES": "Todo el tráfico de red se redirige actualmente a través de un servidor externo.",
+    "es-MX": "Todo el tráfico de red se redirige actualmente a través de un servidor externo.",
+    "fr-CA": "Tout le trafic réseau est actuellement acheminé via un serveur externe.",
+    "fr-FR": "Tout le trafic réseau est actuellement acheminé via un serveur externe.",
+    "it-IT": "Tutto il traffico di rete viene attualmente instradato tramite un server esterno.",
+    "ja-JP": "現在、すべてのネットワーク通信は外部サーバーを経由してルーティングされています。",
+    "ko-KR": "현재 모든 네트워크 트래픽은 외부 서버를 통해 라우팅되고 있습니다.",
+    "nl-NL": "Al het netwerkverkeer wordt momenteel via een externe server geleid.",
+    "pt-PT": "Todo o tráfego de rede está atualmente a ser encaminhado através de um servidor externo.",
+    "ru-RU": "В настоящее время весь сетевой трафик маршрутизируется через внешний сервер.",
+    "zh-CN": "当前所有网络流量均通过外部服务器进行路由。",
+    "zh-TW": "目前所有網路流量均透過外部伺服器進行轉發。"
+  },
+  "How Traffic Is Handled": {
+    "de-DE": "Verarbeitung des Datenverkehrs",
+    "en-GB": "How Traffic Is Handled",
+    "en-US": "How Traffic Is Handled",
+    "es-ES": "Cómo se gestiona el tráfico",
+    "es-MX": "Cómo se procesa el tráfico",
+    "fr-CA": "Gestion du trafic",
+    "fr-FR": "Gestion du trafic",
+    "it-IT": "Come viene gestito il traffico",
+    "ja-JP": "通信の処理方法について",
+    "ko-KR": "트래픽 처리 방식",
+    "nl-NL": "Hoe verkeer wordt verwerkt",
+    "pt-PT": "Como o tráfego é processado",
+    "ru-RU": "Как обрабатывается трафик",
+    "zh-CN": "流量处理方式",
+    "zh-TW": "流量處理方式"
+  },
+  "By default, Nintendo Switch Online web traffic is proxied through an external server. By installing the companion extension, all requests and proxying are handled entirely locally on your PC directly to Nintendo servers.": {
+    "de-DE": "Standardmäßig wird der Nintendo Switch Online-Webverkehr über einen externen Server geleitet. Durch die Installation der Erweiterung werden alle Anfragen und Proxy-Vorgänge vollständig lokal auf deinem PC direkt an die Nintendo-Server gesendet.",
+    "en-GB": "By default, Nintendo Switch Online web traffic is proxied through an external server. By installing the companion extension, all requests and proxying are handled entirely locally on your PC directly to Nintendo servers.",
+    "en-US": "By default, Nintendo Switch Online web traffic is proxied through an external server. By installing the companion extension, all requests and proxying are handled entirely locally on your PC directly to Nintendo servers.",
+    "es-ES": "De forma predeterminada, el tráfico web de Nintendo Switch Online se redirige a través de un servidor externo. Al instalar la extensión, todas las solicitudes y el proxy se procesan completamente en tu ordenador directamente con los servidores de Nintendo.",
+    "es-MX": "De forma predeterminada, el tráfico web de Nintendo Switch Online se redirige a través de un servidor externo. Al instalar la extensión, todas las solicitudes y el proxy se procesan completamente en tu computadora directamente con los servidores de Nintendo.",
+    "fr-CA": "Par défaut, le trafic Web de Nintendo Switch Online passe par un serveur externe. En installant l’extension, toutes les requêtes sont gérées entièrement localement sur votre ordinateur directement vers les serveurs de Nintendo.",
+    "fr-FR": "Par défaut, le trafic web de Nintendo Switch Online passe par un serveur externe. En installant l’extension, toutes les requêtes sont gérées entièrement localement sur votre PC directement vers les serveurs de Nintendo.",
+    "it-IT": "Per impostazione predefinita, il traffico web di Nintendo Switch Online passa attraverso un server esterno. Installando l'estensione, tutte le richieste e le funzioni proxy vengono gestite interamente in locale sul tuo PC direttamente con i server Nintendo.",
+    "ja-JP": "初期設定では、Nintendo Switch OnlineのWeb通信は外部サーバーを経由します。拡張機能を導入すると、すべてのリクエストとプロキシ処理がPC上でローカルに完了し、任天堂サーバーと直接通信します。",
+    "ko-KR": "기본적으로 Nintendo Switch Online 웹 트래픽은 외부 서버를 통해 프록시 처리됩니다. 확장 프로그램을 설치하면 모든 요청 및 프록시 처리가 PC에서 직접 닌텐도 서버와 로컬로 이루어집니다.",
+    "nl-NL": "Standaard wordt het webverkeer van Nintendo Switch Online via een externe server geleid. Door de extensie te installeren, worden alle verzoeken en proxyfuncties volledig lokaal op je pc rechtstreeks met de Nintendo-servers verwerkt.",
+    "pt-PT": "Por predefinição, o tráfego Web do Nintendo Switch Online é retransmitido através de um servidor externo. Ao instalar a extensão, todos os pedidos e proxy são processados localmente no teu PC diretamente com os servidores da Nintendo.",
+    "ru-RU": "По умолчанию веб-трафик Nintendo Switch Online проходит через внешний сервер. После установки расширения все запросы и проксирование выполняются полностью локально на вашем ПК напрямую с серверами Nintendo.",
+    "zh-CN": "默认情况下，Nintendo Switch Online网络流量会通过外部服务器进行代理。安装扩展程序后，所有请求与代理操作均在你的电脑本地直接与Nintendo服务器进行处理。",
+    "zh-TW": "預設情況下，Nintendo Switch Online網路流量會透過外部伺服器進行代理。安裝擴充功能後，所有請求與代理處理均在你的電腦本機直接與Nintendo伺服器進行。"
+  },
+  "How to Install": {
+    "de-DE": "Installationsanleitung",
+    "en-GB": "How to Install",
+    "en-US": "How to Install",
+    "es-ES": "Cómo instalar",
+    "es-MX": "Cómo instalar",
+    "fr-CA": "Comment installer",
+    "fr-FR": "Comment installer",
+    "it-IT": "Come installare",
+    "ja-JP": "インストール方法",
+    "ko-KR": "설치 방법",
+    "nl-NL": "Installatiehandleiding",
+    "pt-PT": "Como instalar",
+    "ru-RU": "Как установить",
+    "zh-CN": "如何安装",
+    "zh-TW": "如何安裝"
+  },
+  "Download Extension Package": {
+    "de-DE": "Erweiterungspaket herunterladen",
+    "en-GB": "Download Extension Package",
+    "en-US": "Download Extension Package",
+    "es-ES": "Descargar el paquete de la extensión",
+    "es-MX": "Descargar el paquete de la extensión",
+    "fr-CA": "Télécharger le paquet de l’extension",
+    "fr-FR": "Télécharger le paquet de l’extension",
+    "it-IT": "Scarica il pacchetto dell'estensione",
+    "ja-JP": "拡張機能パッケージをダウンロード",
+    "ko-KR": "확장 프로그램 패키지 다운로드",
+    "nl-NL": "Extensiepakket downloaden",
+    "pt-PT": "Transferir pacote da extensão",
+    "ru-RU": "Скачайте архив расширения",
+    "zh-CN": "下载扩展程序安装包",
+    "zh-TW": "下載擴充功能安裝包"
+  },
+  "Download the latest extension package by clicking the \"Download\" button.": {
+    "de-DE": "Lade das neueste Erweiterungspaket über die Schaltfläche „Herunterladen“ herunter.",
+    "en-GB": "Download the latest extension package by clicking the \"Download\" button.",
+    "en-US": "Download the latest extension package by clicking the \"Download\" button.",
+    "es-ES": "Descarga el paquete de extensión más reciente pulsando el botón «Descargar».",
+    "es-MX": "Descarga el paquete de extensión más reciente tocando el botón «Descargar».",
+    "fr-CA": "Téléchargez le dernier paquet de l’extension en cliquant sur le bouton « Télécharger ».",
+    "fr-FR": "Téléchargez le dernier paquet de l’extension en cliquant sur le bouton « Télécharger ».",
+    "it-IT": "Scarica il pacchetto più recente dell'estensione premendo il pulsante \"Scarica\".",
+    "ja-JP": "「ダウンロード」ボタンを押して最新の拡張機能パッケージをダウンロードします。",
+    "ko-KR": "'다운로드' 버튼을 클릭하여 최신 확장 프로그램 패키지를 다운로드하세요.",
+    "nl-NL": "Download het nieuwste extensiepakket door op de knop 'Downloaden' te klikken.",
+    "pt-PT": "Transfere o pacote mais recente da extensão clicando no botão \"Transferir\".",
+    "ru-RU": "Загрузите последнюю версию расширения, нажав кнопку «Скачать».",
+    "zh-CN": "点击“下载”按钮获取最新的扩展程序安装包。",
+    "zh-TW": "點選「下載」按鈕取得最新的擴充功能安裝包。"
+  },
+  "Open Browser Extensions": {
+    "de-DE": "Browser-Erweiterungen öffnen",
+    "en-GB": "Open Browser Extensions",
+    "en-US": "Open Browser Extensions",
+    "es-ES": "Abrir extensiones del navegador",
+    "es-MX": "Abrir extensiones del navegador",
+    "fr-CA": "Ouvrir les extensions du navigateur",
+    "fr-FR": "Ouvrir les extensions du navigateur",
+    "it-IT": "Apri le estensioni del browser",
+    "ja-JP": "ブラウザーの拡張機能画面を開く",
+    "ko-KR": "브라우저 확장 프로그램 열기",
+    "nl-NL": "Browserextensies openen",
+    "pt-PT": "Abrir extensões do navegador",
+    "ru-RU": "Откройте расширения браузера",
+    "zh-CN": "打开浏览器扩展程序页面",
+    "zh-TW": "開啟瀏覽器擴充功能頁面"
+  },
+  "Navigate to chrome://extensions and turn on Developer mode.": {
+    "de-DE": "Rufe chrome://extensions auf und aktiviere den Entwicklermodus.",
+    "en-GB": "Navigate to chrome://extensions and turn on Developer mode.",
+    "en-US": "Navigate to chrome://extensions and turn on Developer mode.",
+    "es-ES": "Ve a chrome://extensions y activa el modo de desarrollador.",
+    "es-MX": "Ve a chrome://extensions y activa el modo de desarrollador.",
+    "fr-CA": "Accédez à chrome://extensions et activez le mode développeur.",
+    "fr-FR": "Accédez à chrome://extensions et activez le mode développeur.",
+    "it-IT": "Vai su chrome://extensions e attiva la Modalità sviluppatore.",
+    "ja-JP": "chrome://extensions にアクセスし、デベロッパーモードを有効にします。",
+    "ko-KR": "chrome://extensions 로 이동하여 개발자 모드를 켭니다.",
+    "nl-NL": "Ga naar chrome://extensions en schakel de ontwikkelaarsmodus in.",
+    "pt-PT": "Acede a chrome://extensions e ativa o Modo de programador.",
+    "ru-RU": "Перейдите на страницу chrome://extensions и включите режим разработчика.",
+    "zh-CN": "前往 chrome://extensions 并开启开发者模式。",
+    "zh-TW": "前往 chrome://extensions 並開啟開發者模式。"
+  },
+  "Drag & Drop Extension": {
+    "de-DE": "Erweiterung per Drag & Drop hinzufügen",
+    "en-GB": "Drag & Drop Extension",
+    "en-US": "Drag & Drop Extension",
+    "es-ES": "Arrastrar y soltar la extensión",
+    "es-MX": "Arrastrar y soltar la extensión",
+    "fr-CA": "Glisser-déposer l’extension",
+    "fr-FR": "Glisser-déposer l’extension",
+    "it-IT": "Trascina e rilascia l'estensione",
+    "ja-JP": "拡張機能をドラッグ＆ドロップ",
+    "ko-KR": "확장 프로그램 드래그 앤 드롭",
+    "nl-NL": "Extensie slepen en neerzetten",
+    "pt-PT": "Arrastar e largar a extensão",
+    "ru-RU": "Перетащите расширение",
+    "zh-CN": "拖拽添加扩展程序",
+    "zh-TW": "拖曳新增擴充功能"
+  },
+  "Drag and drop the downloaded ZIP file directly onto the chrome://extensions page.": {
+    "de-DE": "Ziehe die heruntergeladene ZIP-Datei direkt per Drag & Drop auf die Seite chrome://extensions.",
+    "en-GB": "Drag and drop the downloaded ZIP file directly onto the chrome://extensions page.",
+    "en-US": "Drag and drop the downloaded ZIP file directly onto the chrome://extensions page.",
+    "es-ES": "Arrastra y suelta el archivo ZIP descargado directamente en la página chrome://extensions.",
+    "es-MX": "Arrastra y suelta el archivo ZIP descargado directamente en la página chrome://extensions.",
+    "fr-CA": "Glissez-déposez le fichier ZIP téléchargé directement sur la page chrome://extensions.",
+    "fr-FR": "Glissez-déposez le fichier ZIP téléchargé directement sur la page chrome://extensions.",
+    "it-IT": "Trascina e rilascia il file ZIP scaricato direttamente nella pagina chrome://extensions.",
+    "ja-JP": "ダウンロードしたZIPファイルを chrome://extensions 画面に直接ドラッグ＆ドロップします。",
+    "ko-KR": "다운로드한 ZIP 파일을 chrome://extensions 페이지로 직접 드래그 앤 드롭하세요.",
+    "nl-NL": "Sleep het gedownloade ZIP-bestand rechtstreeks naar de pagina chrome://extensions.",
+    "pt-PT": "Arrasta e larga o ficheiro ZIP transferido diretamente na página chrome://extensions.",
+    "ru-RU": "Перетащите загруженный ZIP-файл прямо на страницу chrome://extensions.",
+    "zh-CN": "将下载的ZIP文件直接拖放到 chrome://extensions 页面中。",
+    "zh-TW": "將下載的ZIP檔案直接拖放到 chrome://extensions 頁面中。"
+  },
+  "Refresh This Page": {
+    "de-DE": "Diese Seite aktualisieren",
+    "en-GB": "Refresh This Page",
+    "en-US": "Refresh This Page",
+    "es-ES": "Actualizar esta página",
+    "es-MX": "Actualizar esta página",
+    "fr-CA": "Actualiser cette page",
+    "fr-FR": "Actualiser cette page",
+    "it-IT": "Ricarica questa pagina",
+    "ja-JP": "このページを再読み込み",
+    "ko-KR": "이 페이지 새로고침",
+    "nl-NL": "Deze pagina vernieuwen",
+    "pt-PT": "Atualizar esta página",
+    "ru-RU": "Обновите эту страницу",
+    "zh-CN": "刷新此页面",
+    "zh-TW": "重新整理此頁面"
+  },
+  "Once loaded, refresh this page to connect to the extension.": {
+    "de-DE": "Aktualisiere diese Seite nach dem Laden, um eine Verbindung zur Erweiterung herzustellen.",
+    "en-GB": "Once loaded, refresh this page to connect to the extension.",
+    "en-US": "Once loaded, refresh this page to connect to the extension.",
+    "es-ES": "Una vez cargada, actualiza esta página para conectarte a la extensión.",
+    "es-MX": "Una vez cargada, actualiza esta página para conectarte a la extensión.",
+    "fr-CA": "Une fois chargée, actualisez cette page pour vous connecter à l’extension.",
+    "fr-FR": "Une fois chargée, actualisez cette page pour vous connecter à l’extension.",
+    "it-IT": "Una volta caricata, ricarica questa pagina per connetterti all'estensione.",
+    "ja-JP": "読み込み完了後、このページを再読み込みすると拡張機能に接続されます。",
+    "ko-KR": "로드된 후 이 페이지를 새로고침하면 확장 프로그램에 연결됩니다.",
+    "nl-NL": "Vernieuw deze pagina zodra de extensie is geladen om verbinding te maken.",
+    "pt-PT": "Após o carregamento, atualiza esta página para ligar à extensão.",
+    "ru-RU": "После загрузки обновите эту страницу для подключения к расширению.",
+    "zh-CN": "加载完成后，刷新此页面即可连接到扩展程序。",
+    "zh-TW": "載入完成後，重新整理此頁面即可連接至擴充功能。"
+  },
+  "Download Extension (.zip)": {
+    "de-DE": "Erweiterung herunterladen (.zip)",
+    "en-GB": "Download Extension (.zip)",
+    "en-US": "Download Extension (.zip)",
+    "es-ES": "Descargar extensión (.zip)",
+    "es-MX": "Descargar extensión (.zip)",
+    "fr-CA": "Télécharger l’extension (.zip)",
+    "fr-FR": "Télécharger l’extension (.zip)",
+    "it-IT": "Scarica estensione (.zip)",
+    "ja-JP": "拡張機能をダウンロード (.zip)",
+    "ko-KR": "확장 프로그램 다운로드 (.zip)",
+    "nl-NL": "Extensie downloaden (.zip)",
+    "pt-PT": "Transferir extensão (.zip)",
+    "ru-RU": "Скачать расширение (.zip)",
+    "zh-CN": "下载扩展程序 (.zip)",
+    "zh-TW": "下載擴充功能 (.zip)"
+  },
+  "Copy chrome://extensions": {
+    "de-DE": "chrome://extensions kopieren",
+    "en-GB": "Copy chrome://extensions",
+    "en-US": "Copy chrome://extensions",
+    "es-ES": "Copiar chrome://extensions",
+    "es-MX": "Copiar chrome://extensions",
+    "fr-CA": "Copier chrome://extensions",
+    "fr-FR": "Copier chrome://extensions",
+    "it-IT": "Copia chrome://extensions",
+    "ja-JP": "chrome://extensions をコピー",
+    "ko-KR": "chrome://extensions 복사",
+    "nl-NL": "chrome://extensions kopiëren",
+    "pt-PT": "Copiar chrome://extensions",
+    "ru-RU": "Скопировать chrome://extensions",
+    "zh-CN": "复制 chrome://extensions",
+    "zh-TW": "複製 chrome://extensions"
+  },
+  "Copied chrome://extensions to clipboard! (Paste into address bar)": {
+    "de-DE": "chrome://extensions in die Zwischenablage kopiert! (In die Adressleiste einfügen)",
+    "en-GB": "Copied chrome://extensions to clipboard! (Paste into address bar)",
+    "en-US": "Copied chrome://extensions to clipboard! (Paste into address bar)",
+    "es-ES": "¡Se ha copiado chrome://extensions en el portapapeles! (Pégalo en la barra de direcciones)",
+    "es-MX": "¡Se ha copiado chrome://extensions al portapapeles! (Pégalo en la barra de direcciones)",
+    "fr-CA": "chrome://extensions copié dans le presse-papiers! (Collez-le dans la barre d’adresse)",
+    "fr-FR": "chrome://extensions copié dans le presse-papiers ! (Collez-le dans la barre d’adresse)",
+    "it-IT": "chrome://extensions copiato negli appunti! (Incollalo nella barra degli indirizzi)",
+    "ja-JP": "chrome://extensions をクリップボードにコピーしました（アドレスバーに貼り付けてください）",
+    "ko-KR": "chrome://extensions 가 클립보드에 복사되었습니다! (주소창에 붙여넣기하세요)",
+    "nl-NL": "chrome://extensions gekopieerd naar het klembord! (Plakken in de adresbalk)",
+    "pt-PT": "chrome://extensions copiado para a área de transferência! (Cola na barra de endereço)",
+    "ru-RU": "Адрес chrome://extensions скопирован в буфер обмена! (Вставьте в адресную строку)",
+    "zh-CN": "已复制 chrome://extensions 到剪贴板！（请粘贴到地址栏中）",
+    "zh-TW": "已複製 chrome://extensions 至剪貼簿！（請貼上至網址列）"
+  },
+  "Connected to browser extension backend (v{version})": {
+    "de-DE": "Mit Browser-Erweiterungs-Backend verbunden (v{version})",
+    "en-GB": "Connected to browser extension backend (v{version})",
+    "en-US": "Connected to browser extension backend (v{version})",
+    "es-ES": "Conectado al backend de la extensión del navegador (v{version})",
+    "es-MX": "Conectado al backend de la extensión del navegador (v{version})",
+    "fr-CA": "Connecté au backend de l’extension du navigateur (v{version})",
+    "fr-FR": "Connecté au backend de l’extension du navigateur (v{version})",
+    "it-IT": "Connesso al backend dell'estensione del browser (v{version})",
+    "ja-JP": "ブラウザー拡張機能バックエンドに接続しました (v{version})",
+    "ko-KR": "브라우저 확장 프로그램 백엔드에 연결되었습니다 (v{version})",
+    "nl-NL": "Verbonden met browserextensie-backend (v{version})",
+    "pt-PT": "Ligado ao backend da extensão do navegador (v{version})",
+    "ru-RU": "Подключено к бэкенду расширения браузера (v{version})",
+    "zh-CN": "已连接到浏览器扩展程序后端 (v{version})",
+    "zh-TW": "已連接至瀏覽器擴充功能後端 (v{version})"
+  },
+  "Connected to external server backend": {
+    "de-DE": "Mit externem Server-Backend verbunden",
+    "en-GB": "Connected to external server backend",
+    "en-US": "Connected to external server backend",
+    "es-ES": "Conectado al backend del servidor externo",
+    "es-MX": "Conectado al backend del servidor externo",
+    "fr-CA": "Connecté au backend du serveur externe",
+    "fr-FR": "Connecté au backend du serveur externe",
+    "it-IT": "Connesso al backend del server esterno",
+    "ja-JP": "外部サーバーバックエンドに接続しました",
+    "ko-KR": "외부 서버 백엔드에 연결되었습니다",
+    "nl-NL": "Verbonden met externe server-backend",
+    "pt-PT": "Ligado ao backend do servidor externo",
+    "ru-RU": "Подключено к бэкенду внешнего сервера",
+    "zh-CN": "已连接到外部服务器后端",
+    "zh-TW": "已連接至外部伺服器後端"
+  },
+  "Generating Coral session token (Method 1: Account Login)": {
+    "de-DE": "Coral-Sitzungstoken wird generiert (Methode 1: Account-Anmeldung)",
+    "en-GB": "Generating Coral session token (Method 1: Account Login)",
+    "en-US": "Generating Coral session token (Method 1: Account Login)",
+    "es-ES": "Generando token de sesión de Coral (Método 1: Inicio de sesión de cuenta)",
+    "es-MX": "Generando token de sesión de Coral (Método 1: Inicio de sesión de cuenta)",
+    "fr-CA": "Génération du jeton de session Coral (Méthode 1 : Connexion au compte)",
+    "fr-FR": "Génération du jeton de session Coral (Méthode 1 : Connexion au compte)",
+    "it-IT": "Generazione del token di sessione Coral (Metodo 1: Accesso account)",
+    "ja-JP": "Coralセッショントークンを生成中 (メソッド1: アカウントログイン)",
+    "ko-KR": "Coral 세션 토큰 생성 중 (방법 1: 계정 로그인)",
+    "nl-NL": "Coral-sessietoken genereren (Methode 1: Accountaanmelding)",
+    "pt-PT": "A gerar token de sessão Coral (Método 1: Início de sessão da conta)",
+    "ru-RU": "Генерация токена сеанса Coral (Метод 1: Вход в аккаунт)",
+    "zh-CN": "正在生成Coral会话令牌 (方法1: 账号登录)",
+    "zh-TW": "正在產生Coral工作階段權杖 (方法1: 帳號登入)"
+  },
+  "Requesting OAuth access token ({type})": {
+    "de-DE": "OAuth-Zugriffstoken wird angefordert ({type})",
+    "en-GB": "Requesting OAuth access token ({type})",
+    "en-US": "Requesting OAuth access token ({type})",
+    "es-ES": "Solicitando token de acceso OAuth ({type})",
+    "es-MX": "Solicitando token de acceso OAuth ({type})",
+    "fr-CA": "Demande de jeton d’accès OAuth ({type})",
+    "fr-FR": "Demande de jeton d’accès OAuth ({type})",
+    "it-IT": "Richiesta token di accesso OAuth ({type})",
+    "ja-JP": "OAuthアクセストークンをリクエスト中 ({type})",
+    "ko-KR": "OAuth 액세스 토큰 요청 중 ({type})",
+    "nl-NL": "OAuth-toegangstoken aanvragen ({type})",
+    "pt-PT": "A solicitar token de acesso OAuth ({type})",
+    "ru-RU": "Запрос токена доступа OAuth ({type})",
+    "zh-CN": "正在请求OAuth访问令牌 ({type})",
+    "zh-TW": "正在請求OAuth存取權杖 ({type})"
+  },
+  "refresh": {
+    "de-DE": "Aktualisierung",
+    "en-GB": "refresh",
+    "en-US": "refresh",
+    "es-ES": "actualización",
+    "es-MX": "actualización",
+    "fr-CA": "actualisation",
+    "fr-FR": "actualisation",
+    "it-IT": "aggiornamento",
+    "ja-JP": "更新",
+    "ko-KR": "새로고침",
+    "nl-NL": "vernieuwen",
+    "pt-PT": "atualização",
+    "ru-RU": "обновление",
+    "zh-CN": "刷新",
+    "zh-TW": "重新整理"
+  },
+  "client_credentials": {
+    "de-DE": "Client-Anmeldedaten",
+    "en-GB": "client_credentials",
+    "en-US": "client_credentials",
+    "es-ES": "credenciales de cliente",
+    "es-MX": "credenciales de cliente",
+    "fr-CA": "identifiants client",
+    "fr-FR": "identifiants client",
+    "it-IT": "credenziali client",
+    "ja-JP": "クライアント認証情報",
+    "ko-KR": "클라이언트 인증 정보",
+    "nl-NL": "clientgegevens",
+    "pt-PT": "credenciais de cliente",
+    "ru-RU": "учетные данные клиента",
+    "zh-CN": "客户端凭据",
+    "zh-TW": "客戶端憑證"
+  },
+  "Fetching znca version configuration from nxapi": {
+    "de-DE": "znca-Versionskonfiguration wird von nxapi abgerufen",
+    "en-GB": "Fetching znca version configuration from nxapi",
+    "en-US": "Fetching znca version configuration from nxapi",
+    "es-ES": "Obteniendo la configuración de versión znca de nxapi",
+    "es-MX": "Obteniendo la configuración de versión znca de nxapi",
+    "fr-CA": "Récupération de la configuration de version znca depuis nxapi",
+    "fr-FR": "Récupération de la configuration de version znca depuis nxapi",
+    "it-IT": "Recupero della configurazione di versione znca da nxapi",
+    "ja-JP": "nxapiからzncaバージョン設定を取得中",
+    "ko-KR": "nxapi에서 znca 버전 구성을 가져오는 중",
+    "nl-NL": "znca-versieconfiguratie ophalen van nxapi" ,
+    "pt-PT": "A obter configuração de versão znca a partir do nxapi",
+    "ru-RU": "Получение конфигурации версии znca из nxapi",
+    "zh-CN": "正在从nxapi获取znca版本配置",
+    "zh-TW": "正在從nxapi取得znca版本設定"
+  },
+  "Generating Method {method} attestation (Reason: {reason})": {
+    "de-DE": "Methode-{method}-Attestierung wird generiert (Grund: {reason})",
+    "en-GB": "Generating Method {method} attestation (Reason: {reason})",
+    "en-US": "Generating Method {method} attestation (Reason: {reason})",
+    "es-ES": "Generando atestación de Método {method} (Motivo: {reason})",
+    "es-MX": "Generando atestación de Método {method} (Motivo: {reason})",
+    "fr-CA": "Génération de l’attestation Méthode {method} (Raison : {reason})",
+    "fr-FR": "Génération de l’attestation Méthode {method} (Raison : {reason})",
+    "it-IT": "Generazione attestazione Metodo {method} (Motivo: {reason})",
+    "ja-JP": "メソッド{method}構成証明を生成中 (理由: {reason})",
+    "ko-KR": "방법 {method} 증명 생성 중 (이유: {reason})",
+    "nl-NL": "Methode-{method}-attestatie genereren (Reden: {reason})",
+    "pt-PT": "A gerar atestação de Método {method} (Motivo: {reason})",
+    "ru-RU": "Генерация аттестации Метода {method} (Причина: {reason})",
+    "zh-CN": "正在生成方法{method}认证 (原因: {reason})",
+    "zh-TW": "正在產生方法{method}證明 (原因: {reason})"
+  },
+  "Coral Login": {
+    "de-DE": "Coral-Anmeldung",
+    "en-GB": "Coral Login",
+    "en-US": "Coral Login",
+    "es-ES": "Inicio de sesión de Coral",
+    "es-MX": "Inicio de sesión de Coral",
+    "fr-CA": "Connexion Coral",
+    "fr-FR": "Connexion Coral",
+    "it-IT": "Accesso Coral",
+    "ja-JP": "Coralログイン",
+    "ko-KR": "Coral 로그인",
+    "nl-NL": "Coral-aanmelding",
+    "pt-PT": "Início de sessão Coral",
+    "ru-RU": "Вход в Coral",
+    "zh-CN": "Coral登录",
+    "zh-TW": "Coral登入"
+  },
+  "Game Token fallback": {
+    "de-DE": "Spiel-Token-Fallback",
+    "en-GB": "Game Token fallback",
+    "en-US": "Game Token fallback",
+    "es-ES": "Reserva de token de juego",
+    "es-MX": "Reserva de token de juego",
+    "fr-CA": "Secours de jeton de jeu",
+    "fr-FR": "Secours de jeton de jeu",
+    "it-IT": "Fallback token di gioco",
+    "ja-JP": "ゲームトークンのフォールバック",
+    "ko-KR": "게임 토큰 폴백",
+    "nl-NL": "Speltoken-terugval",
+    "pt-PT": "Recurso de token de jogo",
+    "ru-RU": "Резервный токен игры",
+    "zh-CN": "游戏令牌回退",
+    "zh-TW": "遊戲權杖備援"
+  },
+  "Encrypting Coral request: {url}": {
+    "de-DE": "Coral-Anfrage wird verschlüsselt: {url}",
+    "en-GB": "Encrypting Coral request: {url}",
+    "en-US": "Encrypting Coral request: {url}",
+    "es-ES": "Cifrando solicitud de Coral: {url}",
+    "es-MX": "Cifrando solicitud de Coral: {url}",
+    "fr-CA": "Chiffrement de la requête Coral : {url}",
+    "fr-FR": "Chiffrement de la requête Coral : {url}",
+    "it-IT": "Cifratura richiesta Coral: {url}",
+    "ja-JP": "Coralリクエストを暗号化中: {url}",
+    "ko-KR": "Coral 요청 암호화 중: {url}",
+    "nl-NL": "Coral-verzoek versleutelen: {url}",
+    "pt-PT": "A cifrar pedido Coral: {url}",
+    "ru-RU": "Шифрование запроса Coral: {url}",
+    "zh-CN": "正在加密Coral请求: {url}",
+    "zh-TW": "正在加密Coral請求: {url}"
+  },
+  "Decrypting Coral response": {
+    "de-DE": "Coral-Antwort wird entschlüsselt",
+    "en-GB": "Decrypting Coral response",
+    "en-US": "Decrypting Coral response",
+    "es-ES": "Descifrando respuesta de Coral",
+    "es-MX": "Descifrando respuesta de Coral",
+    "fr-CA": "Déchiffrement de la réponse Coral",
+    "fr-FR": "Déchiffrement de la réponse Coral",
+    "it-IT": "Decifratura risposta Coral",
+    "ja-JP": "Coralレスポンスを復号中",
+    "ko-KR": "Coral 응답 복호화 중",
+    "nl-NL": "Coral-respons ontsleutelen",
+    "pt-PT": "A decifrar resposta Coral",
+    "ru-RU": "Расшифровка ответа Coral",
+    "zh-CN": "正在解密Coral响应",
+    "zh-TW": "正在解密Coral回應"
+  },
+  "Authentication already in progress, awaiting active flow.": {
+    "de-DE": "Authentifizierung läuft bereits, warte auf aktiven Ablauf.",
+    "en-GB": "Authentication already in progress, awaiting active flow.",
+    "en-US": "Authentication already in progress, awaiting active flow.",
+    "es-ES": "Autenticación ya en curso, esperando el flujo activo.",
+    "es-MX": "Autenticación ya en curso, esperando el flujo activo.",
+    "fr-CA": "Authentification déjà en cours, en attente du flux actif.",
+    "fr-FR": "Authentification déjà en cours, en attente du flux actif.",
+    "it-IT": "Autenticazione già in corso, in attesa del flusso attivo.",
+    "ja-JP": "認証は既に進行中です。アクティブな処理の完了を待機しています。",
+    "ko-KR": "인증이 이미 진행 중입니다. 진행 중인 작업을 대기합니다.",
+    "nl-NL": "Verificatie is al bezig, wachten op actieve stroom.",
+    "pt-PT": "Autenticação já em curso, a aguardar fluxo ativo.",
+    "ru-RU": "Аутентификация уже выполняется, ожидание активного процесса.",
+    "zh-CN": "身份验证已在进行中，正在等待当前流程完成。",
+    "zh-TW": "身分驗證已在進行中，正在等待當前流程完成。"
+  },
+  "Coral cache filled from one method-1 generation.": {
+    "de-DE": "Coral-Cache aus einer Methode-1-Generierung gefüllt.",
+    "en-GB": "Coral cache filled from one method-1 generation.",
+    "en-US": "Coral cache filled from one method-1 generation.",
+    "es-ES": "Caché de Coral rellenada a partir de una generación de método 1.",
+    "es-MX": "Caché de Coral rellenada a partir de una generación de método 1.",
+    "fr-CA": "Cache Coral remplie à partir d’une génération méthode 1.",
+    "fr-FR": "Cache Coral remplie à partir d’une génération méthode 1.",
+    "it-IT": "Cache Coral popolata da una generazione metodo 1.",
+    "ja-JP": "メソッド1の1回生成からCoralキャッシュが設定されました。",
+    "ko-KR": "방법 1 생성 1회로 Coral 캐시가 채워졌습니다.",
+    "nl-NL": "Coral-cache gevuld vanuit één methode-1-generatie.",
+    "pt-PT": "Cache Coral preenchida a partir de uma geração de método 1.",
+    "ru-RU": "Кэш Coral заполнен в результате одной генерации метода 1.",
+    "zh-CN": "Coral缓存已通过一次方法1生成填充。",
+    "zh-TW": "Coral快取已透過一次方法1產生填入。"
   }
 });
 
@@ -11102,17 +11697,17 @@ const APP_WEB_NORMALIZED_KEYS = (() => {
     Object.keys(APP_WEB_STRINGS).forEach((source) => { const n = normalizeI18nSource(source); if (n && !map.has(n)) map.set(n, source); });
     return map;
 })();
-function trKey(resourceKey) { const row = APP_APK_STRINGS[resourceKey]; if (!row) return resourceKey; return row[currentAppLocale()] || row['en-GB'] || row['en-US'] || resourceKey; }
-function trFormat(resourceKey, ...values) { let i = 0; return String(trKey(resourceKey)).replace(/%(?:\d+\$)?[sd]/g, () => String(values[i++] ?? '')); }
+function localTrKey(resourceKey) { const row = APP_APK_STRINGS[resourceKey]; if (!row) return resourceKey; return row[currentAppLocale()] || row['en-GB'] || row['en-US'] || resourceKey; }
+function localTrFormat(resourceKey, ...values) { let i = 0; return String(localTrKey(resourceKey)).replace(/%(?:\d+\$)?[sd]/g, () => String(values[i++] ?? '')); }
 function apkKeyForSource(source) { return APP_APK_SOURCE_KEYS[source] || APP_APK_NORMALIZED_KEYS.get(normalizeI18nSource(source)) || null; }
-function tr(source) {
-    const key = apkKeyForSource(source); if (key) return trKey(key);
+function localTr(source) {
+    const key = apkKeyForSource(source); if (key) return localTrKey(key);
     const webSource = APP_WEB_STRINGS[source] ? source : APP_WEB_NORMALIZED_KEYS.get(normalizeI18nSource(source));
     const row = webSource ? APP_WEB_STRINGS[webSource] : null;
     if (row) return row[currentAppLocale()] || row['en-GB'] || source;
     return source;
 }
-function trVars(source, values = {}) { return String(tr(source)).replace(/\{([A-Za-z0-9_]+)\}/g, (_, key) => String(values[key] ?? '')); }
+function localTrVars(source, values = {}) { return String(localTr(source)).replace(/\{([A-Za-z0-9_]+)\}/g, (_, key) => String(values[key] ?? '')); }
 function isTranslatableSource(source) { return !!apkKeyForSource(source) || !!APP_WEB_STRINGS[source] || !!APP_WEB_NORMALIZED_KEYS.get(normalizeI18nSource(source)); }
 function localeDisplayName(locale, displayLocale = currentAppLocale()) { try { return new Intl.DisplayNames([displayLocale], { type: 'language' }).of(locale) || locale; } catch { return locale; } }
 function translateTextNode(node) {
@@ -11121,7 +11716,7 @@ function translateTextNode(node) {
     const raw = node.nodeValue || '', trimmed = raw.trim(); if (!trimmed) return;
     let source = translatedTextSource.get(node);
     if (!source) { if (!isTranslatableSource(trimmed)) return; source = trimmed; translatedTextSource.set(node, source); }
-    const lead = raw.match(/^\s*/)?.[0] || '', tail = raw.match(/\s*$/)?.[0] || ''; const next = `${lead}${tr(source)}${tail}`; if (node.nodeValue !== next) node.nodeValue = next;
+    const lead = raw.match(/^\s*/)?.[0] || '', tail = raw.match(/\s*$/)?.[0] || ''; const next = `${lead}${localTr(source)}${tail}`; if (node.nodeValue !== next) node.nodeValue = next;
 }
 function translateElementAttributes(element) {
     if (!element || element.nodeType !== Node.ELEMENT_NODE) return;
@@ -11129,16 +11724,16 @@ function translateElementAttributes(element) {
     for (const attr of ['placeholder', 'aria-label', 'title', 'alt']) {
         const current = element.getAttribute?.(attr); if (!current) continue;
         if (!sources[attr] && isTranslatableSource(current)) sources[attr] = current;
-        if (sources[attr]) { const next = tr(sources[attr]); if (current !== next) element.setAttribute(attr, next); }
+        if (sources[attr]) { const next = localTr(sources[attr]); if (current !== next) element.setAttribute(attr, next); }
     }
-    const p = element.dataset?.i18nPlaceholder; if (p) { sources.placeholder = p; element.setAttribute('placeholder', tr(p)); }
-    const a = element.dataset?.i18nAriaLabel; if (a) { sources['aria-label'] = a; element.setAttribute('aria-label', tr(a)); }
+    const p = element.dataset?.i18nPlaceholder; if (p) { sources.placeholder = p; element.setAttribute('placeholder', localTr(p)); }
+    const a = element.dataset?.i18nAriaLabel; if (a) { sources['aria-label'] = a; element.setAttribute('aria-label', localTr(a)); }
 }
 function applyAppLanguage(root = document) {
     const locale = currentAppLocale(); document.documentElement.lang = locale;
     if (root === document) {
-        document.title = trKey('AppInfo_AppName');
-        const meta = document.querySelector('meta[name="description"]'); if (meta && isTranslatableSource(meta.dataset.i18nSource || meta.content)) { if (!meta.dataset.i18nSource) meta.dataset.i18nSource = meta.content; meta.content = tr(meta.dataset.i18nSource); }
+        document.title = localTrKey('AppInfo_AppName');
+        const meta = document.querySelector('meta[name="description"]'); if (meta && isTranslatableSource(meta.dataset.i18nSource || meta.content)) { if (!meta.dataset.i18nSource) meta.dataset.i18nSource = meta.content; meta.content = localTr(meta.dataset.i18nSource); }
     }
     if (root.nodeType === Node.TEXT_NODE) { translateTextNode(root); return; }
     if (root.nodeType === Node.ELEMENT_NODE) translateElementAttributes(root);
@@ -11146,9 +11741,9 @@ function applyAppLanguage(root = document) {
     const scope = root.querySelectorAll ? root : document; scope.querySelectorAll?.('*').forEach(translateElementAttributes);
 }
 function installLanguageObserver() { if (languageObserver || !document.body) return; languageObserver = new MutationObserver((mutations) => { for (const mutation of mutations) { mutation.addedNodes.forEach((node) => { if (node.nodeType === Node.ELEMENT_NODE || node.nodeType === Node.TEXT_NODE) applyAppLanguage(node); }); if (mutation.type === 'attributes') translateElementAttributes(mutation.target); } }); languageObserver.observe(document.body, { childList: true, subtree: true }); }
-window.nsoTranslateText = (source) => tr(source);
+window.nsoTranslateText = (source) => localTr(source);
 window.nsoCurrentLocale = () => currentAppLocale();
-window.nsoTranslateVars = (source, values) => trVars(source, values);
-window.nsoTranslateApkKey = (key) => trKey(key);
-window.nsoTranslateFormat = (resourceKey, ...values) => trFormat(resourceKey, ...values);
+window.nsoTranslateVars = (source, values) => localTrVars(source, values);
+window.nsoTranslateApkKey = (key) => localTrKey(key);
+window.nsoTranslateFormat = (resourceKey, ...values) => localTrFormat(resourceKey, ...values);
 window.nsoSetLocalizationUser = (user) => { localizationAccountUser = user || null; };

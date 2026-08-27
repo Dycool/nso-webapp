@@ -37,7 +37,8 @@ let failedLoginRetry = null;
 
 async function performFullAuthentication(options = {}) {
     if (loginInFlight) {
-        console.log('[Auth] Authentication already in progress, awaiting active flow.');
+        const authProgMsg = typeof tr === 'function' ? tr('Authentication already in progress, awaiting active flow.') : 'Authentication already in progress, awaiting active flow.';
+        console.log(`[Auth] ${authProgMsg}`);
         return loginInFlight;
     }
 
@@ -279,7 +280,8 @@ async function performFullAuthentication(options = {}) {
                     country: naCountry,
                     birthday: naBirthday
                 });
-                console.log('[AccountTokenBroker] Coral cache filled from one method-1 generation.');
+                const brokerMsg = typeof tr === 'function' ? tr('Coral cache filled from one method-1 generation.') : 'Coral cache filled from one method-1 generation.';
+                console.log(`[AccountTokenBroker] ${brokerMsg}`);
             }
 
             if (!data) {
