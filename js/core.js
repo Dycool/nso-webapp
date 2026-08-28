@@ -367,13 +367,7 @@ function updateRateLimitBanner() {
         const zncaVersion = typeof window.nsoActiveZncaVersion === 'function'
             ? window.nsoActiveZncaVersion()
             : (typeof ZNCA_VERSION === 'string' ? ZNCA_VERSION : '3.4.1');
-        if (typeof window.nsoBindNxapiCoralContext === 'function') {
-            window.nsoBindNxapiCoralContext(String(naId), zncaVersion);
-        }
 
-        const nxapiAccessToken = await getNxapiAccessToken({
-            signal: options.signal
-        });
         if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
 
         const response = await fetch(`${this.getWorkerUrl()}/api/nso/service/token`, {
@@ -386,7 +380,6 @@ function updateRateLimitBanner() {
                 serviceId: requestedId,
                 serviceIds,
                 coralAccessToken: coralToken,
-                nxapiAccessToken,
                 naId: String(naId),
                 coralUserId,
                 zncaVersion,
