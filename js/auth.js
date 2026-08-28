@@ -110,13 +110,13 @@ function validBrokerCoralSession(entry, expectedNaId, expectedZncaVersion = nxap
     const session = entry?.session || entry;
     const expiresAt = Number(entry?.expiresAt || session?.nsoWebapp?.coralExpiresAt || 0);
     const sessionVersion = String(entry?.zncaVersion || session?.nsoWebapp?.zncaVersion || '');
-    const requiredVersion = validZncaVersion(expectedZncaVersion) ? expectedZncaVersion : null;
+    const requiredVersion = validZncaVersion(expectedZncaVersion) ? expectedZncaVersion : (validZncaVersion(sessionVersion) ? sessionVersion : '3.4.1');
     return Boolean(
         requiredVersion &&
         session?.result?.webApiServerCredential?.accessToken &&
         expiresAt > Date.now() + 60000 &&
         (!expectedNaId || String(session?.nsoWebapp?.naId || '') === String(expectedNaId)) &&
-        sessionVersion === requiredVersion
+        (!expectedZncaVersion || sessionVersion === requiredVersion)
     );
 }
 
@@ -137,13 +137,22 @@ async function warmNxapiForLogin() {
 }
 
 async function generateCoralViaTokenBroker({ idToken, naId, language, country, birthday }) {
-    await prepareNxapi();
-    // Resolve the version from nxapi before binding the OAuth token to a Coral
-    // context. Hardcoding an app version eventually yields HTTP 406 when nxapi no
-    const { nxapiAccessToken, zncaVersion } = await warmNxapiForLogin();
-    bindNxapiCoralContext(naId, zncaVersion);
+    const isExtension = window.nsoBackendMode === 'extension';
+    let nxapiAccessToken = undefined;
+    let zncaVersion = typeof window.nsoActiveZncaVersion === 'function'
+        ? window.nsoActiveZncaVersion()
+        : (typeof ZNCA_VERSION === 'string' ? ZNCA_VERSION : '3.4.1');
+
+    if (isExtension) {
+        await prepareNxapi();
+        const warmed = await warmNxapiForLogin();
+        nxapiAccessToken = warmed.nxapiAccessToken;
+        zncaVersion = warmed.zncaVersion;
+        bindNxapiCoralContext(naId, zncaVersion);
+    }
+
     const msg = typeof tr === 'function' ? tr('Generating Coral session token (Method 1: Account Login)') : 'Generating Coral session token (Method 1: Account Login)';
-    console.log(`%c[nxapi:f1]%c ${msg}`, "color: #3b82f6; font-weight: bold", "color: inherit");
+    console.log(`%c[coral:f1]%c ${msg}`, "color: #3b82f6; font-weight: bold", "color: inherit");
     const response = await fetch(`${WORKER_URL}/api/nso/cache/coral/get-or-create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },

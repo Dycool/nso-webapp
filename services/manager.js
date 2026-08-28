@@ -208,22 +208,21 @@ class WebServiceManager {
         const zncaVersion = typeof window.nsoActiveZncaVersion === 'function'
             ? window.nsoActiveZncaVersion()
             : (typeof ZNCA_VERSION === 'string' ? ZNCA_VERSION : '3.4.1');
-        if (typeof window.nsoBindNxapiCoralContext === 'function') {
-            window.nsoBindNxapiCoralContext(String(naId), zncaVersion);
+        const isExtension = window.nsoBackendMode === 'extension';
+        let nxapiAccessToken = undefined;
+        if (isExtension) {
+            if (typeof window.nsoBindNxapiCoralContext === 'function') {
+                window.nsoBindNxapiCoralContext(String(naId), zncaVersion);
+            }
+            nxapiAccessToken = await getNxapiAccessToken({
+                signal: options.signal,
+                cancelKey: options.cancelKey
+            });
         }
 
-        // Only acquire an nxapi bearer after Cloudflare has positively reported a
-        // cache miss. The bearer is then kept in memory for its validity and remains
-        // pinned to this Coral user + ZNCA version.
-        const nxapiAccessToken = await getNxapiAccessToken({
-            signal: options.signal,
-            cancelKey: options.cancelKey
-        });
-
-        // Public nxapi terms prohibit automatic retries after an HTTP response.
-        // One user interaction therefore produces at most one generation request.
         if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
-        console.log(`%c[nxapi:f2]%c Generating GameWebServiceToken for service ${serviceId} via Worker (nxapi method 2)`, "color: #3b82f6; font-weight: bold", "color: inherit");
+        const providerLabel = isExtension ? 'nxapi method 2' : 'Worker native f2';
+        console.log(`%c[coral:f2]%c Generating GameWebServiceToken for service ${serviceId} via ${providerLabel}`, "color: #3b82f6; font-weight: bold", "color: inherit");
         const response = await fetch(`${this.getWorkerUrl()}/api/nso/service/token`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -243,7 +242,7 @@ class WebServiceManager {
             })
         });
         if (typeof window.nsoObserveServiceResponse === 'function') {
-            window.nsoObserveServiceResponse(response, { provider: 'nxapi-znca', operation: 'Game service token generation' });
+            window.nsoObserveServiceResponse(response, { provider: isExtension ? 'nxapi-znca' : 'nintendo-coral', operation: 'Game service token generation' });
         }
 
         let data = {};
