@@ -175,7 +175,11 @@ class WebServiceManager {
             }
             this.savePersistentGameTokens();
             if (data?.source === "shared_f2") {
-                console.log(`%c[nxapi:shared_f2]%c Reused 1 single method-2 attestation across ${Object.keys(data.tokens || {}).length} game services in parallel!`, "color: #10b981; font-weight: bold", "color: inherit");
+                const count = Object.keys(data.tokens || {}).length;
+                const sharedMsg = typeof trVars === 'function'
+                    ? trVars('Reused 1 single method-2 attestation across {count} game services in parallel!', { count })
+                    : `Reused 1 single method-2 attestation across ${count} game services in parallel!`;
+                console.log(`%c[coral:shared_f2]%c ${sharedMsg}`, "color: #10b981; font-weight: bold", "color: inherit");
             }
         }
         if (response.ok && data?.token?.token) {
@@ -208,21 +212,12 @@ class WebServiceManager {
         const zncaVersion = typeof window.nsoActiveZncaVersion === 'function'
             ? window.nsoActiveZncaVersion()
             : (typeof ZNCA_VERSION === 'string' ? ZNCA_VERSION : '3.4.1');
-        const isExtension = window.nsoBackendMode === 'extension';
-        let nxapiAccessToken = undefined;
-        if (isExtension) {
-            if (typeof window.nsoBindNxapiCoralContext === 'function') {
-                window.nsoBindNxapiCoralContext(String(naId), zncaVersion);
-            }
-            nxapiAccessToken = await getNxapiAccessToken({
-                signal: options.signal,
-                cancelKey: options.cancelKey
-            });
-        }
 
         if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
-        const providerLabel = isExtension ? 'nxapi method 2' : 'Worker native f2';
-        console.log(`%c[coral:f2]%c Generating GameWebServiceToken for service ${serviceId} via ${providerLabel}`, "color: #3b82f6; font-weight: bold", "color: inherit");
+        const genMsg = typeof trVars === 'function'
+            ? trVars('Generating GameWebServiceToken for service {serviceId}', { serviceId })
+            : `Generating GameWebServiceToken for service ${serviceId}`;
+        console.log(`%c[coral:f2]%c ${genMsg}`, "color: #3b82f6; font-weight: bold", "color: inherit");
         const response = await fetch(`${this.getWorkerUrl()}/api/nso/service/token`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -232,7 +227,6 @@ class WebServiceManager {
                 clientId,
                 serviceId: String(serviceId),
                 coralAccessToken: coralToken,
-                nxapiAccessToken,
                 naId: String(naId),
                 coralUserId,
                 zncaVersion,
@@ -299,7 +293,10 @@ class WebServiceManager {
 
         if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
         const fStartedAt = performance.now();
-        console.log(`%c[nxapi:f2:fallback]%c Generating GameWebServiceToken for service ${serviceId} via client fallback (nxapi method 2)`, "color: #ec4899; font-weight: bold", "color: inherit");
+        const fallbackMsg = typeof trVars === 'function'
+            ? trVars('Generating GameWebServiceToken for service {serviceId} via client fallback', { serviceId })
+            : `Generating GameWebServiceToken for service ${serviceId} via client fallback`;
+        console.log(`%c[coral:f2:fallback]%c ${fallbackMsg}`, "color: #ec4899; font-weight: bold", "color: inherit");
         const attestation = await nxapiGenerateF(2, token, {
             na_id: naId,
             coral_user_id: coralUserId
@@ -346,7 +343,10 @@ class WebServiceManager {
         if (!forceFresh) {
             const cached = this.getCachedGameWebServiceToken(idStr);
             if (cached) {
-                console.log(`%c[GWS:Cache HIT]%c Reusing cached token for service ${idStr} (Zero nxapi contact)`, "color: #10b981; font-weight: bold", "color: inherit");
+                const hitMsg = typeof trVars === 'function'
+                    ? trVars('Reusing cached token for service {serviceId}', { serviceId: idStr })
+                    : `Reusing cached token for service ${idStr}`;
+                console.log(`%c[GWS:Cache HIT]%c ${hitMsg}`, "color: #10b981; font-weight: bold", "color: inherit");
                 return cached;
             }
         }
@@ -375,7 +375,10 @@ class WebServiceManager {
             }
 
             if (!result?.token && !result?.unavailable) {
-                console.log(`%c[GWS:Cache MISS]%c Requesting token for service ${idStr} (Method 2 f-token via nxapi)...`, "color: #f59e0b; font-weight: bold", "color: inherit");
+                const missMsg = typeof trVars === 'function'
+                    ? trVars('Requesting token for service {serviceId} (Method 2 f-token)...', { serviceId: idStr })
+                    : `Requesting token for service ${idStr} (Method 2 f-token)...`;
+                console.log(`%c[GWS:Cache MISS]%c ${missMsg}`, "color: #f59e0b; font-weight: bold", "color: inherit");
                 result = await this.requestBrokerGeneratedToken(idStr, traceId, {
                     signal: options.signal,
                     cancelKey: options.cancelKey,

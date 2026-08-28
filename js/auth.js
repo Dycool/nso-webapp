@@ -137,19 +137,9 @@ async function warmNxapiForLogin() {
 }
 
 async function generateCoralViaTokenBroker({ idToken, naId, language, country, birthday }) {
-    const isExtension = window.nsoBackendMode === 'extension';
-    let nxapiAccessToken = undefined;
-    let zncaVersion = typeof window.nsoActiveZncaVersion === 'function'
+    const zncaVersion = typeof window.nsoActiveZncaVersion === 'function'
         ? window.nsoActiveZncaVersion()
         : (typeof ZNCA_VERSION === 'string' ? ZNCA_VERSION : '3.4.1');
-
-    if (isExtension) {
-        await prepareNxapi();
-        const warmed = await warmNxapiForLogin();
-        nxapiAccessToken = warmed.nxapiAccessToken;
-        zncaVersion = warmed.zncaVersion;
-        bindNxapiCoralContext(naId, zncaVersion);
-    }
 
     const msg = typeof tr === 'function' ? tr('Generating Coral session token (Method 1: Account Login)') : 'Generating Coral session token (Method 1: Account Login)';
     console.log(`%c[coral:f1]%c ${msg}`, "color: #3b82f6; font-weight: bold", "color: inherit");
@@ -160,7 +150,6 @@ async function generateCoralViaTokenBroker({ idToken, naId, language, country, b
         body: JSON.stringify({
             clientId: tokenBrokerClientId(),
             idToken,
-            nxapiAccessToken,
             naId,
             language,
             country,

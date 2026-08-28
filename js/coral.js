@@ -189,8 +189,6 @@ let coralReadBatchQueue = [];
 let coralReadBatchScheduled = false;
 
 async function singleCoralTransport({ path, requestBody, token, naId, version, options }) {
-    const isExtension = window.nsoBackendMode === 'extension';
-    const nxapiAccessToken = isExtension ? await getNxapiAccessToken({ signal: options.signal }) : undefined;
     const response = await fetch(`${WORKER_URL}/api/nso/coral/call`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -201,7 +199,6 @@ async function singleCoralTransport({ path, requestBody, token, naId, version, o
             path,
             requestBody,
             coralAccessToken: token,
-            nxapiAccessToken,
             naId,
             zncaVersion: version,
             locale: typeof window.nsoCurrentLocale === 'function' ? window.nsoCurrentLocale() : 'en-GB',
@@ -209,7 +206,7 @@ async function singleCoralTransport({ path, requestBody, token, naId, version, o
             productVersion: options.productVersion !== false
         })
     });
-    observeServiceResponse(response, { provider: response.ok ? 'nintendo-coral' : (isExtension ? 'nxapi-znca' : 'nintendo-coral'), operation: `Coral ${path}` });
+    observeServiceResponse(response, { provider: 'nintendo-coral', operation: `Coral ${path}` });
     const data = await response.json().catch(() => ({}));
     return { response, data };
 }
@@ -220,7 +217,6 @@ function coralBatchGroupKey(item) {
 }
 
 async function flushCoralReadBatchGroup(items) {
-    const isExtension = window.nsoBackendMode === 'extension';
     for (let offset = 0; offset < items.length; offset += CORAL_BATCH_MAX_CALLS) {
         const chunk = items.slice(offset, offset + CORAL_BATCH_MAX_CALLS);
         if (chunk.length < 2) {
@@ -233,7 +229,6 @@ async function flushCoralReadBatchGroup(items) {
 
         try {
             const first = chunk[0];
-            const nxapiAccessToken = isExtension ? await getNxapiAccessToken() : undefined;
             const response = await fetch(`${WORKER_URL}/api/nso/coral/batch`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -241,7 +236,6 @@ async function flushCoralReadBatchGroup(items) {
                 body: JSON.stringify({
                     clientId: tokenBrokerClientId(),
                     coralAccessToken: first.token,
-                    nxapiAccessToken,
                     naId: first.naId,
                     zncaVersion: first.version,
                     locale: typeof window.nsoCurrentLocale === 'function' ? window.nsoCurrentLocale() : 'en-GB',

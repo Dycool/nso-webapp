@@ -266,7 +266,7 @@ function updateServiceHealthBanner() {
         return;
     }
 
-    if (['unavailable', 'error', 'degraded'].includes(summary.zncaStatus)) {
+    if (['unavailable', 'error', 'degraded'].includes(summary.zncaStatus) && window.nsoBackendMode === 'extension') {
         showServiceHealthWarning(
             tr('nxapi temporarily unavailable'),
             tr('nxapi is temporarily unavailable. Please try again later.'),
@@ -365,7 +365,7 @@ async function runServiceDiagnostics(options = {}) {
         const summary = serviceHealthSummary(result);
         if (summary?.cloudflareStatus === 'ok' && summary?.zncaStatus === 'ok') {
             clearServiceCircuit('nxapi-znca');
-        } else if (summary?.cloudflareStatus === 'ok' && ['unavailable', 'error', 'degraded'].includes(summary?.zncaStatus)) {
+        } else if (window.nsoBackendMode === 'extension' && summary?.cloudflareStatus === 'ok' && ['unavailable', 'error', 'degraded'].includes(summary?.zncaStatus)) {
             openServiceCircuit('nxapi-znca', summary.zncaDescription || 'nxapi ZNCA health check is not healthy.', summary.zncaHttpStatus || 503, 30_000);
         } else if (summary?.cloudflareStatus && summary.cloudflareStatus !== 'ok') {
             openServiceCircuit('cloudflare', 'The nso-webapp backend health check is not healthy.', Number(result.cloudflare?.httpStatus || 503), 15_000);

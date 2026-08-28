@@ -504,6 +504,7 @@ function initAuthGate() {
     const nxapiDisclosure = document.getElementById('nxapiDisclosure');
 
     const requireNxapiConsent = () => {
+        if (window.nsoBackendMode !== 'extension') return true;
         if (nxapiConsentCheckbox?.checked) {
             nxapiDisclosure?.classList.remove('needs-consent');
             return true;
@@ -516,9 +517,7 @@ function initAuthGate() {
 
     nxapiConsentCheckbox?.addEventListener('change', () => {
         nxapiDisclosure?.classList.toggle('needs-consent', !nxapiConsentCheckbox.checked);
-        if (nxapiConsentCheckbox.checked) {
-            // Consent is explicit at this point. Warm nxapi OAuth/config while the user
-            // is completing Nintendo sign-in, hiding that latency from the critical path.
+        if (nxapiConsentCheckbox.checked && window.nsoBackendMode === 'extension') {
             void warmNxapiForLogin().catch(() => { });
         }
     });
