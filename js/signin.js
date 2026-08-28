@@ -270,23 +270,29 @@ async function performFullAuthentication(options = {}) {
                 data = brokerSession.coral.session;
             }
 
-            if (!data && brokerReady) {
+            if (!data) {
                 setAuthButtonsDisabled(true, 'Signing in...');
-                setAuthGateHint('Cloudflare cache miss — requesting one nxapi Coral attestation…');
-                data = await generateCoralViaTokenBroker({
-                    idToken,
-                    naId,
-                    language,
-                    country: naCountry,
-                    birthday: naBirthday
-                });
-                const brokerMsg = typeof tr === 'function' ? tr('Coral cache filled from one method-1 generation.') : 'Coral cache filled from one method-1 generation.';
-                console.log(`[AccountTokenBroker] ${brokerMsg}`);
+                setAuthGateHint('Generating Coral session token…');
+                try {
+                    data = await generateCoralViaTokenBroker({
+                        idToken,
+                        naId,
+                        language,
+                        country: naCountry,
+                        birthday: naBirthday
+                    });
+                    const brokerMsg = typeof tr === 'function' ? tr('Coral cache filled from one method-1 generation.') : 'Coral cache filled from one method-1 generation.';
+                    console.log(`[AccountTokenBroker] ${brokerMsg}`);
+                } catch (brokerErr) {
+                    if (window.nsoBackendMode === 'extension') {
+                        console.warn('[AccountTokenBroker] Broker generation failed; trying fallback:', brokerErr);
+                    } else {
+                        throw brokerErr;
+                    }
+                }
             }
 
-            if (!data) {
-                // Step 4: Request nxapi method-1 attestation. This is the fallback for
-                // an unavailable broker, so enforce disclosure consent right here.
+            if (!data && window.nsoBackendMode === 'extension') {
                 await prepareNxapi();
                 setAuthButtonsDisabled(true, 'Signing in...');
                 setAuthGateHint('Generating Coral attestation f-token with nxapi…');
