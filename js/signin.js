@@ -224,7 +224,11 @@ async function performFullAuthentication(options = {}) {
             let brokerSession = null;
             let userInfo = null;
             try {
-                brokerSession = await startTokenBrokerSession(accessToken);
+                brokerSession = await startTokenBrokerSession(accessToken, {
+                    idToken,
+                    nxapiAccessToken: nxapiAuthSession?.accessToken,
+                    zncaVersion: activeZncaVersion()
+                });
                 brokerReady = true;
                 userInfo = brokerSession?.profile || null;
             } catch (error) {
@@ -402,33 +406,33 @@ async function performFullAuthentication(options = {}) {
                 }
                 updateRememberedUI();
             } else if (shouldRemember && longLivedSessionToken) {
-                try {
-                    setAuthGateHint('Saving encrypted session on server…');
-                    const remResp = await fetch(`${WORKER_URL}/api/nso/remember/save`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'include',
-                        body: JSON.stringify({ sessionToken: longLivedSessionToken })
-                    });
-                    if (remResp.ok) {
-                        const rememberData = await remResp.json().catch(() => ({}));
-                        const rememberExpiresAt = Number(rememberData.expiresAt || 0);
-                        if (rememberExpiresAt > Date.now()) {
-                            localStorage.setItem('nso_has_remembered_account', 'true');
-                            localStorage.setItem('nso_remember_expires_at', String(rememberExpiresAt));
-                            localStorage.setItem('nso_user_session', JSON.stringify(data));
-                        } else {
-                            localStorage.removeItem('nso_has_remembered_account');
-                            localStorage.removeItem('nso_remember_expires_at');
+                // Saving the optional remembered credential must not delay the
+                // authenticated shell. keepalive protects this if navigation
+                // follows immediately after sign-in.
+                void (async () => {
+                    try {
+                        const remResp = await fetch(`${WORKER_URL}/api/nso/remember/save`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'include',
+                            keepalive: true,
+                            body: JSON.stringify({ sessionToken: longLivedSessionToken })
+                        });
+                        if (remResp.ok) {
+                            const rememberData = await remResp.json().catch(() => ({}));
+                            const rememberExpiresAt = Number(rememberData.expiresAt || 0);
+                            if (rememberExpiresAt > Date.now()) {
+                                localStorage.setItem('nso_has_remembered_account', 'true');
+                                localStorage.setItem('nso_remember_expires_at', String(rememberExpiresAt));
+                                localStorage.setItem('nso_user_session', JSON.stringify(data));
+                            } else {
+                                localStorage.removeItem('nso_has_remembered_account');
+                                localStorage.removeItem('nso_remember_expires_at');
+                            }
+                            updateRememberedUI();
                         }
-                        updateRememberedUI();
-                    } else {
-                        const err = await remResp.json().catch(() => ({}));
-                        console.warn('[RememberMe] Save rejected:', err.error);
-                    }
-                } catch (e) {
-                    console.warn('[RememberMe] Save error:', e);
-                }
+                    } catch (_) {}
+                })();
             } else {
                 // Treat an unchecked Remember Me box as an explicit opt-out for
                 // this browser. Revoke any older remember grant/cookie so the
@@ -438,14 +442,10 @@ async function performFullAuthentication(options = {}) {
                 localStorage.removeItem('nso_remember_expires_at');
                 localStorage.removeItem('nso_user_session');
                 localStorage.removeItem('nso_gws_tokens');
-                try {
-                    await fetch(`${WORKER_URL}/api/nso/remember/forget`, {
-                        method: 'POST',
-                        credentials: 'include'
-                    });
-                } catch (e) {
-                    console.warn('[RememberMe] Could not revoke an older remember grant:', e);
-                }
+                void fetch(`${WORKER_URL}/api/nso/remember/forget`, {
+                    method: 'POST',
+                    credentials: 'include'
+                }).catch(() => {});
                 updateRememberedUI();
             }
 
@@ -527,7 +527,7 @@ function initAuthGate() {
             if (!value || !(value.includes('session_token_code=') || value.startsWith('eyJ') || value.startsWith('{'))) return;
             if (!requireNxapiConsent()) return;
             performFullAuthentication({ input: value });
-        }, 300);
+        }, 50);
     };
 
     if (beginSignInBtn) {
@@ -587,5 +587,3 @@ function initAuthGate() {
         profileForgetRememberedBtn.addEventListener('click', forgetRememberedAccount);
     }
 }
-
-

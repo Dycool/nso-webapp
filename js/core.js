@@ -29,7 +29,9 @@ async function nsoDetectBackend() {
         if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
             try {
                 const response = await new Promise((resolve) => {
-                    const timeout = setTimeout(() => resolve(null), 300);
+                    // Do not let an unavailable extension delay sign-in. A
+                    // working local extension responds within this window.
+                    const timeout = setTimeout(() => resolve(null), 120);
                     try {
                         chrome.runtime.sendMessage(NSO_EXTENSION_ID, { type: 'NSO_PING' }, (res) => {
                             clearTimeout(timeout);

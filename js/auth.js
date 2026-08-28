@@ -85,7 +85,7 @@ function tokenBrokerClientId() {
 
 window.nsoTokenBrokerClientId = tokenBrokerClientId;
 
-async function startTokenBrokerSession(nintendoAccessToken) {
+async function startTokenBrokerSession(nintendoAccessToken, preparation = {}) {
     if (!nintendoAccessToken) return null;
     const response = await fetch(`${WORKER_URL}/api/nso/cache/session/start`, {
         method: 'POST',
@@ -93,7 +93,11 @@ async function startTokenBrokerSession(nintendoAccessToken) {
         credentials: 'include',
         body: JSON.stringify({
             nintendoAccessToken,
-            clientId: tokenBrokerClientId()
+            clientId: tokenBrokerClientId(),
+            ...(preparation?.idToken ? { idToken: preparation.idToken } : {}),
+            ...(preparation?.nxapiAccessToken ? { nxapiAccessToken: preparation.nxapiAccessToken } : {}),
+            ...(Array.isArray(preparation?.warmServiceIds) ? { warmServiceIds: preparation.warmServiceIds } : {}),
+            ...(preparation?.zncaVersion ? { zncaVersion: preparation.zncaVersion } : {})
         })
     });
     let data = {};

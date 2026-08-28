@@ -361,18 +361,10 @@ class WebServiceManager {
         }
 
         const fetchPromise = (async () => {
-            let result;
-            if (!forceFresh) {
-                result = await this.requestBrokerCachedToken(idStr, {
-                    signal: options.signal,
-                    forceFresh: false
-                });
-                if (result?.token) {
-                    
-                }
-            } else {
-                result = { miss: true };
-            }
+            // The Worker is deliberately stateless: after the browser-local
+            // cache above misses, /service/token/cache can only return miss.
+            // Skip that guaranteed-empty request and generate the token now.
+            let result = { miss: true };
 
             if (!result?.token && !result?.unavailable) {
                 const missMsg = typeof trVars === 'function'
@@ -535,7 +527,8 @@ class WebServiceManager {
             overlay.classList.add('nso-apk-transition-foreground', 'nso-apk-go-enter');
         }
 
-        // The APK forward activity transition completes at 550 ms.
+        // Keep the native-style transition responsive; service startup already
+        // runs in parallel with it.
         this.launchTransitionTimer = setTimeout(() => {
             this.launchTransitionTimer = null;
             this.clearLaunchTransitionClasses();
@@ -543,7 +536,7 @@ class WebServiceManager {
             document.body.classList.remove('gws-transition-active');
             document.documentElement.classList.add('webview-active');
             document.body.classList.add('webview-active');
-        }, 580);
+        }, 250);
     }
 
     markServiceLoaded() {
@@ -555,7 +548,7 @@ class WebServiceManager {
             clearTimeout(this.loadingFallbackTimer);
             this.loadingFallbackTimer = null;
         }
-        setTimeout(() => loading.classList.add('hidden'), 140);
+        setTimeout(() => loading.classList.add('hidden'), 50);
     }
 
     installLoadFallback() {
