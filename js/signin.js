@@ -517,9 +517,6 @@ function initAuthGate() {
 
     nxapiConsentCheckbox?.addEventListener('change', () => {
         nxapiDisclosure?.classList.toggle('needs-consent', !nxapiConsentCheckbox.checked);
-        if (nxapiConsentCheckbox.checked && window.nsoBackendMode === 'extension') {
-            void warmNxapiForLogin().catch(() => { });
-        }
     });
 
     let pasteDebounceTimer = null;
