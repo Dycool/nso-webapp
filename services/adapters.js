@@ -1,0 +1,170 @@
+
+
+
+(function installNsoI18nBridge(global) {
+    'use strict';
+
+    const sourceText = (value) => String(value ?? '');
+    const earlyKeyFallbacks = Object.freeze({
+        Friend_Notify_Online: 'Notify When Online'
+    });
+
+    global.tr = function tr(source) {
+        const translate = global.nsoTranslateText;
+        return typeof translate === 'function' && translate !== global.tr
+            ? translate(source)
+            : sourceText(source);
+    };
+
+    global.trKey = function trKey(resourceKey) {
+        const translateKey = global.nsoTranslateApkKey;
+        if (typeof translateKey === 'function' && translateKey !== global.trKey) {
+            return translateKey(resourceKey);
+        }
+        const key = sourceText(resourceKey);
+        return earlyKeyFallbacks[key] || key;
+    };
+
+    global.trVars = function trVars(source, values = {}) {
+        const translateVars = global.nsoTranslateVars;
+        if (typeof translateVars === 'function' && translateVars !== global.trVars) {
+            return translateVars(source, values);
+        }
+        return sourceText(source).replace(/\{([A-Za-z0-9_]+)\}/g, (_, key) => sourceText(values[key]));
+    };
+})(window);
+
+class GenericWebViewAdapter {
+    constructor(manager) {
+        this.manager = manager;
+        this.currentSession = null;
+    }
+
+
+    async launch(service, token, options = {}) {
+        const workerUrl = this.manager.getWorkerUrl();
+        const userLanguage = options.language || 'en-US';
+        const userCountry = options.country || 'US';
+
+        const createPayload = {
+            serviceId: String(service.id),
+            serviceUri: service.uri || service.url,
+            whiteList: Array.isArray(service.whiteList) ? service.whiteList : (Array.isArray(service.whitelist) ? service.whitelist : []),
+            token: token,
+            language: userLanguage,
+            country: userCountry,
+            launchId: options.launchId || undefined
+        };
+
+        const response = await fetch(`${workerUrl}/api/nso/service/session/create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include', // Includes Partitioned / HttpOnly cookies
+            body: JSON.stringify(createPayload),
+            signal: options.signal
+        });
+
+        if (!response.ok) {
+            let errorMsg = `HTTP ${response.status}`;
+            try {
+                const errData = await response.json();
+                errorMsg = errData.error || errorMsg;
+            } catch (e) {}
+            throw new Error(`Worker session creation failed: ${errorMsg}`);
+        }
+
+        const sessionData = await response.json();
+        this.currentSession = {
+            id: sessionData.sessionId,
+            serviceId: String(service.id),
+            service: service,
+            webviewUrl: sessionData.webviewUrl,
+            expiresAt: sessionData.expiresAt
+        };
+
+
+
+        const title = document.getElementById('inAppGameWebviewTitle');
+
+        if (title) title.textContent = service.name || 'Game Service';
+        this.manager.mountServiceFrame(service, sessionData.webviewUrl);
+
+        return this.currentSession;
+    }
+
+    async renewToken(newToken, options = {}) {
+        if (!this.currentSession?.id) return;
+        const workerUrl = this.manager.getWorkerUrl();
+
+        const response = await fetch(`${workerUrl}/api/nso/service/session/${this.currentSession.id}/renew-token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ token: newToken }),
+            signal: options.signal
+        });
+
+        if (!response.ok) {
+            console.warn('[GenericWebViewAdapter] Failed to update Worker session token:', response.status);
+        }
+    }
+
+    async close() {
+        if (!this.currentSession?.id) return;
+        const workerUrl = this.manager.getWorkerUrl();
+        const sessionId = this.currentSession.id;
+        this.currentSession = null;
+
+        try {
+            await fetch(`${workerUrl}/api/nso/service/session/${sessionId}/close`, {
+                method: 'POST',
+                credentials: 'include'
+            });
+        } catch (e) {
+            console.warn('[GenericWebViewAdapter] Session close warning:', e);
+        }
+    }
+}
+
+class ZeldaNotesAdapter extends GenericWebViewAdapter {
+    async launch(service, token, options = {}) {
+        try {
+            localStorage.removeItem('nso_persist_5935781783175168');
+            localStorage.removeItem('nso_persist_4974384874151936');
+        } catch (e) {}
+
+        return super.launch(service, token, options);
+    }
+}
+
+class SplatNet3QuirksAdapter extends GenericWebViewAdapter {
+    async launch(service, token, options = {}) {
+        return super.launch(service, token, options);
+    }
+}
+
+class NookLinkQuirksAdapter extends GenericWebViewAdapter {
+    async launch(service, token, options = {}) {
+        return super.launch(service, token, options);
+    }
+}
+
+class SplatNet2QuirksAdapter extends GenericWebViewAdapter {
+    async launch(service, token, options = {}) {
+        return super.launch(service, token, options);
+    }
+}
+
+class SmashWorldQuirksAdapter extends GenericWebViewAdapter {
+    async launch(service, token, options = {}) {
+        return super.launch(service, token, options);
+    }
+}
+
+
+window.GenericWebViewAdapter = GenericWebViewAdapter;
+window.ZeldaNotesAdapter = ZeldaNotesAdapter;
+window.SplatNet3QuirksAdapter = SplatNet3QuirksAdapter;
+window.NookLinkQuirksAdapter = NookLinkQuirksAdapter;
+window.SplatNet2QuirksAdapter = SplatNet2QuirksAdapter;
+window.SmashWorldQuirksAdapter = SmashWorldQuirksAdapter;
