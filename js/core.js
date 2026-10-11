@@ -91,7 +91,7 @@ const NXAPI_ZNCA_API_URL = (window.NXAPI_ZNCA_API_URL ||
     DEFAULT_NXAPI_ZNCA_API_URL).replace(/\/$/, '');
 const NXAPI_AUTH_CLIENT_ID = window.NXAPI_AUTH_CLIENT_ID || DEFAULT_NXAPI_AUTH_CLIENT_ID;
 const NXAPI_AUTH_SCOPE = 'ca:gf ca:er ca:dr';
-const NXAPI_CLIENT_VERSION = 'w8zSLBsxR7rVoGJA';
+const NXAPI_CLIENT_VERSION = 'd8fAZDPzwimzQ7c6';
 
 
 const ZNCA_PLATFORM = 'Android';
