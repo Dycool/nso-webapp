@@ -214,16 +214,11 @@ async function performFullAuthentication(options = {}) {
 
             setAuthButtonsDisabled(true, 'Signing in...');
             let data = null;
-            let brokerReady = false;
-            let brokerSession = null;
             let userInfo = null;
             try {
-                brokerSession = await startTokenBrokerSession(accessToken, {
-                    idToken,
-                    nxapiAccessToken: nxapiAuthSession?.accessToken,
-                    zncaVersion: activeZncaVersion()
-                });
-                brokerReady = true;
+                // Fetch profile/session bookkeeping only. Never ask the Worker
+                // to generate Coral tokens or attestations during broker start.
+                const brokerSession = await startTokenBrokerSession(accessToken);
                 userInfo = brokerSession?.profile || null;
             } catch (error) {
 
@@ -264,108 +259,80 @@ async function performFullAuthentication(options = {}) {
             const naCountry = userInfo.country;
             const naBirthday = userInfo.birthday;
 
-            if (brokerReady && validBrokerCoralSession(brokerSession?.coral, naId)) {
-                data = brokerSession.coral.session;
+            await prepareNxapi();
+            setAuthButtonsDisabled(true, 'Signing in...');
+            setAuthGateHint('Generating Coral attestation f-token with nxapi…');
+
+            let attestation;
+            try {
+                attestation = await nxapiGenerateF(1, idToken, { na_id: naId });
+            } catch (err) {
+                if (err instanceof AuthStageError) throw err;
+                throw new AuthStageError('NXAPI_F_METHOD_1', `nxapi attestation failed: ${err.message}`, err);
             }
 
-            if (!data) {
-                setAuthButtonsDisabled(true, 'Signing in...');
-                setAuthGateHint('Generating Coral session token…');
-                try {
-                    data = await generateCoralViaTokenBroker({
-                        idToken,
-                        naId,
-                        language,
-                        country: naCountry,
-                        birthday: naBirthday
-                    });
-                    const brokerMsg = typeof tr === 'function' ? tr('Coral cache filled from one method-1 generation.') : 'Coral cache filled from one method-1 generation.';
-                    console.log(`[AccountTokenBroker] ${brokerMsg}`);
-                } catch (brokerErr) {
-                    if (window.nsoBackendMode === 'extension') {
-                        console.warn('[AccountTokenBroker] Broker generation failed; trying fallback:', brokerErr);
-                    } else {
-                        throw brokerErr;
-                    }
+            const { f: fToken, timestamp: timestampMs, requestId } = attestation;
+
+
+            setAuthButtonsDisabled(true, 'Signing in...');
+            setAuthGateHint('Encrypting Coral login request…');
+
+            const coralLoginUrl = 'https://api-lp1.znc.srv.nintendo.net/v4/Account/Login';
+            const coralLoginBody = JSON.stringify({
+                parameter: {
+                    f: fToken,
+                    naIdToken: idToken,
+                    timestamp: timestampMs,
+                    requestId: requestId,
+                    language,
+                    naCountry,
+                    naBirthday
                 }
+            });
+
+            let encryptedLoginBody;
+            try {
+                encryptedLoginBody = await nxapiEncryptRequest(coralLoginUrl, null, coralLoginBody);
+            } catch (err) {
+                if (err instanceof AuthStageError) throw err;
+                throw new AuthStageError('NXAPI_ENCRYPT_ACCOUNT_LOGIN', `nxapi login encryption failed: ${err.message}`, err);
             }
 
-            if (!data && window.nsoBackendMode === 'extension') {
-                await prepareNxapi();
-                setAuthButtonsDisabled(true, 'Signing in...');
-                setAuthGateHint('Generating Coral attestation f-token with nxapi…');
 
-                let attestation;
-                try {
-                    attestation = await nxapiGenerateF(1, idToken, { na_id: naId });
-                } catch (err) {
-                    if (err instanceof AuthStageError) throw err;
-                    throw new AuthStageError('NXAPI_F_METHOD_1', `nxapi attestation failed: ${err.message}`, err);
-                }
+            setAuthButtonsDisabled(true, 'Signing in...');
+            setAuthGateHint('Connecting to Nintendo Switch Online Coral service…');
 
-                const { f: fToken, timestamp: timestampMs, requestId } = attestation;
+            const coralResp = await proxyFetch(coralLoginUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/octet-stream',
+                    'Accept': 'application/octet-stream,application/json',
+                    'Accept-Language': (typeof window.nsoCurrentLocale === 'function' ? window.nsoCurrentLocale() : 'en-GB'),
+                    'Pragma': 'no-cache',
+                    'Cache-Control': 'no-cache',
+                    'X-ProductVersion': ZNCA_VERSION,
+                    'X-Platform': ZNCA_PLATFORM,
+                    'User-Agent': zncaUserAgent()
+                },
+                bodyBase64: encryptedLoginBody
+            });
 
-
-                setAuthButtonsDisabled(true, 'Signing in...');
-                setAuthGateHint('Encrypting Coral login request…');
-
-                const coralLoginUrl = 'https://api-lp1.znc.srv.nintendo.net/v4/Account/Login';
-                const coralLoginBody = JSON.stringify({
-                    parameter: {
-                        f: fToken,
-                        naIdToken: idToken,
-                        timestamp: timestampMs,
-                        requestId: requestId,
-                        language,
-                        naCountry,
-                        naBirthday
-                    }
-                });
-
-                let encryptedLoginBody;
-                try {
-                    encryptedLoginBody = await nxapiEncryptRequest(coralLoginUrl, null, coralLoginBody);
-                } catch (err) {
-                    if (err instanceof AuthStageError) throw err;
-                    throw new AuthStageError('NXAPI_ENCRYPT_ACCOUNT_LOGIN', `nxapi login encryption failed: ${err.message}`, err);
-                }
-
-
-                setAuthButtonsDisabled(true, 'Signing in...');
-                setAuthGateHint('Connecting to Nintendo Switch Online Coral service…');
-
-                const coralResp = await proxyFetch(coralLoginUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/octet-stream',
-                        'Accept': 'application/octet-stream,application/json',
-                        'Accept-Language': (typeof window.nsoCurrentLocale === 'function' ? window.nsoCurrentLocale() : 'en-GB'),
-                        'Pragma': 'no-cache',
-                        'Cache-Control': 'no-cache',
-                        'X-ProductVersion': ZNCA_VERSION,
-                        'X-Platform': ZNCA_PLATFORM,
-                        'User-Agent': zncaUserAgent()
-                    },
-                    bodyBase64: encryptedLoginBody
-                });
-
-                data = null;
-                try {
-                    data = await parseCoralResponse(coralResp);
-                } catch (err) {
-                    throw new AuthStageError('NXAPI_DECRYPT_ACCOUNT_LOGIN', `Could not decrypt Coral response: ${err.message}`, err);
-                }
-
-                if (!coralResp.ok || !data?.result) {
-                    throw new AuthStageError(
-                        'CORAL_ACCOUNT_LOGIN',
-                        `Coral login failed (${data?.status || 'Error'}): ${data?.errorMessage || data?.error || 'Authentication rejected'} (HTTP ${coralResp.status})`,
-                        null,
-                        coralResp.status
-                    );
-                }
-
+            data = null;
+            try {
+                data = await parseCoralResponse(coralResp);
+            } catch (err) {
+                throw new AuthStageError('NXAPI_DECRYPT_ACCOUNT_LOGIN', `Could not decrypt Coral response: ${err.message}`, err);
             }
+
+            if (!coralResp.ok || !data?.result) {
+                throw new AuthStageError(
+                    'CORAL_ACCOUNT_LOGIN',
+                    `Coral login failed (${data?.status || 'Error'}): ${data?.errorMessage || data?.error || 'Authentication rejected'} (HTTP ${coralResp.status})`,
+                    null,
+                    coralResp.status
+                );
+            }
+
 
 
             const expiresInSec = Number(data.result?.webApiServerCredential?.expiresIn || 7200);
@@ -498,7 +465,7 @@ function initAuthGate() {
     const nxapiDisclosure = document.getElementById('nxapiDisclosure');
 
     const requireNxapiConsent = () => {
-        if (window.nsoBackendMode !== 'extension') return true;
+        // Every backend mode now generates f-tokens through nxapi.
         if (nxapiConsentCheckbox?.checked) {
             nxapiDisclosure?.classList.remove('needs-consent');
             return true;
@@ -528,8 +495,17 @@ function initAuthGate() {
         beginSignInBtn.addEventListener('click', () => {
             if (hasRememberedAccount()) {
                 pendingRememberedResume = true;
-
-
+                if (!nxapiConsentCheckbox?.checked) {
+                    // Remembered logins also need nxapi consent now; display
+                    // the existing disclosure before starting authentication.
+                    loginWorkflow?.classList.add('remembered-consent-only');
+                    loginWorkflow?.classList.remove('hidden');
+                    beginSignInBtn.classList.add('hidden');
+                    document.querySelector('.login-help')?.classList.add('hidden');
+                    loginWorkflow?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    requireNxapiConsent();
+                    return;
+                }
                 performFullAuthentication({ isResume: true });
                 return;
             }

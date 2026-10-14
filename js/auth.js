@@ -82,7 +82,8 @@ function tokenBrokerClientId() {
 
 window.nsoTokenBrokerClientId = tokenBrokerClientId;
 
-async function startTokenBrokerSession(nintendoAccessToken, preparation = {}) {
+// The Worker is only a session/profile broker. Coral f-tokens come from nxapi.
+async function startTokenBrokerSession(nintendoAccessToken) {
     if (!nintendoAccessToken) return null;
     const response = await fetch(`${WORKER_URL}/api/nso/cache/session/start`, {
         method: 'POST',
@@ -90,11 +91,7 @@ async function startTokenBrokerSession(nintendoAccessToken, preparation = {}) {
         credentials: 'include',
         body: JSON.stringify({
             nintendoAccessToken,
-            clientId: tokenBrokerClientId(),
-            ...(preparation?.idToken ? { idToken: preparation.idToken } : {}),
-            ...(preparation?.nxapiAccessToken ? { nxapiAccessToken: preparation.nxapiAccessToken } : {}),
-            ...(Array.isArray(preparation?.warmServiceIds) ? { warmServiceIds: preparation.warmServiceIds } : {}),
-            ...(preparation?.zncaVersion ? { zncaVersion: preparation.zncaVersion } : {})
+            clientId: tokenBrokerClientId()
         })
     });
     let data = {};
@@ -136,56 +133,6 @@ async function warmNxapiForLogin() {
         nxapiLoginWarmPromise = null;
     }
 }
-
-async function generateCoralViaTokenBroker({ idToken, naId, language, country, birthday }) {
-    const zncaVersion = typeof window.nsoActiveZncaVersion === 'function'
-        ? window.nsoActiveZncaVersion()
-        : (typeof ZNCA_VERSION === 'string' ? ZNCA_VERSION : '3.5.0');
-
-    const msg = typeof tr === 'function' ? tr('Generating Coral session token (Method 1: Account Login)') : 'Generating Coral session token (Method 1: Account Login)';
-    console.log(`%c[coral:f1]%c ${msg}`, "color: #3b82f6; font-weight: bold", "color: inherit");
-    const response = await fetch(`${WORKER_URL}/api/nso/cache/coral/get-or-create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-            clientId: tokenBrokerClientId(),
-            idToken,
-            naId,
-            language,
-            country,
-            birthday,
-            zncaVersion
-        })
-    });
-    observeServiceResponse(response, { provider: 'nxapi-znca', operation: 'Coral token broker' });
-    let data = {};
-    try { data = await response.json(); } catch (e) { }
-    if (response.status === 429) {
-        const until = parseRetryAfter(response.headers.get('Retry-After')) || (Date.now() + 60000);
-        setRateLimitUntil('f1', until);
-    }
-    if (response.status === 401 && data?.error === 'nxapi_invalid_token') {
-        clearNxapiAuthSession();
-    }
-    if (response.status === 406 || data?.error === 'nxapi_unsupported_version') {
-        clearNxapiZncaConfig();
-        clearNxapiAuthSession();
-    }
-    if (!response.ok || !validBrokerCoralSession(data?.coral, naId, zncaVersion)) {
-        const message = serviceFailureMessage(data, response, `Cloudflare token broker could not create Coral session`);
-        throw new AuthStageError(
-            data?.error === 'nxapi_rate_limited' ? 'NXAPI_F_METHOD_1' : 'CORAL_ACCOUNT_LOGIN',
-            message,
-            null,
-            response.status
-        );
-    }
-    return data.coral.session;
-}
-
-
-
 
 function startTokenBrokerHeartbeat() {
     stopTokenBrokerHeartbeat();
@@ -529,10 +476,10 @@ async function nxapiGenerateF(method, token, userData = {}, requestOptions = {})
 
     const reason = method === 1
         ? (typeof tr === 'function' ? tr('Coral Login') : 'Coral Login')
-        : (typeof tr === 'function' ? tr('Game Token fallback') : 'Game Token fallback');
+        : (typeof tr === 'function' ? tr('Game Token') : 'Game Token');
     const fMsg = typeof trVars === 'function'
         ? trVars('Generating Method {method} attestation (Reason: {reason})', { method, reason })
-        : `Generating Method ${method} attestation (Reason: ${method === 1 ? "Coral Login" : "Game Token fallback"})`;
+        : `Generating Method ${method} attestation (Reason: ${method === 1 ? "Coral Login" : "Game Token"})`;
     console.log(`%c[nxapi:f${method}]%c ${fMsg}`, "color: #f97316; font-weight: bold", "color: inherit");
     const response = await nxapiFetch('f', {
         method: 'POST',

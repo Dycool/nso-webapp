@@ -193,89 +193,6 @@ class WebServiceManager {
         status.classList.toggle('hidden', !text);
     }
 
-    async requestBrokerGeneratedToken(serviceId, traceId, options = {}) {
-        const clientId = this.tokenBrokerClientId();
-        if (!clientId) return { unavailable: true };
-        const coralToken = coralAccessToken();
-        const naId = userSession?.nsoWebapp?.naId;
-        const coralUserId = String(userSession?.result?.user?.id || userSession?.user?.id || '');
-        if (!coralToken || !naId) return { unavailable: true };
-
-        const zncaVersion = typeof window.nsoActiveZncaVersion === 'function'
-            ? window.nsoActiveZncaVersion()
-            : (typeof ZNCA_VERSION === 'string' ? ZNCA_VERSION : '3.5.0');
-
-        if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
-        const genMsg = typeof trVars === 'function'
-            ? trVars('Generating GameWebServiceToken for service {serviceId}', { serviceId })
-            : `Generating GameWebServiceToken for service ${serviceId}`;
-        console.log(`%c[coral:f2]%c ${genMsg}`, "color: #3b82f6; font-weight: bold", "color: inherit");
-        const response = await fetch(`${this.getWorkerUrl()}/api/nso/service/token`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-            credentials: 'include',
-            signal: options.signal,
-            body: JSON.stringify({
-                clientId,
-                serviceId: String(serviceId),
-                coralAccessToken: coralToken,
-                naId: String(naId),
-                coralUserId,
-                zncaVersion,
-                serviceIds: [String(serviceId), "4834290508791808", "5598642853249024", "4953919198265344", "5935781783175168", "5741031244955648"],
-                forceFresh: options.forceFresh === true,
-                cancelKey: options.cancelKey || undefined
-            })
-        });
-        if (typeof window.nsoObserveServiceResponse === 'function') {
-            window.nsoObserveServiceResponse(response, { provider: isExtension ? 'nxapi-znca' : 'nintendo-coral', operation: 'Game service token generation' });
-        }
-
-        let data = {};
-        try { data = await response.json(); } catch (e) {}
-        if (response.ok && data?.token?.token) {
-            this.setLoadingStatus('');
-            return { token: data.token.token, expiresAt: Number(data.token.expiresAt || 0), source: data.source || 'generated' };
-        }
-        if (response.status === 401 && data?.error === 'broker_session_missing') {
-            this.setLoadingStatus('');
-            return { unavailable: true };
-        }
-        if (response.status === 401 && data?.error === 'nxapi_invalid_token') {
-            try { clearNxapiAuthSession(); } catch (e) {}
-        }
-        if (response.status === 429 && typeof parseRetryAfter === 'function' && typeof setRateLimitUntil === 'function') {
-            const until = parseRetryAfter(response.headers.get('Retry-After')) || (Date.now() + 60000);
-            setRateLimitUntil('f2', until);
-        }
-        if (response.status === 499 || data?.error === 'launch_cancelled') {
-            this.setLoadingStatus('');
-            throw new DOMException('The operation was aborted.', 'AbortError');
-        }
-
-        this.setLoadingStatus('');
-        const noMatchingWorker = response.status === 406 || data?.error === 'nxapi_unsupported_version' ||
-            /no matching workers/i.test(String(data?.error_description || data?.error || ''));
-        const versionMismatch = response.status === 400 && (data?.error === 'nxapi_version_context_mismatch' ||
-            /X-znca-Version.*does not match token/i.test(String(data?.error_description || data?.error || '')));
-        if (versionMismatch) {
-
-
-
-            try { clearNxapiAuthSession(); } catch (e) {}
-        }
-        const message = noMatchingWorker
-            ? `nxapi has no matching Android worker for Nintendo Switch App ${zncaVersion} right now. ${String(data?.error_description || '').trim()}`.trim()
-            : versionMismatch
-                ? `The nxapi token context did not match Nintendo Switch App ${zncaVersion}. The stale in-memory nxapi token was cleared; try launching again.`
-                : (data?.error_description || data?.error || `Cloudflare token broker failed (HTTP ${response.status}).`);
-        const error = new Error(message);
-        error.status = response.status;
-        error.code = noMatchingWorker ? 'nxapi_unsupported_version' : (versionMismatch ? 'nxapi_version_context_mismatch' : (data?.error || 'broker_generation_error'));
-        if (noMatchingWorker || versionMismatch) error.requestedVersion = zncaVersion;
-        throw error;
-    }
-
     async getGameWebServiceTokenCanonical(serviceId, traceId, options = {}) {
         const token = coralAccessToken();
         if (!token) throw new Error('No Coral access token available. Please sign in again.');
@@ -285,10 +202,10 @@ class WebServiceManager {
 
         if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
         const fStartedAt = performance.now();
-        const fallbackMsg = typeof trVars === 'function'
-            ? trVars('Generating GameWebServiceToken for service {serviceId} via client fallback', { serviceId })
-            : `Generating GameWebServiceToken for service ${serviceId} via client fallback`;
-        console.log(`%c[coral:f2:fallback]%c ${fallbackMsg}`, "color: #ec4899; font-weight: bold", "color: inherit");
+        const nxapiMsg = typeof trVars === 'function'
+            ? trVars('Generating GameWebServiceToken for service {serviceId}', { serviceId })
+            : `Generating GameWebServiceToken for service ${serviceId}`;
+        console.log(`%c[coral:f2:nxapi]%c ${nxapiMsg}`, "color: #f97316; font-weight: bold", "color: inherit");
         const attestation = await nxapiGenerateF(2, token, {
             na_id: naId,
             coral_user_id: coralUserId
@@ -316,7 +233,7 @@ class WebServiceManager {
         return {
             token: result.accessToken,
             expiresAt: Date.now() + Math.max(60, expiresInSec) * 1000,
-            source: 'canonical_fallback'
+            source: 'nxapi'
         };
     }
 
@@ -347,23 +264,15 @@ class WebServiceManager {
 
 
 
-            let result = { miss: true };
+            const missMsg = typeof trVars === 'function'
+                ? trVars('Requesting token for service {serviceId} (Method 2 f-token)...', { serviceId: idStr })
+                : `Requesting token for service ${idStr} (Method 2 f-token)...`;
+            console.log(`%c[GWS:Cache MISS]%c ${missMsg}`, "color: #f59e0b; font-weight: bold", "color: inherit");
 
-            if (!result?.token && !result?.unavailable) {
-                const missMsg = typeof trVars === 'function'
-                    ? trVars('Requesting token for service {serviceId} (Method 2 f-token)...', { serviceId: idStr })
-                    : `Requesting token for service ${idStr} (Method 2 f-token)...`;
-                console.log(`%c[GWS:Cache MISS]%c ${missMsg}`, "color: #f59e0b; font-weight: bold", "color: inherit");
-                result = await this.requestBrokerGeneratedToken(idStr, traceId, {
-                    signal: options.signal,
-                    cancelKey: options.cancelKey,
-                    forceFresh
-                });
-            }
-
-            if (!result?.token && result?.unavailable) {
-                result = await this.getGameWebServiceTokenCanonical(idStr, traceId, options);
-            }
+            // Generate the attestation using nxapi for every backend mode.
+            // The Cloudflare Worker may relay Coral requests, but never
+            // supplies the f-token for this game service.
+            const result = await this.getGameWebServiceTokenCanonical(idStr, traceId, options);
             if (!result?.token) throw new Error('Could not obtain a GameWebServiceToken.');
 
             this.tokenCache.set(idStr, {

@@ -12284,22 +12284,22 @@ const APP_WEB_STRINGS = Object.freeze({
     "zh-CN": "Coral登录",
     "zh-TW": "Coral登入"
   },
-  "Game Token fallback": {
-    "de-DE": "Spiel-Token-Fallback",
-    "en-GB": "Game Token fallback",
-    "en-US": "Game Token fallback",
-    "es-ES": "Reserva de token de juego",
-    "es-MX": "Reserva de token de juego",
-    "fr-CA": "Secours de jeton de jeu",
-    "fr-FR": "Secours de jeton de jeu",
-    "it-IT": "Fallback token di gioco",
-    "ja-JP": "ゲームトークンのフォールバック",
-    "ko-KR": "게임 토큰 폴백",
-    "nl-NL": "Speltoken-terugval",
-    "pt-PT": "Recurso de token de jogo",
-    "ru-RU": "Резервный токен игры",
-    "zh-CN": "游戏令牌回退",
-    "zh-TW": "遊戲權杖備援"
+  "Game Token": {
+    "de-DE": "Spiel-Token",
+    "en-GB": "Game Token",
+    "en-US": "Game Token",
+    "es-ES": "Token de juego",
+    "es-MX": "Token de juego",
+    "fr-CA": "Jeton de jeu",
+    "fr-FR": "Jeton de jeu",
+    "it-IT": "Token di gioco",
+    "ja-JP": "ゲームトークン",
+    "ko-KR": "게임 토큰",
+    "nl-NL": "Speltoken",
+    "pt-PT": "Token de jogo",
+    "ru-RU": "Игровой токен",
+    "zh-CN": "游戏令牌",
+    "zh-TW": "遊戲權杖"
   },
   "Encrypting Coral request: {url}": {
     "de-DE": "Coral-Anfrage wird verschlüsselt: {url}",
@@ -12437,23 +12437,6 @@ const APP_WEB_STRINGS = Object.freeze({
     "zh-CN": "在 {count} 个游戏服务中并行重用了 1 次方法 2 认证！",
     "zh-TW": "在 {count} 個遊戲服務中並行重複使用了 1 次方法 2 認證！"
   },
-  "Generating GameWebServiceToken for service {serviceId} via client fallback": {
-    "de-DE": "GameWebServiceToken für Dienst {serviceId} wird über Client-Fallback generiert",
-    "en-GB": "Generating GameWebServiceToken for service {serviceId} via client fallback",
-    "en-US": "Generating GameWebServiceToken for service {serviceId} via client fallback",
-    "es-ES": "Generando GameWebServiceToken para el servicio {serviceId} mediante reserva del cliente",
-    "es-MX": "Generando GameWebServiceToken para el servicio {serviceId} mediante reserva del cliente",
-    "fr-CA": "Génération de GameWebServiceToken pour le service {serviceId} via secours client",
-    "fr-FR": "Génération de GameWebServiceToken pour le service {serviceId} via secours client",
-    "it-IT": "Generazione di GameWebServiceToken per il servizio {serviceId} tramite fallback del client",
-    "ja-JP": "クライアントフォールバック経由でサービス {serviceId} の GameWebServiceToken を生成中",
-    "ko-KR": "클라이언트 폴백을 통해 서비스 {serviceId}의 GameWebServiceToken 생성 중",
-    "nl-NL": "GameWebServiceToken genereren voor service {serviceId} via client-fallback",
-    "pt-PT": "A gerar GameWebServiceToken para o serviço {serviceId} via alternativa do cliente",
-    "ru-RU": "Генерация GameWebServiceToken для сервиса {serviceId} через клиентский резерв",
-    "zh-CN": "正在通过客户端回退为服务 {serviceId} 生成 GameWebServiceToken",
-    "zh-TW": "正在透過客戶端回退為服務 {serviceId} 產生 GameWebServiceToken"
-  }
 });
 
 const translatedTextSource = new WeakMap();

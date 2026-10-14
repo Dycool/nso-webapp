@@ -21,32 +21,6 @@
     const nativeFetch = window.fetch.bind(window);
     const workerOrigin = new URL(WORKER_URL).origin;
 
-    function installOneShotBrokerResume(snapshot) {
-        if (!snapshot || typeof snapshot !== 'object') return;
-        const original = window.startTokenBrokerSession;
-        if (typeof original !== 'function' || original.__nsoCombinedResumeOneShot) return;
-
-        let restoreTimer = null;
-        const restore = () => {
-            if (window.startTokenBrokerSession === wrapped) {
-                window.startTokenBrokerSession = original;
-                try { startTokenBrokerSession = original; } catch { }
-            }
-            if (restoreTimer) clearTimeout(restoreTimer);
-            restoreTimer = null;
-        };
-        const wrapped = async function startTokenBrokerSessionFromCombinedResume() {
-            restore();
-            try { window.nsoHydrateBrokerGameTokens?.(snapshot.gws); } catch { }
-            return snapshot;
-        };
-        wrapped.__nsoCombinedResumeOneShot = true;
-        window.startTokenBrokerSession = wrapped;
-        try { startTokenBrokerSession = wrapped; } catch { }
-        restoreTimer = setTimeout(restore, 30_000);
-    }
-
-
     function mapPathToExtensionMessage(pathname, body) {
         if (pathname === '/api/nso/remember/resume') return { type: 'NSO_RESUME_SESSION', ...(body || {}) };
         if (pathname === '/api/nso/remember/save') return { type: 'NSO_REMEMBER_SAVE', ...(body || {}) };
@@ -88,9 +62,6 @@
                 'Cache-Control': 'no-store',
                 'X-NSO-Active-Backend': 'extension'
             });
-            if (pathname === '/api/nso/remember/resume' && extRes.data?.brokerSession) {
-                installOneShotBrokerResume(extRes.data.brokerSession);
-            }
             const bodyContent = typeof extRes.text === 'string' ? extRes.text : JSON.stringify(extRes.data !== undefined ? extRes.data : extRes);
             return new Response(bodyContent, { status, headers });
         } catch (extErr) {
@@ -118,34 +89,15 @@
                         }
                     }
                     const headers = new Headers(init?.headers || {});
-                    let nextInit = { ...(init || {}), headers };
-                    let combinedResume = false;
-
-                    if (target.pathname === '/api/nso/remember/resume' && nextInit.body == null && typeof tokenBrokerClientId === 'function') {
-                        const clientId = String(tokenBrokerClientId() || '');
-                        if (/^[A-Za-z0-9_-]{8,128}$/.test(clientId)) {
-                            headers.set('Content-Type', 'text/plain;charset=UTF-8');
-                            nextInit.body = JSON.stringify({ clientId });
-                            combinedResume = true;
-                        }
-                    } else {
-                        const contentType = String(headers.get('Content-Type') || '');
-                        if (/^application\/json(?:\s*;|$)/i.test(contentType)) {
-                            headers.set('Content-Type', 'text/plain;charset=UTF-8');
-                        }
+                    const nextInit = { ...(init || {}), headers };
+                    // Keep remembered-session resume standalone: the Worker's
+                    // combined-resume shortcut would generate native f-tokens.
+                    // Other Worker JSON POSTs still use the simple CORS transport.
+                    const contentType = String(headers.get('Content-Type') || '');
+                    if (/^application\/json(?:\s*;|$)/i.test(contentType)) {
+                        headers.set('Content-Type', 'text/plain;charset=UTF-8');
                     }
-
-                    const requestPromise = nativeFetch(input, nextInit);
-                    if (!combinedResume) return requestPromise;
-
-                    return requestPromise.then(async response => {
-                        if (!response.ok) return response;
-                        try {
-                            const data = await response.clone().json();
-                            if (data?.brokerSession) installOneShotBrokerResume(data.brokerSession);
-                        } catch { }
-                        return response;
-                    });
+                    return nativeFetch(input, nextInit);
                 }
             }
         } catch { }
