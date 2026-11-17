@@ -64,4 +64,6 @@ assert(!auth.includes('Game Token fallback') && auth.includes("tr('Game Token')"
 assert(localization.includes('"pt-PT": "A gerar GameWebServiceToken para o serviço {serviceId}"'), 'Portuguese game-token generation uses the existing neutral translation');
 assert(!localization.includes('via alternativa do cliente') && !localization.includes('"Game Token fallback"'), 'Obsolete fallback translations are removed');
 
+assert(manager.includes("frame.setAttribute('allow', 'fullscreen; screen-wake-lock')") && manager.includes('frame.allowFullscreen = true'), 'Zelda Notes iframe permits fullscreen video playback in Chrome');
+
 console.log('NSO webapp free-tier efficiency regression suite passed.');

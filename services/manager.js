@@ -375,7 +375,10 @@ class WebServiceManager {
 
 
         if (this.getAdapter(service) === this.zeldaNotesAdapter) {
-            frame.setAttribute('allow', 'screen-wake-lock');
+            // Chrome requires explicit iframe delegation for the Fullscreen API.
+            // Keep screen-wake-lock access for Zelda Notes while allowing video fullscreen.
+            frame.setAttribute('allow', 'fullscreen; screen-wake-lock');
+            frame.allowFullscreen = true;
         }
 
         frame.src = String(src);
