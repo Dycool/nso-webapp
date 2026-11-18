@@ -186,6 +186,23 @@ async function fetchAlbumMediaBlob(contentUri) {
     } catch (_) {
     }
 
+    const mode = window.nsoBackendMode === 'detecting' && typeof window.nsoDetectBackend === 'function'
+        ? await window.nsoDetectBackend()
+        : window.nsoBackendMode;
+    if (mode === 'extension') {
+        // A direct browser CORS request may fail; use the extension's own
+        // Nintendo-only binary fetch, never the Cloudflare Worker.
+        const response = await window.nsoDispatchExtensionMessage('NSO_MEDIA_FETCH', {
+            targetUrl: contentUri
+        });
+        if (!response.ok || response.status >= 400 || typeof response.data?.base64 !== 'string') {
+            throw new Error(response.data?.error || `Extension media download failed (HTTP ${response.status}).`);
+        }
+        const raw = atob(response.data.base64);
+        const bytes = Uint8Array.from(raw, character => character.charCodeAt(0));
+        return new Blob([bytes], { type: response.data.contentType || 'application/octet-stream' });
+    }
+
     const proxyResp = await proxyFetch(contentUri);
     if (!proxyResp.ok) throw new Error(`Download failed (HTTP ${proxyResp.status}).`);
     return await proxyResp.blob();

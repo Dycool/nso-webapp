@@ -72,4 +72,12 @@ assert(adapters.includes('language: this.currentSession.language') && adapters.i
 
 assert(manager.includes("frame.setAttribute('allow', 'fullscreen; screen-wake-lock')") && manager.includes('frame.allowFullscreen = true'), 'Zelda Notes iframe permits fullscreen video playback in Chrome');
 
+assert(!read('index.html').includes('rel="preconnect" href="https://nso-worker-backend'), 'Extension sessions do not preconnect to Cloudflare on page load');
+assert(health.includes("return extensionFailure('Worker requests are disabled while the extension is active.')"), 'All Worker-origin URLs fail closed in extension mode');
+assert(!health.includes('attempting Cloudflare fallback'), 'Extension messaging cannot fall back to Cloudflare');
+assert(health.includes("nsoDispatchExtensionMessage('NSO_DIAGNOSTICS')"), 'Extension mode diagnostics use local nxapi probe');
+assert(health.includes("result.cloudflare = { status: 'skipped' }"), 'Extension mode diagnostics skip Cloudflare status checks');
+assert(read('js/album.js').includes("nsoDispatchExtensionMessage('NSO_MEDIA_FETCH'"), 'Album fallback retrieves Nintendo media through the extension');
+require('./test-workerless-extension.js');
+
 console.log('NSO webapp free-tier efficiency regression suite passed.');

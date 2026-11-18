@@ -53,7 +53,22 @@
         return null;
     }
 
-    async function dispatchExtensionFetch(msg, pathname) {
+    function extensionFailure(reason, status = 503) {
+        return new Response(JSON.stringify({
+            error: 'extension_transport_unavailable',
+            error_description: String(reason || 'The extension could not complete this request.'),
+            provider: 'extension'
+        }), {
+            status,
+            headers: {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-store',
+                'X-NSO-Active-Backend': 'extension'
+            }
+        });
+    }
+
+    async function dispatchExtensionFetch(msg) {
         try {
             const extRes = await window.nsoDispatchExtensionMessage(msg.type, msg);
             const status = extRes.status || (extRes.ok ? 200 : 400);
@@ -62,46 +77,67 @@
                 'Cache-Control': 'no-store',
                 'X-NSO-Active-Backend': 'extension'
             });
-            const bodyContent = typeof extRes.text === 'string' ? extRes.text : JSON.stringify(extRes.data !== undefined ? extRes.data : extRes);
+            const bodyContent = typeof extRes.text === 'string'
+                ? extRes.text
+                : JSON.stringify(extRes.data !== undefined ? extRes.data : extRes);
             return new Response(bodyContent, { status, headers });
-        } catch (extErr) {
-            console.warn('[NSO WebApp] Extension request failed, attempting Cloudflare fallback:', extErr?.message);
-            throw extErr;
+        } catch (error) {
+            // Fail closed: selecting the extension must never leak requests
+            // or credentials to Cloudflare if Chrome messaging fails.
+            console.warn('[NSO WebApp] Extension request failed:', error?.message);
+            return extensionFailure(error?.message || 'Extension request failed');
         }
     }
 
     window.fetch = function nsoEfficientFetch(input, init) {
+        let target;
         try {
+            target = new URL(input instanceof Request ? input.url : String(input), location.href);
+        } catch (_) {
+            return nativeFetch(input, init);
+        }
+        if (target.origin !== workerOrigin) return nativeFetch(input, init);
 
+        // Wait for the initial extension ping before allowing any Worker
+        // request. An extension result is sticky for the whole session.
+        return (async () => {
+            const mode = window.nsoBackendMode === 'detecting' && typeof window.nsoDetectBackend === 'function'
+                ? await window.nsoDetectBackend()
+                : window.nsoBackendMode;
+            const method = String(init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
 
-            if (!(input instanceof Request)) {
-                const target = new URL(String(input), location.href);
-                const method = String(init?.method || 'GET').toUpperCase();
-                if (target.origin === workerOrigin && target.pathname.startsWith('/api/nso/') && method === 'POST') {
-                    if (window.nsoBackendMode === 'extension' && typeof window.nsoDispatchExtensionMessage === 'function') {
-                        let parsedBody = {};
-                        try {
-                            if (typeof init?.body === 'string') parsedBody = JSON.parse(init.body);
-                        } catch (_) {}
-                        const extMsg = mapPathToExtensionMessage(target.pathname, parsedBody);
-                        if (extMsg) {
-                            return dispatchExtensionFetch(extMsg, target.pathname).catch(() => nativeFetch(input, init));
-                        }
+            if (mode === 'extension') {
+                if (method === 'POST' && target.pathname.startsWith('/api/nso/')) {
+                    let parsedBody = {};
+                    try {
+                        const raw = input instanceof Request
+                            ? await input.clone().text()
+                            : (typeof init?.body === 'string' ? init.body : '{}');
+                        parsedBody = JSON.parse(raw || '{}');
+                    } catch (_) {}
+                    const extMsg = mapPathToExtensionMessage(target.pathname, parsedBody);
+                    if (extMsg && typeof window.nsoDispatchExtensionMessage === 'function') {
+                        return dispatchExtensionFetch(extMsg);
                     }
-                    const headers = new Headers(init?.headers || {});
-                    const nextInit = { ...(init || {}), headers };
-                    // Keep remembered-session resume standalone: the Worker's
-                    // combined-resume shortcut would generate native f-tokens.
-                    // Other Worker JSON POSTs still use the simple CORS transport.
-                    const contentType = String(headers.get('Content-Type') || '');
-                    if (/^application\/json(?:\s*;|$)/i.test(contentType)) {
-                        headers.set('Content-Type', 'text/plain;charset=UTF-8');
-                    }
-                    return nativeFetch(input, nextInit);
                 }
+                // Covers GET, Request objects, unmapped routes and missing
+                // messaging. There is intentionally no Cloudflare fallback.
+                return extensionFailure('Worker requests are disabled while the extension is active.');
             }
-        } catch { }
-        return nativeFetch(input, init);
+
+            if (!(input instanceof Request) && method === 'POST' &&
+                target.pathname.startsWith('/api/nso/')) {
+                const headers = new Headers(init?.headers || {});
+                const nextInit = { ...(init || {}), headers };
+                // In Cloudflare mode, keep ordinary JSON POSTs preflight-free.
+                const contentType = String(headers.get('Content-Type') || '');
+                if (/^application\/json(?:\s*;|$)/i.test(contentType)) {
+                    headers.set('Content-Type', 'text/plain;charset=UTF-8');
+                }
+                return nativeFetch(input, nextInit);
+            }
+            return nativeFetch(input, init);
+        })();
     };
 })();
 
@@ -207,13 +243,13 @@ function updateServiceHealthBanner() {
     }
 
     const bits = [];
-    if (summary.cloudflareStatus) bits.push(`Cloudflare: ${summary.cloudflareStatus}`);
+    if (window.nsoBackendMode !== 'extension' && summary.cloudflareStatus) bits.push(`Cloudflare: ${summary.cloudflareStatus}`);
     if (summary.zncaStatus) bits.push(`nxapi ZNCA: ${summary.zncaStatus}`);
     if (summary.requestedWorkerCount !== null) bits.push(`matching workers: ${summary.requestedWorkerCount}`);
     if (summary.zncaHttpStatus) bits.push(`HTTP ${summary.zncaHttpStatus}`);
     if (summary.traceId) bits.push(`trace ${summary.traceId}`);
 
-    if (summary.cloudflareStatus !== 'ok') {
+    if (window.nsoBackendMode !== 'extension' && summary.cloudflareStatus !== 'ok') {
         showServiceHealthWarning(
             tr('Cloudflare backend issue'),
             tr('The web app backend is temporarily unavailable. Some features may not work.'),
@@ -223,7 +259,9 @@ function updateServiceHealthBanner() {
         return;
     }
 
-    if (['unavailable', 'error', 'degraded'].includes(summary.zncaStatus) && window.nsoBackendMode === 'extension') {
+    if (window.nsoBackendMode === 'extension' &&
+        (['unavailable', 'error', 'degraded'].includes(summary.zncaStatus) ||
+         ['unavailable', 'error', 'degraded'].includes(lastServiceDiagnostics?.nxapi?.auth?.status))) {
         showServiceHealthWarning(
             tr('nxapi temporarily unavailable'),
             tr('nxapi is temporarily unavailable. Please try again later.'),
@@ -279,9 +317,20 @@ async function runServiceDiagnostics(options = {}) {
         };
 
         try {
-
-
-
+            const mode = window.nsoBackendMode === 'detecting' && typeof window.nsoDetectBackend === 'function'
+                ? await window.nsoDetectBackend()
+                : window.nsoBackendMode;
+            if (mode === 'extension') {
+                // Local-only health probe. The extension directly contacts nxapi.
+                const probe = await window.nsoDispatchExtensionMessage('NSO_DIAGNOSTICS');
+                const info = probe.data || {};
+                result.status = probe.ok && probe.status < 400 ? (info.status || 'ok') : 'unavailable';
+                result.extension = info.extension || { status: probe.ok ? 'ok' : 'unavailable' };
+                result.cloudflare = { status: 'skipped' };
+                result.nxapi = info.nxapi || {
+                    auth: { status: 'unavailable' }, znca: { status: 'unavailable' }
+                };
+            } else {
             const validNxapiToken = nxapiAuthSession?.accessToken && nxapiAuthSession.expiresAt > Date.now() + 5_000
                 ? nxapiAuthSession.accessToken : null;
             const controller = new AbortController();
@@ -308,22 +357,33 @@ async function runServiceDiagnostics(options = {}) {
             if (diag?.cloudflare) result.cloudflare = diag.cloudflare;
             else result.cloudflare = { status: response.ok ? 'ok' : 'unavailable', httpStatus: response.status };
             if (diag?.nxapi) result.nxapi = diag.nxapi;
+            }
         } catch (error) {
             result.status = 'unavailable';
-            result.cloudflare = {
-                status: 'unavailable',
-                error: error?.name === 'AbortError' ? 'diagnostic_timeout' : 'diagnostic_request_failed'
-            };
+            if (window.nsoBackendMode === 'extension') {
+                result.extension = { status: 'unavailable' };
+                result.cloudflare = { status: 'skipped' };
+                result.nxapi = { auth: { status: 'unavailable' }, znca: { status: 'unavailable' } };
+            } else {
+                result.cloudflare = {
+                    status: 'unavailable',
+                    error: error?.name === 'AbortError' ? 'diagnostic_timeout' : 'diagnostic_request_failed'
+                };
+            }
         }
 
         lastServiceDiagnostics = result;
         lastServiceDiagnosticsAt = Date.now();
 
         const summary = serviceHealthSummary(result);
-        if (summary?.cloudflareStatus === 'ok' && summary?.zncaStatus === 'ok') {
+        if (window.nsoBackendMode === 'extension') {
+            if (result.nxapi?.auth?.status === 'ok') {
+                clearServiceCircuit('nxapi-znca');
+            } else if (['unavailable', 'error', 'degraded'].includes(result.nxapi?.auth?.status)) {
+                openServiceCircuit('nxapi-znca', 'Local nxapi authentication is unavailable.', 503, 30_000);
+            }
+        } else if (summary?.cloudflareStatus === 'ok' && summary?.zncaStatus === 'ok') {
             clearServiceCircuit('nxapi-znca');
-        } else if (window.nsoBackendMode === 'extension' && summary?.cloudflareStatus === 'ok' && ['unavailable', 'error', 'degraded'].includes(summary?.zncaStatus)) {
-            openServiceCircuit('nxapi-znca', summary.zncaDescription || 'nxapi ZNCA health check is not healthy.', summary.zncaHttpStatus || 503, 30_000);
         } else if (summary?.cloudflareStatus && summary.cloudflareStatus !== 'ok') {
             openServiceCircuit('cloudflare', 'The nso-webapp backend health check is not healthy.', Number(result.cloudflare?.httpStatus || 503), 15_000);
         }
