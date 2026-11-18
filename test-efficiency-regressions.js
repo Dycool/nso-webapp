@@ -42,8 +42,8 @@ assert(!core.includes('installSharedF2Batching'), 'No shared method-2 generation
 
 assert(health.includes('installWorkerSimplePostTransport'), 'Cross-origin Worker JSON POSTs install the preflight-free transport shim');
 assert(health.includes("headers.set('Content-Type', 'text/plain;charset=UTF-8')"), 'Worker JSON POST bodies use a CORS-safelisted media type');
-assert(health.includes("target.origin === workerOrigin") && health.includes("target.pathname.startsWith('/api/nso/')"), 'Simple-POST rewrite is scoped only to the NSO Worker control plane');
-assert(health.includes('if (!(input instanceof Request))'), 'Transport shim leaves arbitrary Request objects untouched');
+assert(health.includes("if (target.origin !== workerOrigin) return nativeFetch(input, init);") && health.includes("target.pathname.startsWith('/api/nso/')"), 'Worker request interception applies only to the NSO Worker origin');
+assert(health.includes('input instanceof Request ? input.url') && health.includes('await input.clone().text()'), 'Transport handles Request objects in strict extension mode');
 assert(!health.includes('installOneShotBrokerResume'), 'Remembered login does not use combined Worker resume/native f generation');
 assert(!health.includes('combinedResume = true'), 'The Worker combined-resume optimization is not requested');
 assert(signin.includes("const requireNxapiConsent = () => {") && !signin.includes("if (window.nsoBackendMode !== 'extension') return true"), 'All backend modes require nxapi consent');
