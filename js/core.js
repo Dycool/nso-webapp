@@ -24,7 +24,9 @@ async function nsoDetectBackend() {
                 const response = await new Promise((resolve) => {
 
 
-                    const timeout = setTimeout(() => resolve(null), 120);
+                    // A cold MV3 extension service worker often needs more than
+                    // 120ms to wake. Avoid incorrectly choosing Cloudflare.
+                    const timeout = setTimeout(() => resolve(null), 1500);
                     try {
                         chrome.runtime.sendMessage(NSO_EXTENSION_ID, { type: 'NSO_PING' }, (res) => {
                             clearTimeout(timeout);
