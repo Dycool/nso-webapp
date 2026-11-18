@@ -78,6 +78,8 @@ class GenericWebViewAdapter {
             id: sessionData.sessionId,
             serviceId: String(service.id),
             service: service,
+            language: userLanguage,
+            country: userCountry,
             webviewUrl: sessionData.webviewUrl,
             expiresAt: sessionData.expiresAt
         };
@@ -100,7 +102,15 @@ class GenericWebViewAdapter {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ token: newToken }),
+            // The extension needs these to preserve headers on DNR-rule renewal.
+            // The Worker only uses token and safely ignores the extra metadata.
+            body: JSON.stringify({
+                token: newToken,
+                serviceId: this.currentSession.serviceId,
+                serviceUri: this.currentSession.service.uri || this.currentSession.service.url,
+                language: this.currentSession.language,
+                country: this.currentSession.country
+            }),
             signal: options.signal
         });
 

@@ -64,6 +64,12 @@ assert(!auth.includes('Game Token fallback') && auth.includes("tr('Game Token')"
 assert(localization.includes('"pt-PT": "A gerar GameWebServiceToken para o serviço {serviceId}"'), 'Portuguese game-token generation uses the existing neutral translation');
 assert(!localization.includes('via alternativa do cliente') && !localization.includes('"Game Token fallback"'), 'Obsolete fallback translations are removed');
 
+assert(manager.includes("window.nsoCurrentLocale?.() || userProfile?.language || 'en-GB'"), 'Game services receive the effective UI language instead of a fixed Nintendo Account language');
+assert(manager.includes("const country = userProfile?.country || 'GB'"), 'Game-service language changes preserve the Nintendo Account country');
+const adapters = read('services/adapters.js');
+assert(adapters.includes('language: userLanguage') && adapters.includes('country: userCountry'), 'Game service launch saves selected locale alongside the session');
+assert(adapters.includes('language: this.currentSession.language') && adapters.includes('country: this.currentSession.country') && adapters.includes('serviceId: this.currentSession.serviceId'), 'Game token renewals preserve the session language, country and service ID');
+
 assert(manager.includes("frame.setAttribute('allow', 'fullscreen; screen-wake-lock')") && manager.includes('frame.allowFullscreen = true'), 'Zelda Notes iframe permits fullscreen video playback in Chrome');
 
 console.log('NSO webapp free-tier efficiency regression suite passed.');

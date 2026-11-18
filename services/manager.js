@@ -519,7 +519,9 @@ class WebServiceManager {
             }
 
             const userProfile = userSession?.result?.user || userSession?.user;
-            const language = userProfile?.language || 'en-GB';
+            // Match the language selected in CoralWeb, not just the Nintendo Account default.
+            const language = window.nsoCurrentLocale?.() || userProfile?.language || 'en-GB';
+            // Language preferences do not alter the Nintendo Account region.
             const country = userProfile?.country || 'GB';
 
             const sessionStart = performance.now();
